@@ -508,6 +508,8 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
   .photos { gap: 4px; }
   .justified-row { gap: 4px; margin-bottom: 4px; }
   .photo { border-radius: 8px; }
+  .justified-gallery .photo img { object-fit: contain; }
+  .justified-gallery .heart { bottom: 65px; }
   .review-backdrop { padding: 0; }
   .review-panel {
     width: 100vw; height: 100dvh; max-height: none;
