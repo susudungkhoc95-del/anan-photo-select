@@ -205,6 +205,11 @@ function appUrl() {
   return (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
 }
 
+function albumUrl(album: Pick<Album, "id" | "title">) {
+  const readableTitle = normalizeSearchText(album.title).replace(/\s+/g, "-").slice(0, 70) || "album";
+  return `${appUrl()}/a/${readableTitle}--${encodeURIComponent(album.id)}`;
+}
+
 function photoSheetName(id: string) {
   return `photos_${id}`.slice(0, 100);
 }
@@ -330,7 +335,7 @@ function publicAlbum(album: Album) {
     folders: album.folders,
     pageSize: 80,
     studioSettings: { studioName: DEFAULT_STUDIO_NAME },
-    clientUrl: `${appUrl()}/?album=${encodeURIComponent(album.id)}`
+    clientUrl: albumUrl(album)
   };
 }
 
@@ -356,7 +361,7 @@ export async function listAlbums(payload: Record<string, unknown>) {
   const limit = Math.min(80, Math.max(1, Number(payload.limit || 30)));
   const items = albums.slice(offset, offset + limit).map((a) => ({
     ...a,
-    clientUrl: `${appUrl()}/?album=${encodeURIComponent(a.id)}`,
+    clientUrl: albumUrl(a),
     spreadsheetUrl: a.spreadsheetId
       ? `https://docs.google.com/spreadsheets/d/${a.spreadsheetId}/edit`
       : ""
@@ -692,7 +697,7 @@ export async function saveSelection(payload: Record<string, unknown>) {
       submittedAt: selection.submittedAt,
       isUpdate: Boolean(previousSelection),
       spreadsheetUrl,
-      clientUrl: `${appUrl()}/?album=${encodeURIComponent(album.id)}`
+      clientUrl: albumUrl(album)
     });
   } catch (error) {
     console.error("Không gửi được email thông báo:", error);

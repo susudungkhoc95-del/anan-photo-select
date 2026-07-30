@@ -21,11 +21,11 @@ export async function rpc<T>(action: string, payload: Record<string, unknown> = 
   return json.data as T;
 }
 
-export default function App() {
+export default function App({ initialAlbumId = "" }: { initialAlbumId?: string }) {
   const [albumId, setAlbumId] = useState<string | null>(null);
   useEffect(() => {
-    setAlbumId(new URLSearchParams(window.location.search).get("album") || "");
-  }, []);
+    setAlbumId(initialAlbumId || new URLSearchParams(window.location.search).get("album") || "");
+  }, [initialAlbumId]);
   if (albumId === null) return <div className="page-loader"><span className="spinner" /> Đang mở không gian ảnh…</div>;
   return albumId ? <ClientView albumId={albumId} /> : <AdminView />;
 }
