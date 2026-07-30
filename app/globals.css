@@ -506,16 +506,25 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
   .toolbar-inner .row { width: 100%; justify-content: center; }
   .toolbar-inner button { padding: 10px 12px; font-size: 12px; }
   .photos { gap: 4px; }
-  .justified-row { gap: 4px; margin-bottom: 4px; }
+  .justified-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 4px;
+    height: auto !important;
+    margin-bottom: 4px;
+  }
   .justified-gallery .photo {
     border: 0;
     border-radius: 6px;
     box-shadow: none;
     background: transparent;
+    display: block;
+    height: auto !important;
+    align-self: start;
   }
-  /* Never crop a client's photo on small screens. Empty space stays transparent,
-     so the original aspect ratio is preserved without a visible card frame. */
-  .justified-gallery .photo img { object-fit: contain; }
+  /* Each image owns its natural height: no crop and no empty card background. */
+  .justified-gallery .photo img { height: auto; object-fit: initial; }
   .justified-gallery .photo.selected { outline: 3px solid var(--accent); outline-offset: -3px; }
   .justified-gallery .caption {
     padding: 8px 9px;
