@@ -516,9 +516,9 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
   .review-panel > header { margin-bottom: 9px; }
   .review-panel > header h2 { font-size: 20px; }
   .review-list { gap: 8px; padding-right: 4px; }
-  .review-item { grid-template-columns: 72px 1fr; }
-  .review-photo-button { width: 72px; height: 96px; }
-  .review-item img { width: 72px; height: 96px; }
+  .review-item { grid-template-columns: 144px minmax(0, 1fr); }
+  .review-photo-button { width: 144px; height: 192px; }
+  .review-item img { width: 144px; height: 192px; }
   .print-toggle { font-size: 11px; }
   .album-note { margin-top: 8px; }
   .album-note textarea { min-height: 58px; }

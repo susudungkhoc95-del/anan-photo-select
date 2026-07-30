@@ -255,6 +255,7 @@ function JustifiedGallery({ albumId, photos, selected, onOpen, onToggle }: {
   const rows = useMemo(() => {
     if (!width) return [] as GalleryRow[];
     const gap = width <= 560 ? 4 : 6;
+    const isMobile = width <= 560;
     const targetHeight = width <= 560 ? 145 : width <= 900 ? 185 : 225;
     const minimumHeight = width <= 560 ? 108 : 138;
     const maximumHeight = width <= 560 ? 220 : 310;
@@ -275,9 +276,15 @@ function JustifiedGallery({ albumId, photos, selected, onOpen, onToggle }: {
 
     photos.forEach((photo, index) => {
       const ratio = Math.max(.42, Math.min(2.8, ratios[photo.id] || .78));
-      if (current.length && (ratioTotal + ratio) * targetHeight + gap * current.length > width) finishRow();
+      if (isMobile) {
+        // Mobile keeps two photos per row so portrait images remain easy to inspect.
+        if (current.length === 2) finishRow();
+      } else if (current.length && (ratioTotal + ratio) * targetHeight + gap * current.length > width) {
+        finishRow();
+      }
       current.push({ photo, index, ratio });
       ratioTotal += ratio;
+      if (isMobile && current.length === 2) finishRow();
     });
     finishRow(true);
     return calculated;
