@@ -7,7 +7,11 @@ const serif = Cormorant_Garamond({ subsets: ["vietnamese", "latin"], weight: ["5
 
 export const metadata: Metadata = {
   title: "ANAN Studio — Chọn ảnh",
-  description: "Không gian chọn ảnh riêng dành cho khách hàng ANAN Studio."
+  description: "Không gian chọn ảnh riêng dành cho khách hàng ANAN Studio.",
+  icons: {
+    icon: [{ url: "/dp-logo.png", type: "image/png" }],
+    apple: [{ url: "/dp-logo.png", type: "image/png" }]
+  }
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
