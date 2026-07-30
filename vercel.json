@@ -1,0 +1,6 @@
+{
+  "framework": "nextjs",
+  "functions": {
+    "app/api/rpc/route.ts": { "maxDuration": 300 }
+  }
+}
