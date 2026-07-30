@@ -513,6 +513,9 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
     box-shadow: none;
     background: transparent;
   }
+  /* Never crop a client's photo on small screens. Empty space stays transparent,
+     so the original aspect ratio is preserved without a visible card frame. */
+  .justified-gallery .photo img { object-fit: contain; }
   .justified-gallery .photo.selected { outline: 3px solid var(--accent); outline-offset: -3px; }
   .justified-gallery .caption {
     padding: 8px 9px;
