@@ -507,9 +507,20 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
   .toolbar-inner button { padding: 10px 12px; font-size: 12px; }
   .photos { gap: 4px; }
   .justified-row { gap: 4px; margin-bottom: 4px; }
-  .photo { border-radius: 8px; }
-  .justified-gallery .photo img { object-fit: contain; }
-  .justified-gallery .heart { bottom: 65px; }
+  .justified-gallery .photo {
+    border: 0;
+    border-radius: 6px;
+    box-shadow: none;
+    background: transparent;
+  }
+  .justified-gallery .photo.selected { outline: 3px solid var(--accent); outline-offset: -3px; }
+  .justified-gallery .caption {
+    padding: 8px 9px;
+    background: transparent;
+    text-shadow: 0 1px 4px rgba(0,0,0,.85);
+  }
+  .justified-gallery .heart { bottom: 9px; right: 9px; }
+  .zoom-bottom { padding-bottom: calc(max(18px, env(safe-area-inset-bottom)) + 19px); }
   .review-backdrop { padding: 0; }
   .review-panel {
     width: 100vw; height: 100dvh; max-height: none;
