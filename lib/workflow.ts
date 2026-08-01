@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "crypto";
-import { getGoogleApi, getWorkflowWorkspaceId, listAlbums, quoteSheet } from "@/lib/google";
+import { getWorkflowWorkspaceId, listAlbums } from "@/lib/google";
 import type { Album, Selection, WorkflowActivity, WorkflowBoard, WorkflowCard, WorkflowCardLabel, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
+import { readAppRecords, removeAppRecord, saveAppRecord } from "@/lib/supabase";
 
 const TABS = {
   lists: "WorkflowLists",
@@ -13,20 +14,7 @@ const TABS = {
 
 const LABEL_COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#a855f7"] as const;
 
-const HEADERS = {
-  [TABS.lists]: ["id", "workspaceId", "name", "position", "systemKey", "createdAt", "updatedAt"],
-  [TABS.cards]: ["id", "workspaceId", "listId", "title", "note", "position", "source", "dpSelectAlbumId", "dpSelectSubmissionId", "selectionSubmittedAt", "createdAt", "updatedAt", "completedAt", "createdBy", "dpSummary"],
-  [TABS.links]: ["id", "workspaceId", "cardId", "label", "url", "position", "createdAt", "updatedAt"],
-  [TABS.activities]: ["id", "workspaceId", "cardId", "activityType", "description", "oldValue", "newValue", "actorId", "actorName", "source", "createdAt"],
-  [TABS.labels]: ["id", "workspaceId", "name", "color", "position", "createdAt", "updatedAt"],
-  [TABS.cardLabels]: ["id", "workspaceId", "cardId", "labelId", "createdAt"]
-} as const;
-
 type TabName = (typeof TABS)[keyof typeof TABS];
-type StoredRow = { row: number; values: string[] };
-
-let tabsReady = false;
-let tabsInitializing: Promise<void> | undefined;
 const workspaceQueues = new Map<string, Promise<void>>();
 
 function text(value: unknown, max = 1000) {
@@ -66,58 +54,21 @@ async function serialise<T>(workspaceId: string, work: () => Promise<T>) {
   }
 }
 
-/** Creates tabular storage once. Records are always identified by IDs, never row numbers. */
-async function ensureTabs() {
-  if (tabsReady) return;
-  if (!tabsInitializing) {
-    tabsInitializing = (async () => {
-      const { sheets, spreadsheetId } = getGoogleApi();
-      const meta = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties" });
-      const existing = new Set((meta.data.sheets || []).map((sheet) => sheet.properties?.title).filter(Boolean));
-      const requests = Object.values(TABS).filter((title) => !existing.has(title)).map((title) => ({ addSheet: { properties: { title } } }));
-      if (requests.length) await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
-      await Promise.all(Object.entries(HEADERS).map(([tab, header]) =>
-        sheets.spreadsheets.values.update({
-          spreadsheetId,
-          range: `${quoteSheet(tab)}!A1:${String.fromCharCode(64 + header.length)}1`,
-          valueInputOption: "RAW",
-          requestBody: { values: [[...header]] }
-        })
-      ));
-      tabsReady = true;
-    })();
-  }
-  await tabsInitializing;
-}
-
 async function rows(tab: TabName) {
-  await ensureTabs();
-  const { sheets, spreadsheetId } = getGoogleApi();
-  const response = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${quoteSheet(tab)}!A2:Z` });
-  return (response.data.values || [])
-    .map((value, index) => ({ row: index + 2, values: value.map((cell) => String(cell ?? "")) }))
-    .filter((item) => item.values[0]);
+  const records = await readAppRecords(tab);
+  return records.map((record) => ({
+    id: record.record_id,
+    workspaceId: record.workspace_id,
+    values: Array.isArray(record.payload) ? record.payload.map((cell) => String(cell ?? "")) : []
+  })).filter((item) => item.values[0]);
 }
 
 async function writeRow(tab: TabName, id: string, workspaceId: string, values: string[]) {
-  const current = await rows(tab);
-  const matching = current.find((item) => item.values[0] === id && item.values[1] === workspaceId);
-  const row = matching?.row || Math.max(1, ...current.map((item) => item.row)) + 1;
-  const { sheets, spreadsheetId } = getGoogleApi();
-  const end = String.fromCharCode(64 + values.length);
-  await sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range: `${quoteSheet(tab)}!A${row}:${end}${row}`,
-    valueInputOption: "RAW",
-    requestBody: { values: [values] }
-  });
+  await saveAppRecord(tab, id, values, workspaceId);
 }
 
 async function clearRecord(tab: TabName, id: string, workspaceId: string) {
-  const matching = (await rows(tab)).filter((item) => item.values[0] === id && item.values[1] === workspaceId);
-  if (!matching.length) return;
-  const { sheets, spreadsheetId } = getGoogleApi();
-  await Promise.all(matching.map((item) => sheets.spreadsheets.values.clear({ spreadsheetId, range: `${quoteSheet(tab)}!A${item.row}:Z${item.row}` })));
+  await removeAppRecord(tab, id, workspaceId);
 }
 
 function listFrom(values: string[]): WorkflowList {
@@ -147,11 +98,8 @@ function labelValues(record: WorkflowLabel) { return [record.id, record.workspac
 function cardLabelValues(record: WorkflowCardLabel) { return [record.id, record.workspaceId, record.cardId, record.labelId, record.createdAt]; }
 
 async function readBoard(workspaceId: string): Promise<WorkflowBoard> {
-  await ensureTabs();
-  const { sheets, spreadsheetId } = getGoogleApi();
-  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges: Object.values(TABS).map((tab) => `${quoteSheet(tab)}!A2:Z`) });
-  const values = response.data.valueRanges || [];
-  const scope = (index: number) => (values[index]?.values || []).map((row) => row.map((cell) => String(cell ?? ""))).filter((row) => row[1] === workspaceId);
+  const values = await Promise.all(Object.values(TABS).map((tab) => rows(tab)));
+  const scope = (index: number) => values[index].filter((row) => row.workspaceId === workspaceId).map((row) => row.values);
   return {
     workspaceId,
     lists: scope(0).map(listFrom).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt)),

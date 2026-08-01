@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "crypto";
 import type { Album, Draft, GuideTemplate, Photo, QuickLink, Selection, StudioSettings } from "@/lib/types";
 import { DEFAULT_GUIDE, DEFAULT_STUDIO_NAME } from "@/lib/types";
 import { sendSelectionEmail } from "@/lib/email";
+import { readAppRecords, removeAppRecord, saveAppRecord } from "@/lib/supabase";
 
 const ALBUMS = "_albums";
 const DRAFTS = "_drafts";
@@ -15,8 +16,6 @@ export class AlbumNotFoundError extends Error {}
 let clients:
   | { sheets: sheets_v4.Sheets; drive: drive_v3.Drive; spreadsheetId: string }
   | undefined;
-let initialized = false;
-let initializing: Promise<void> | undefined;
 
 function authClient() {
   if (
@@ -66,113 +65,22 @@ export function getWorkflowWorkspaceId() {
   return `studio_${createHash("sha256").update(getGoogleApi().spreadsheetId).digest("hex").slice(0, 20)}`;
 }
 
-async function ensureDataSheets() {
-  if (initialized) return;
-  if (!initializing) initializing = initializeDataSheets();
-  try {
-    await initializing;
-  } finally {
-    if (!initialized) initializing = undefined;
-  }
-}
-
-async function initializeDataSheets() {
-  const { sheets, spreadsheetId } = getGoogleApi();
-  const meta = await sheets.spreadsheets.get({
-    spreadsheetId,
-    fields: "sheets.properties"
-  });
-  const sheetProps = (meta.data.sheets || []).map((s) => s.properties).filter(Boolean);
-  const names = new Set(
-    sheetProps.map((p) => p?.title).filter(Boolean)
-  );
-  const requests: sheets_v4.Schema$Request[] = [];
-  for (const title of [ALBUMS, DRAFTS, SELECTIONS, SETTINGS]) {
-    if (!names.has(title)) {
-      requests.push({ addSheet: { properties: { title, hidden: title !== ALBUMS } } });
-    }
-  }
-  // Google creates a default "Trang tính1" tab in a new spreadsheet. Remove it
-  // when it is still empty so the data workbook only contains app-managed tabs.
-  const defaultSheet = sheetProps.find((p) => p?.title === "Trang tính1");
-  if (defaultSheet?.sheetId !== undefined) {
-    const probe = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: "'Trang tính1'!A1:Z2"
-    });
-    const hasValues = (probe.data.values || []).some((row) => row.some((cell) => String(cell ?? "").trim()));
-    if (!hasValues && sheetProps.length > 1) {
-      requests.push({ deleteSheet: { sheetId: defaultSheet.sheetId } });
-    }
-  }
-  if (requests.length) {
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: { requests }
-    });
-  }
-  const headers: Record<string, string[]> = {
-    [ALBUMS]: ["ID", "DỮ LIỆU ALBUM"],
-    [DRAFTS]: ["ALBUM ID", "BẢN NHÁP JSON"],
-    [SELECTIONS]: ["ALBUM ID", "KẾT QUẢ JSON"],
-    [SETTINGS]: ["KHÓA", "GIÁ TRỊ"]
-  };
-  await Promise.all(
-    Object.entries(headers).map(([name, row]) =>
-      sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `${quoteSheet(name)}!A1:B1`,
-        valueInputOption: "RAW",
-        requestBody: { values: [row] }
-      })
-    )
-  );
-  initialized = true;
-}
-
 async function readTable(name: string) {
-  await ensureDataSheets();
-  const { sheets, spreadsheetId } = getGoogleApi();
-  const result = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: `${quoteSheet(name)}!A2:B`
-  });
-  return result.data.values || [];
+  const records = await readAppRecords(name);
+  return records.map((record) => [record.record_id, JSON.stringify(record.payload)]);
 }
 
 async function upsertJson(name: string, id: string, value: unknown) {
-  const rows = await readTable(name);
-  const index = rows.findIndex((r) => String(r[0] || "") === id);
-  const row = index < 0 ? rows.length + 2 : index + 2;
-  const { sheets, spreadsheetId } = getGoogleApi();
-  await sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range: `${quoteSheet(name)}!A${row}:B${row}`,
-    valueInputOption: "RAW",
-    requestBody: { values: [[id, JSON.stringify(value)]] }
-  });
+  await saveAppRecord(name, id, value);
 }
 
 async function readJson<T>(name: string, id: string): Promise<T | null> {
-  const rows = await readTable(name);
-  const row = rows.find((r) => String(r[0] || "") === id);
-  if (!row?.[1]) return null;
-  try {
-    return JSON.parse(String(row[1])) as T;
-  } catch {
-    return null;
-  }
+  const records = await readAppRecords(name);
+  return (records.find((record) => record.record_id === id)?.payload as T | undefined) || null;
 }
 
 async function deleteJson(name: string, id: string) {
-  const rows = await readTable(name);
-  const index = rows.findIndex((r) => String(r[0] || "") === id);
-  if (index < 0) return;
-  const { sheets, spreadsheetId } = getGoogleApi();
-  await sheets.spreadsheets.values.clear({
-    spreadsheetId,
-    range: `${quoteSheet(name)}!A${index + 2}:B${index + 2}`
-  });
+  await removeAppRecord(name, id);
 }
 
 export function extractFolderId(input: string) {
