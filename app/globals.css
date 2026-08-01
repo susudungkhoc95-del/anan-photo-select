@@ -380,6 +380,7 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
 }
 .grid-loader { display: none; align-items: center; justify-content: center; gap: 10px; color: var(--muted); padding: 18px 0 4px; font-weight: 700; }
 .grid-loader.show { display: flex; }
+.review-action-heart { color: var(--accent); }
 
 /* Modal xem lại */
 .review-backdrop {

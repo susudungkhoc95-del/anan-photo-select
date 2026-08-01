@@ -193,8 +193,8 @@ export default function ClientView({ albumId }: { albumId: string }) {
           <div className="client-toolbar-actions">
             <div className="counter">Đã chọn <span>{selected.size}</span>{album.maxSelect ? ` / ${album.maxSelect}` : ""} ảnh</div>
             <div className="row">
-              <button className="secondary btn-icon" onClick={openReview}><Heart size={17} /> Xem ảnh đã chọn</button>
-              <button className="btn-icon" onClick={submit} disabled={!selected.size || submitting}>{submitting ? <span className="spinner small" /> : <Check size={17} />} Gửi ảnh chọn</button>
+              <button className="secondary btn-icon" onClick={openReview}><Heart className="review-action-heart" size={17} fill="currentColor" /> Xem ảnh đã chọn</button>
+              <button className="btn-icon" onClick={submit} disabled={!selected.size || submitting}>{submitting ? <span className="spinner small" /> : <Send size={17} />} Gửi ảnh chọn</button>
             </div>
           </div>
         </div>
