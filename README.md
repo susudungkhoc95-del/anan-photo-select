@@ -15,6 +15,7 @@ Phiên bản Next.js thay thế Google Apps Script của ANAN Studio. App dùng 
 - Tạo một Google Sheet kết quả riêng trong thư mục ảnh gốc; tô hồng ảnh 60×90, vàng ảnh để bàn, đen khi RAW thiếu/trùng.
 - Quét thư mục RAW, tạo thư mục theo tên album và copy các file RAW tương ứng.
 - Gửi email đến studio khi khách gửi hoặc cập nhật lựa chọn ảnh.
+- DP Workflow: bảng Trello tối giản, lưu hoàn toàn trong Google Sheets; thẻ tự tạo khi khách gửi ảnh chọn.
 
 ## 1. Chuẩn bị Google Cloud
 
@@ -107,10 +108,22 @@ App tự tạo các tab trong Google Sheet dữ liệu:
 - `_drafts`: bản nháp mới nhất của mỗi album.
 - `_selections`: kết quả khách đã gửi.
 - `_settings`: hướng dẫn mặc định.
+- `WorkflowLists`: `id`, `workspaceId`, `name`, `position`, `systemKey`, `createdAt`, `updatedAt`.
+- `WorkflowCards`: `id`, `workspaceId`, `listId`, `title`, `note`, `position`, `source`, `dpSelectAlbumId`, `dpSelectSubmissionId`, `selectionSubmittedAt`, `createdAt`, `updatedAt`, `completedAt`, `createdBy`.
+- `WorkflowLinks`: `id`, `workspaceId`, `cardId`, `label`, `url`, `position`, `createdAt`, `updatedAt`.
+- `WorkflowActivities`: `id`, `workspaceId`, `cardId`, `activityType`, `description`, `oldValue`, `newValue`, `actorId`, `actorName`, `source`, `createdAt`.
 - `photos_<albumId>`: danh sách ảnh của album, được ẩn.
 - Mỗi album có một Google Sheet kết quả riêng, nằm trong thư mục ảnh gốc và mang tên `<tên album> - ảnh khách chọn`.
 
 Xoá album trong app không xoá ảnh JPG/RAW trên Drive hoặc Google Sheet kết quả. Các tab dữ liệu cũ cũng được giữ lại để tránh mất dữ liệu ngoài ý muốn.
+
+## DP Workflow
+
+Mở `/workflow` sau khi đăng nhập quản trị, hoặc bấm nút **DP Workflow** ở đầu trang quản trị. Lần mở đầu app tự tạo ba danh sách `CẦN LÀM`, `ĐANG LÀM`, `DONE`; danh sách nhận thẻ tự động được nhận diện bằng `systemKey=TODO_INBOX`, không phụ thuộc tên hiển thị.
+
+Workflow dùng chính file `GOOGLE_DATA_SPREADSHEET_ID`, không cần database hay biến môi trường mới. `workspaceId` được tạo phía server từ ID file Sheet; trình duyệt không gửi workspaceId nên không thể đọc hoặc sửa một workspace khác bằng cách đổi payload.
+
+Sau khi khách gửi ảnh và file Sheet kết quả được ghi thành công, hệ thống tạo/cập nhật một thẻ `dp_select` có link **Sheet ảnh chọn**. Mỗi album chỉ có một thẻ logic: gửi lại chỉ cập nhật thời gian gửi/link Sheet và thêm lịch sử, không đổi danh sách, tên hay ghi chú do quản trị đã chỉnh. Google Sheets API không có transaction hoặc lock phân tán; app dùng ID thẻ xác định theo album, kiểm tra trước khi ghi và hàng đợi server ngắn hạn để giảm tối đa khả năng trùng trong các request đồng thời. Một lần gửi lại sẽ tự sửa một ghi dở dang nếu có.
 
 ## Kiểm tra
 

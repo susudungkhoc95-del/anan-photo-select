@@ -1,5 +1,5 @@
 import { google, sheets_v4, drive_v3 } from "googleapis";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import type { Album, Draft, Photo, Selection } from "@/lib/types";
 import { DEFAULT_GUIDE, DEFAULT_STUDIO_NAME } from "@/lib/types";
 import { sendSelectionEmail } from "@/lib/email";
@@ -44,7 +44,7 @@ function authClient() {
   throw new Error("Chưa cấu hình tài khoản Google cho server.");
 }
 
-function api() {
+export function getGoogleApi() {
   if (clients) return clients;
   const spreadsheetId = process.env.GOOGLE_DATA_SPREADSHEET_ID;
   if (!spreadsheetId) throw new Error("Thiếu GOOGLE_DATA_SPREADSHEET_ID.");
@@ -57,8 +57,13 @@ function api() {
   return clients;
 }
 
-function quoteSheet(name: string) {
+export function quoteSheet(name: string) {
   return `'${name.replace(/'/g, "''")}'`;
+}
+
+/** Stable server-owned scope for this deployment's studio. Never supplied by the browser. */
+export function getWorkflowWorkspaceId() {
+  return `studio_${createHash("sha256").update(getGoogleApi().spreadsheetId).digest("hex").slice(0, 20)}`;
 }
 
 async function ensureDataSheets() {
@@ -72,7 +77,7 @@ async function ensureDataSheets() {
 }
 
 async function initializeDataSheets() {
-  const { sheets, spreadsheetId } = api();
+  const { sheets, spreadsheetId } = getGoogleApi();
   const meta = await sheets.spreadsheets.get({
     spreadsheetId,
     fields: "sheets.properties"
@@ -127,7 +132,7 @@ async function initializeDataSheets() {
 
 async function readTable(name: string) {
   await ensureDataSheets();
-  const { sheets, spreadsheetId } = api();
+  const { sheets, spreadsheetId } = getGoogleApi();
   const result = await sheets.spreadsheets.values.get({
     spreadsheetId,
     range: `${quoteSheet(name)}!A2:B`
@@ -139,7 +144,7 @@ async function upsertJson(name: string, id: string, value: unknown) {
   const rows = await readTable(name);
   const index = rows.findIndex((r) => String(r[0] || "") === id);
   const row = index < 0 ? rows.length + 2 : index + 2;
-  const { sheets, spreadsheetId } = api();
+  const { sheets, spreadsheetId } = getGoogleApi();
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range: `${quoteSheet(name)}!A${row}:B${row}`,
@@ -163,7 +168,7 @@ async function deleteJson(name: string, id: string) {
   const rows = await readTable(name);
   const index = rows.findIndex((r) => String(r[0] || "") === id);
   if (index < 0) return;
-  const { sheets, spreadsheetId } = api();
+  const { sheets, spreadsheetId } = getGoogleApi();
   await sheets.spreadsheets.values.clear({
     spreadsheetId,
     range: `${quoteSheet(name)}!A${index + 2}:B${index + 2}`
@@ -215,7 +220,7 @@ function photoSheetName(id: string) {
 }
 
 async function createSheet(title: string, hidden = true) {
-  const { sheets, spreadsheetId } = api();
+  const { sheets, spreadsheetId } = getGoogleApi();
   const result = await sheets.spreadsheets.batchUpdate({
     spreadsheetId,
     requestBody: { requests: [{ addSheet: { properties: { title, hidden } } }] }
@@ -232,7 +237,7 @@ async function scanFolder(
   imageOnly = true,
   excludeFolderId = ""
 ) {
-  const { drive } = api();
+  const { drive } = getGoogleApi();
   let pageToken: string | undefined;
   do {
     const result = await drive.files.list({
@@ -256,7 +261,7 @@ async function scanFolder(
 }
 
 async function writePhotos(album: Album, photos: Photo[]) {
-  const { sheets, spreadsheetId } = api();
+  const { sheets, spreadsheetId } = getGoogleApi();
   await createSheet(album.photoSheet, true);
   const values = [["ID", "TÊN FILE", "THƯ MỤC"], ...photos.map((p) => [p.id, p.name, p.folder])];
   await sheets.spreadsheets.values.update({
@@ -274,7 +279,7 @@ export async function createAlbum(payload: Record<string, unknown>) {
   const rawFolderUrl = clean(payload.rawFolderUrl, 1000);
   const rawFolderId = rawFolderUrl ? extractFolderId(rawFolderUrl) : "";
   if (rawFolderUrl && !rawFolderId) throw new Error("Không đọc được ID thư mục RAW.");
-  const { drive } = api();
+  const { drive } = getGoogleApi();
   const root = await drive.files.get({
     fileId: folderId,
     fields: "id,name,mimeType",
@@ -371,7 +376,7 @@ export async function listAlbums(payload: Record<string, unknown>) {
 
 export async function photoPage(payload: Record<string, unknown>) {
   const album = await loadAlbum(clean(payload.albumId, 80));
-  const { sheets, spreadsheetId } = api();
+  const { sheets, spreadsheetId } = getGoogleApi();
   const result = await sheets.spreadsheets.values.get({
     spreadsheetId,
     range: `${quoteSheet(album.photoSheet)}!A2:C`
@@ -409,7 +414,7 @@ export async function getPhotoThumbnail(albumId: string, photoId: string) {
   if (!id || !(await allPhotos(album)).some((photo) => photo.id === id)) {
     throw new Error("Không tìm thấy ảnh trong album.");
   }
-  const { drive } = api();
+  const { drive } = getGoogleApi();
   const meta = await drive.files.get({
     fileId: id,
     fields: "thumbnailLink,mimeType",
@@ -440,7 +445,7 @@ export async function getPhotoThumbnail(albumId: string, photoId: string) {
 }
 
 async function allPhotos(album: Album) {
-  const { sheets, spreadsheetId } = api();
+  const { sheets, spreadsheetId } = getGoogleApi();
   const result = await sheets.spreadsheets.values.get({
     spreadsheetId,
     range: `${quoteSheet(album.photoSheet)}!A2:C`
@@ -521,7 +526,7 @@ function fileKey(name: string) {
 
 async function getOrCreateAlbumSpreadsheet(album: Album) {
   const title = safeSheetTitle(album.title);
-  const { sheets, drive, spreadsheetId: dataSpreadsheetId } = api();
+  const { sheets, drive, spreadsheetId: dataSpreadsheetId } = getGoogleApi();
   if (album.spreadsheetId) {
     const current = await sheets.spreadsheets.get({
       spreadsheetId: album.spreadsheetId,
@@ -589,7 +594,7 @@ async function getOrCreateAlbumSpreadsheet(album: Album) {
 async function writeResultSheet(album: Album, selection: Selection, photos: Photo[]) {
   const title = safeSheetTitle(album.title);
   const resultSpreadsheetId = await getOrCreateAlbumSpreadsheet(album);
-  const { sheets } = api();
+  const { sheets } = getGoogleApi();
   const selected = new Map(photos.map((p) => [p.id, p]));
   const large = new Set(selection.largePrintIds);
   const table = new Set(selection.tablePrintIds);
@@ -688,6 +693,10 @@ export async function saveSelection(payload: Record<string, unknown>) {
   await writeResultSheet(album, selection, normalized.photos);
   await upsertJson(ALBUMS, album.id, album);
   const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${album.spreadsheetId}/edit`;
+  // Workflow is created only after the selection and its result spreadsheet are durable.
+  // Dynamic import keeps the core Google module independent from the Workflow repository.
+  const { createOrUpdateCardFromSelection } = await import("@/lib/workflow");
+  await createOrUpdateCardFromSelection(album, selection, spreadsheetUrl);
   try {
     await sendSelectionEmail({
       album,
@@ -714,7 +723,7 @@ export async function updateRawFolder(payload: Record<string, unknown>) {
   const rawFolderUrl = clean(payload.rawFolderUrl, 1000);
   const rawFolderId = rawFolderUrl ? extractFolderId(rawFolderUrl) : "";
   if (rawFolderUrl && !rawFolderId) throw new Error("Không đọc được ID thư mục RAW.");
-  if (rawFolderId) await api().drive.files.get({ fileId: rawFolderId, fields: "id", supportsAllDrives: true });
+  if (rawFolderId) await getGoogleApi().drive.files.get({ fileId: rawFolderId, fields: "id", supportsAllDrives: true });
   album.rawFolderUrl = rawFolderUrl;
   album.rawFolderId = rawFolderId;
   album.rawSelectionFolderId = "";
@@ -732,7 +741,7 @@ export async function createRawSelectionFolder(id: string) {
   if (!selection?.selectedIds.length) throw new Error("Khách chưa gửi danh sách ảnh.");
   const photos = await allPhotos(album);
   const byId = new Map(photos.map((p) => [p.id, p]));
-  const { drive } = api();
+  const { drive } = getGoogleApi();
   const safeName = album.title.replace(/[\/\\:*?"<>|]/g, "-").trim().slice(0, 120) || "Album";
   const found = await drive.files.list({
     q: `'${album.rawFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and name = '${safeName.replace(/'/g, "\\'")}' and trashed = false`,

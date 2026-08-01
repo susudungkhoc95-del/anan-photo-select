@@ -18,6 +18,20 @@ import {
   saveSettings,
   updateRawFolder
 } from "@/lib/google";
+import {
+  createWorkflowCard,
+  createWorkflowLink,
+  createWorkflowList,
+  deleteWorkflowCard,
+  deleteWorkflowLink,
+  deleteWorkflowList,
+  getWorkflowBoard,
+  moveWorkflowCard,
+  reorderWorkflowLists,
+  updateWorkflowCard,
+  updateWorkflowLink,
+  updateWorkflowList
+} from "@/lib/workflow";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -31,7 +45,19 @@ const adminActions = new Set([
   "updateRawFolder",
   "createRawSelectionFolder",
   "getSettings",
-  "saveSettings"
+  "saveSettings",
+  "getWorkflowBoard",
+  "createWorkflowList",
+  "updateWorkflowList",
+  "reorderWorkflowLists",
+  "deleteWorkflowList",
+  "createWorkflowCard",
+  "updateWorkflowCard",
+  "moveWorkflowCard",
+  "deleteWorkflowCard",
+  "createWorkflowLink",
+  "updateWorkflowLink",
+  "deleteWorkflowLink"
 ]);
 
 export async function POST(request: Request) {
@@ -60,6 +86,18 @@ export async function POST(request: Request) {
       case "createRawSelectionFolder": data = await createRawSelectionFolder(String(payload.albumId || "")); break;
       case "getSettings": data = await getSettings(); break;
       case "saveSettings": data = await saveSettings(payload); break;
+      case "getWorkflowBoard": data = await getWorkflowBoard(); break;
+      case "createWorkflowList": data = await createWorkflowList(payload); break;
+      case "updateWorkflowList": data = await updateWorkflowList(payload); break;
+      case "reorderWorkflowLists": data = await reorderWorkflowLists(payload); break;
+      case "deleteWorkflowList": data = await deleteWorkflowList(payload); break;
+      case "createWorkflowCard": data = await createWorkflowCard(payload); break;
+      case "updateWorkflowCard": data = await updateWorkflowCard(payload); break;
+      case "moveWorkflowCard": data = await moveWorkflowCard(payload); break;
+      case "deleteWorkflowCard": data = await deleteWorkflowCard(payload); break;
+      case "createWorkflowLink": data = await createWorkflowLink(payload); break;
+      case "updateWorkflowLink": data = await updateWorkflowLink(payload); break;
+      case "deleteWorkflowLink": data = await deleteWorkflowLink(payload); break;
       default: return NextResponse.json({ error: "Tác vụ không hợp lệ." }, { status: 400 });
     }
     return NextResponse.json({ data });

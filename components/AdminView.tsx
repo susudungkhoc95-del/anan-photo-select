@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Archive, Check, Copy, ExternalLink, FolderSync, Images, KeyRound,
   Link as LinkIcon, LogOut, Moon, RotateCcw, Search, Settings, Sheet,
-  Sparkles, Sun, Trash2
+  Sparkles, Sun, Trash2, Workflow
 } from "lucide-react";
 import { rpc } from "@/components/App";
 import type { Album } from "@/lib/types";
@@ -146,6 +146,7 @@ export default function AdminView() {
         <div className="admin-logo-mark"><img src="/anan-logo.png" alt="ANAN STUDIO" /></div>
         <div className="brand"><span className="brand-copy"><strong>DP select</strong><span>Tạo link chọn ảnh từ thư mục Google Drive</span></span></div>
         <div className="topbar-actions">
+          <a className="button secondary btn-icon" href="/workflow"><Workflow size={17} /> DP Workflow</a>
           <button className="secondary theme-toggle" onClick={toggleTheme} aria-label="Đổi giao diện">{lightMode ? <Moon size={18} /> : <Sun size={18} />}</button>
           <button className="secondary btn-icon" onClick={() => load(false)}><RotateCcw size={17} /> <span className="full-label">Tải lại album</span><span className="short-label">Tải lại</span></button>
           <button className="secondary theme-toggle" onClick={logout} aria-label="Đăng xuất"><LogOut size={18} /></button>
