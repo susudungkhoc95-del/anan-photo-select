@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Archive, Check, ChevronDown, Copy, ExternalLink, FolderSync, Images, KeyRound,
-  Link as LinkIcon, LogOut, RotateCcw, Search, Settings, Sheet,
+  Link as LinkIcon, LogOut, Search, Settings, Sheet,
   Sparkles, Trash2
 } from "lucide-react";
 import { rpc } from "@/components/App";
@@ -154,7 +154,6 @@ export default function AdminView() {
           <nav className="app-tabs header-tabs" aria-label="Khu vực quản trị"><a className="active" href="/">DP Select</a><a href="/workflow">DP Workflow</a></nav>
         </div>
         <div className="topbar-actions">
-          <button className="secondary btn-icon" onClick={() => load(false)}><RotateCcw size={17} /> <span className="full-label">Tải lại album</span><span className="short-label">Tải lại</span></button>
           <button className="secondary theme-toggle" onClick={logout} aria-label="Đăng xuất"><LogOut size={18} /></button>
         </div>
       </header>

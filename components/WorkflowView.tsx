@@ -6,8 +6,7 @@ import { SortableContext, arrayMove, horizontalListSortingStrategy, rectSortingS
 import { CSS } from "@dnd-kit/utilities";
 import { Check, ChevronDown, ExternalLink, Link as LinkIcon, MoreVertical, Plus, Search, Settings, Trash2, X } from "lucide-react";
 import { rpc } from "@/components/App";
-import QuickLinks from "@/components/QuickLinks";
-import type { QuickLink, StudioSettings, WorkflowBoard, WorkflowCard, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
+import type { WorkflowBoard, WorkflowCard, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
 import { normalizeWorkflowText, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
 
 type ModalState = { cardId: string } | null;
@@ -30,7 +29,6 @@ export default function WorkflowView() {
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [quickCardId, setQuickCardId] = useState<string | null>(null);
-  const [quickLinks, setQuickLinks] = useState<QuickLink[]>([]);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   async function load() {
@@ -44,7 +42,7 @@ export default function WorkflowView() {
     return () => document.body.classList.remove("admin-mode", "admin-light-mode");
   }, []);
   useEffect(() => { fetch("/api/auth").then((response) => response.json()).then(({ authenticated }) => setAuth(authenticated ? "yes" : "no")); }, []);
-  useEffect(() => { if (auth === "yes") { void load(); void rpc<StudioSettings>("getSettings").then((settings) => setQuickLinks(settings.quickLinks)).catch(() => {}); } }, [auth]);
+  useEffect(() => { if (auth === "yes") void load(); }, [auth]);
 
   const filtered = useMemo(() => {
     if (!board || !query.trim()) return board?.cards || [];
@@ -114,7 +112,6 @@ export default function WorkflowView() {
       <div className="workflow-header-left"><div className="workflow-brand"><img src="/dp-logo.png" alt="DP Select" /></div><nav className="app-tabs header-tabs" aria-label="Khu vực quản trị"><a href="/">DP Select</a><a className="active" href="/workflow">DP Workflow</a></nav></div>
       <div className="workflow-header-actions"><div className="workflow-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm kiếm thẻ..." />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div></div>
     </header>
-    <QuickLinks links={quickLinks} />
     {message && <div className="workflow-message notice">{message}<button className="text-button" onClick={() => setMessage("")}>Đóng</button></div>}
     {query && <p className="workflow-search-note">Xóa tìm kiếm để sắp xếp thẻ.</p>}
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragCancel={() => setActiveDragId(null)} onDragEnd={(event) => { void onDragEnd(event).finally(() => setActiveDragId(null)); }}>
