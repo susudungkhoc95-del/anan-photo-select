@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
@@ -13,6 +13,20 @@ import { normalizeWorkflowText, workflowAge, workflowCardMatches } from "@/lib/w
 type ModalState = { cardId: string } | null;
 type CreateState = { type: "list" } | { type: "card"; list: WorkflowList } | null;
 const LABEL_COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#a855f7"];
+const WORKFLOW_CACHE_KEY = "anan-workflow-board";
+const ADMIN_SESSION_KEY = "anan-admin-session";
+
+function cachedBoard(): WorkflowBoard | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const value = JSON.parse(sessionStorage.getItem(WORKFLOW_CACHE_KEY) || "null") as WorkflowBoard | null;
+    return value?.lists && value?.cards ? value : null;
+  } catch { return null; }
+}
+
+function cacheBoard(board: WorkflowBoard) {
+  try { sessionStorage.setItem(WORKFLOW_CACHE_KEY, JSON.stringify(board)); } catch {}
+}
 
 function formatTime(value: string) {
   if (!value) return "—";
@@ -20,8 +34,8 @@ function formatTime(value: string) {
 }
 
 export default function WorkflowView() {
-  const [auth, setAuth] = useState<"loading" | "yes" | "no">("loading");
-  const [board, setBoard] = useState<WorkflowBoard | null>(null);
+  const [auth, setAuth] = useState<"loading" | "yes" | "no">(() => typeof window !== "undefined" && sessionStorage.getItem(ADMIN_SESSION_KEY) === "yes" ? "yes" : "loading");
+  const [board, setBoard] = useState<WorkflowBoard | null>(cachedBoard);
   const [query, setQuery] = useState("");
   const [message, setMessage] = useState("");
   const [cardModal, setCardModal] = useState<ModalState>(null);
@@ -30,20 +44,63 @@ export default function WorkflowView() {
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [quickCardId, setQuickCardId] = useState<string | null>(null);
+  const refreshingRef = useRef(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
-  async function load() {
-    try { setBoard(await rpc<WorkflowBoard>("getWorkflowBoard")); }
-    catch (error) { setMessage((error as Error).message); }
-  }
+  const load = useCallback(async (silent = false) => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    try {
+      const nextBoard = await rpc<WorkflowBoard>("getWorkflowBoard");
+      cacheBoard(nextBoard);
+      setBoard(nextBoard);
+    }
+    catch (error) { if (!silent) setMessage((error as Error).message); }
+    finally { refreshingRef.current = false; }
+  }, []);
 
   useEffect(() => {
     document.body.classList.add("admin-mode");
     document.body.classList.remove("admin-light-mode");
     return () => document.body.classList.remove("admin-mode", "admin-light-mode");
   }, []);
-  useEffect(() => { fetch("/api/auth").then((response) => response.json()).then(({ authenticated }) => setAuth(authenticated ? "yes" : "no")); }, []);
-  useEffect(() => { if (auth === "yes") void load(); }, [auth]);
+
+  useEffect(() => {
+    if (auth !== "yes") return;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void load(true);
+    };
+    const timer = window.setInterval(refreshWhenVisible, 12_000);
+    window.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshWhenVisible);
+    };
+  }, [auth, load]);
+  useEffect(() => {
+    let active = true;
+    // Start both requests at once. A cached board paints immediately while the
+    // fresh board keeps the workflow accurate in the background.
+    const boardRequest = rpc<WorkflowBoard>("getWorkflowBoard");
+    void boardRequest.catch(() => {});
+    fetch("/api/auth").then((response) => response.json()).then(({ authenticated }) => {
+      if (!active) return;
+      setAuth(authenticated ? "yes" : "no");
+      if (!authenticated) {
+        sessionStorage.removeItem(ADMIN_SESSION_KEY);
+        return;
+      }
+      sessionStorage.setItem(ADMIN_SESSION_KEY, "yes");
+      boardRequest.then((nextBoard) => {
+        if (!active) return;
+        cacheBoard(nextBoard);
+        setBoard(nextBoard);
+      }).catch((error) => { if (active) setMessage((error as Error).message); });
+    }).catch(() => { if (active) setAuth("no"); });
+    return () => { active = false; };
+  }, []);
 
   const filtered = useMemo(() => {
     if (!board || !query.trim()) return board?.cards || [];

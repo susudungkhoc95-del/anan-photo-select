@@ -13,6 +13,7 @@ import type { Album, GuideTemplate, QuickLink, StudioSettings } from "@/lib/type
 
 type ListedAlbum = Album & { clientUrl: string; spreadsheetUrl: string };
 type AlbumPage = { items: ListedAlbum[]; total: number; hasMore: boolean; nextOffset: number };
+const ADMIN_SESSION_KEY = "anan-admin-session";
 
 const initialForm = {
   title: "", folderUrl: "", rawFolderUrl: "", customerChatUrl: "", maxSelect: "0",
@@ -31,7 +32,7 @@ function formatSubmittedAt(value: string) {
 }
 
 export default function AdminView() {
-  const [auth, setAuth] = useState<"loading" | "yes" | "no">("loading");
+  const [auth, setAuth] = useState<"loading" | "yes" | "no">(() => typeof window !== "undefined" && sessionStorage.getItem(ADMIN_SESSION_KEY) === "yes" ? "yes" : "loading");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [form, setForm] = useState(initialForm);
@@ -72,7 +73,11 @@ export default function AdminView() {
   }, [albums.length, query, sort, status]);
 
   useEffect(() => {
-    fetch("/api/auth").then((r) => r.json()).then(({ authenticated }) => setAuth(authenticated ? "yes" : "no"));
+    fetch("/api/auth").then((r) => r.json()).then(({ authenticated }) => {
+      setAuth(authenticated ? "yes" : "no");
+      if (authenticated) sessionStorage.setItem(ADMIN_SESSION_KEY, "yes");
+      else sessionStorage.removeItem(ADMIN_SESSION_KEY);
+    });
   }, []);
 
   useEffect(() => {
