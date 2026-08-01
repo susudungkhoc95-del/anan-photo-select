@@ -161,11 +161,19 @@ body.admin-mode.admin-light-mode {
     linear-gradient(135deg, #edf6ff 0%, #dcecff 48%, #f8fbff 100%);
 }
 .admin-page { color: var(--ink); }
-.topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 6px; min-height: 70px; }
+.topbar,
+.workflow-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  min-height: 64px; margin-bottom: 18px; padding: 7px 13px;
+  background: linear-gradient(100deg, rgba(5, 20, 35, .94), rgba(13, 43, 68, .8));
+  border: 1px solid rgba(126, 169, 217, .32); border-radius: 16px;
+  box-shadow: none;
+}
 .admin-header-left, .workflow-header-left { display: flex; align-items: center; gap: 18px; min-width: 0; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
+.admin-header-search { width: min(360px, 32vw); }
 .admin-logo-mark { display: flex; align-items: center; justify-content: center; flex: none; }
-.admin-logo-mark img { width: 56px; height: 54px; object-fit: contain; display: block; }
+.admin-logo-mark img { width: 48px; height: 46px; object-fit: contain; display: block; }
 .admin-grid { display: grid; grid-template-columns: 380px 1fr; gap: 24px; align-items: start; }
 .panel {
   background: var(--panel); border: 1px solid var(--line); border-radius: 28px;
@@ -195,7 +203,11 @@ body.admin-light-mode .panel-icon {
 .library-panel .album-list { overflow-y: auto; padding-right: 6px; min-height: 0; }
 .create-panel::-webkit-scrollbar, .library-panel .album-list::-webkit-scrollbar { width: 9px; }
 .create-panel::-webkit-scrollbar-thumb, .library-panel .album-list::-webkit-scrollbar-thumb { background: rgba(199,222,248,.22); border-radius: 999px; }
-.filters { display: grid; grid-template-columns: minmax(220px, 1fr) 120px 120px; gap: 10px; align-items: end; margin: 12px 0 14px; }
+.filters { display: grid; grid-template-columns: 120px 120px; justify-content: end; gap: 10px; align-items: end; margin: 12px 0 14px; }
+.library-heading { align-items: center; }
+.library-heading > h2 { margin-right: auto; }
+.library-heading .filters { display: flex; align-items: center; gap: 12px; margin: 0; }
+.library-heading .filters select { width: 156px; min-height: 36px; margin: 0; padding: 7px 27px 7px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; }
 .album-list { display: grid; gap: 10px; margin-top: 12px; }
 .album-item {
   border: 1px solid var(--line); border-radius: 22px; padding: 18px; display: grid; gap: 12px;
@@ -538,9 +550,9 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
 
 /* DP Workflow — dùng cùng ngôn ngữ tối với DP Select */
 .workflow-page { min-height: 100vh; width: min(1540px, calc(100vw - 32px)); margin: 0 auto; padding: 30px 0 44px; color: var(--ink); }
-.workflow-header { min-height: 70px; margin: 0 auto 6px; display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+.workflow-header { margin: 0 auto 18px; }
 .workflow-brand { display: flex; align-items: center; justify-content: center; flex: none; }
-.workflow-brand img { width: 56px; height: 54px; object-fit: contain; }
+.workflow-brand img { width: 48px; height: 46px; object-fit: contain; }
 .workflow-search { display: flex; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid var(--line); border-radius: 14px; background: var(--field); box-shadow: none; }
 .workflow-header-actions { width: min(380px, 100%); display: flex; align-items: center; gap: 8px; }
 .workflow-header-actions .workflow-search { flex: 1; min-width: 0; }
@@ -680,6 +692,9 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
   .workflow-header { min-height: 58px; gap: 10px; flex-wrap: wrap; }
   .workflow-brand img { width: 50px; height: 48px; }
   .workflow-header-actions { width: 100%; order: 2; }
+  .admin-header.topbar { flex-wrap: wrap; }
+  .admin-header .topbar-actions { width: 100%; order: 2; }
+  .admin-header-search { flex: 1; width: auto; }
   .workflow-board { min-height: calc(100vh - 230px); }
   .workflow-column { flex-basis: min(86vw, 330px); max-height: calc(100vh - 250px); }
   .workflow-time { grid-template-columns: 1fr; }
@@ -696,6 +711,8 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
 @media (max-width: 860px) {
   .admin-grid, .client-head { grid-template-columns: 1fr; }
   .filters, .client-filters { grid-template-columns: 1fr; }
+  .library-heading { align-items: flex-start; flex-wrap: wrap; }
+  .library-heading .filters { width: 100%; justify-content: flex-start; }
   .page-status { padding-top: 0; }
   .photos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .raw-line { grid-template-columns: 1fr; }

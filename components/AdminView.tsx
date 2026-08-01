@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Archive, Check, ChevronDown, Copy, ExternalLink, FolderSync, Images, KeyRound,
-  Link as LinkIcon, LogOut, Search, Settings, Sheet,
+  Link as LinkIcon, LogOut, Search, Settings, Sheet, X,
   Sparkles, Trash2
 } from "lucide-react";
 import { rpc } from "@/components/App";
@@ -86,7 +87,8 @@ export default function AdminView() {
 
   useEffect(() => {
     if (auth !== "yes") return;
-    const timer = setTimeout(() => load(false), 300);
+    // Search can wait briefly while typing; changing tabs should load immediately.
+    const timer = setTimeout(() => load(false), query ? 220 : 0);
     return () => clearTimeout(timer);
   }, [auth, query, sort, status]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -151,9 +153,10 @@ export default function AdminView() {
       <header className="admin-header topbar">
         <div className="admin-header-left">
           <div className="admin-logo-mark"><img src="/dp-logo.png" alt="DP Select" /></div>
-          <nav className="app-tabs header-tabs" aria-label="Khu vực quản trị"><a className="active" href="/">DP Select</a><a href="/workflow">DP Workflow</a></nav>
+          <nav className="app-tabs header-tabs" aria-label="Khu vực quản trị"><Link className="active" href="/">DP Select</Link><Link href="/workflow" prefetch>DP Workflow</Link></nav>
         </div>
         <div className="topbar-actions">
+          <div className="workflow-search admin-header-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm kiếm album..." />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div>
           <button className="secondary theme-toggle" onClick={logout} aria-label="Đăng xuất"><LogOut size={18} /></button>
         </div>
       </header>
@@ -187,12 +190,10 @@ export default function AdminView() {
         </section>
 
         <section className="panel library-panel">
-          <div className="panel-heading"><span className="panel-icon"><Images size={20} /></span><div><h2>Album đã tạo</h2><div className="hint">Danh sách lưu trong trang tính quản lý riêng của app.</div></div></div>
-          <div className="filters">
-            <label>Tìm kiếm album<span className="input-with-icon"><Search className="input-symbol" size={18} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Nhập tên album cần tìm" /></span></label>
-            <label>Sắp xếp<select value={sort} onChange={(e) => setSort(e.target.value)}><option value="newest">Mới nhất</option><option value="oldest">Cũ nhất</option></select></label>
-            <label>Trạng thái<select value={status} onChange={(e) => setStatus(e.target.value)}><option value="active">Đang dùng</option><option value="archived">Đã lưu trữ</option></select></label>
-          </div>
+          <div className="panel-heading library-heading"><span className="panel-icon"><Images size={20} /></span><h2>Album đã tạo</h2><div className="filters">
+            <select aria-label="Sắp xếp album" value={sort} onChange={(e) => setSort(e.target.value)}><option value="newest">Sắp xếp: Mới nhất</option><option value="oldest">Sắp xếp: Cũ nhất</option></select>
+            <select aria-label="Trạng thái album" value={status} onChange={(e) => setStatus(e.target.value)}><option value="active">Trạng thái: Đang dùng</option><option value="archived">Trạng thái: Đã lưu trữ</option></select>
+          </div></div>
           {message && <div className="notice">{message}</div>}
           <div className="album-list">
             {!albums.length && !loading && <div className="empty-state">Chưa có album nào trong mục này.</div>}
