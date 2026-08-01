@@ -1,6 +1,6 @@
 import { google, sheets_v4, drive_v3 } from "googleapis";
 import { createHash, randomUUID } from "crypto";
-import type { Album, Draft, Photo, Selection } from "@/lib/types";
+import type { Album, Draft, GuideTemplate, Photo, QuickLink, Selection, StudioSettings } from "@/lib/types";
 import { DEFAULT_GUIDE, DEFAULT_STUDIO_NAME } from "@/lib/types";
 import { sendSelectionEmail } from "@/lib/email";
 
@@ -823,12 +823,63 @@ export async function archiveAlbum(id: string, restore = false) {
 }
 
 export async function getSettings() {
-  const saved = await readJson<{ defaultGuide?: string }>(SETTINGS, "studio");
-  return { studioName: DEFAULT_STUDIO_NAME, defaultGuide: clean(saved?.defaultGuide, 5000) || DEFAULT_GUIDE };
+  const saved = await readJson<Partial<StudioSettings>>(SETTINGS, "studio");
+  const legacyGuide = clean(saved?.defaultGuide, 5000) || DEFAULT_GUIDE;
+  const savedTemplates = Array.isArray(saved?.guideTemplates) ? saved.guideTemplates : [];
+  const guideTemplates: GuideTemplate[] = savedTemplates
+    .map((template, index) => ({
+      id: clean(template?.id, 80) || `template-${index + 1}`,
+      name: clean(template?.name, 80) || `Mẫu ${index + 1}`,
+      guide: clean(template?.guide, 5000) || legacyGuide
+    }))
+    .filter((template, index, templates) => templates.findIndex((item) => item.id === template.id) === index)
+    .slice(0, 20);
+  if (!guideTemplates.length) guideTemplates.push({ id: "default", name: "Mẫu mặc định", guide: legacyGuide });
+  const defaultGuideTemplateId = guideTemplates.some((template) => template.id === saved?.defaultGuideTemplateId)
+    ? String(saved?.defaultGuideTemplateId)
+    : guideTemplates[0].id;
+  const defaultGuide = guideTemplates.find((template) => template.id === defaultGuideTemplateId)?.guide || legacyGuide;
+  const quickLinks: QuickLink[] = (Array.isArray(saved?.quickLinks) ? saved.quickLinks : [])
+    .map((link, index) => {
+      const item = link && typeof link === "object" ? link as Record<string, unknown> : {};
+      const url = clean(item.url, 2000);
+      try { return { id: clean(item.id, 80) || `quick-${index + 1}`, label: clean(item.label, 80) || "Mở thư mục", url: webUrl(url, "Link truy cập nhanh") }; }
+      catch { return null; }
+    })
+    .filter((link): link is QuickLink => Boolean(link))
+    .slice(0, 15);
+  return { studioName: DEFAULT_STUDIO_NAME, defaultGuide, defaultGuideTemplateId, guideTemplates, quickLinks };
 }
 
 export async function saveSettings(payload: Record<string, unknown>) {
-  const settings = { studioName: DEFAULT_STUDIO_NAME, defaultGuide: clean(payload.defaultGuide, 5000) || DEFAULT_GUIDE };
+  const current = await getSettings();
+  const incoming = Array.isArray(payload.guideTemplates) ? payload.guideTemplates : current.guideTemplates;
+  const ids = new Set<string>();
+  const guideTemplates: GuideTemplate[] = incoming
+    .map((template, index) => {
+      const item = template && typeof template === "object" ? template as Record<string, unknown> : {};
+      const id = clean(item.id, 80) || `template-${index + 1}`;
+      return { id, name: clean(item.name, 80) || `Mẫu ${index + 1}`, guide: clean(item.guide, 5000) || DEFAULT_GUIDE };
+    })
+    .filter((template) => !ids.has(template.id) && Boolean(ids.add(template.id)))
+    .slice(0, 20);
+  if (!guideTemplates.length) throw new Error("Cần lưu ít nhất một mẫu hướng dẫn.");
+  const requestedDefault = clean(payload.defaultGuideTemplateId, 80);
+  const defaultGuideTemplateId = guideTemplates.some((template) => template.id === requestedDefault)
+    ? requestedDefault
+    : guideTemplates[0].id;
+  const defaultGuide = guideTemplates.find((template) => template.id === defaultGuideTemplateId)?.guide || DEFAULT_GUIDE;
+  const incomingLinks = Array.isArray(payload.quickLinks) ? payload.quickLinks : current.quickLinks;
+  const linkIds = new Set<string>();
+  const quickLinks: QuickLink[] = incomingLinks.map((link, index) => {
+    const item = link && typeof link === "object" ? link as Record<string, unknown> : {};
+    return {
+      id: clean(item.id, 80) || `quick-${index + 1}`,
+      label: clean(item.label, 80) || "Mở thư mục",
+      url: webUrl(item.url, "Link truy cập nhanh")
+    };
+  }).filter((link) => !linkIds.has(link.id) && Boolean(linkIds.add(link.id))).slice(0, 15);
+  const settings: StudioSettings = { studioName: DEFAULT_STUDIO_NAME, defaultGuide, defaultGuideTemplateId, guideTemplates, quickLinks };
   await upsertJson(SETTINGS, "studio", settings);
   return settings;
 }

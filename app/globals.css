@@ -275,7 +275,7 @@ body.admin-mode textarea::placeholder { color: #86a7ba; }
   pointer-events: none;
 }
 .settings-modal {
-  width: min(360px, calc(100vw - 36px));
+  width: min(420px, calc(100vw - 36px));
   padding: 18px;
   border-radius: 22px;
   background: rgba(9,35,58,.94);
@@ -284,6 +284,21 @@ body.admin-mode textarea::placeholder { color: #86a7ba; }
   pointer-events: auto;
 }
 body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
+.settings-modal label { display: grid; gap: 7px; margin-top: 12px; font-weight: 700; }
+.template-toolbar { display: flex; gap: 8px; align-items: center; }
+.template-toolbar select { min-width: 0; flex: 1; }
+.template-options { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+.checkbox-label { display: flex !important; grid-template-columns: auto 1fr; align-items: center; margin: 0 !important; font-size: 13px; }
+.checkbox-label input { width: auto; }
+.danger-text { color: #ff9d9d !important; }
+.quick-links { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0 12px; }
+.quick-link { display: inline-flex; align-items: center; gap: 5px; padding: 7px 10px; font-size: 13px; text-decoration: none; border-radius: 10px; }
+.quick-link img { width: 15px; height: 15px; object-fit: contain; }
+.quick-links-settings { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 14px; }
+.quick-links-settings h3 { margin: 0; font-size: 16px; }
+.quick-links-settings p { margin: 3px 0 9px; font-size: 12px; }
+.quick-link-edit { display: grid; grid-template-columns: minmax(90px, .7fr) minmax(120px, 1.3fr) auto; gap: 7px; margin: 7px 0; }
+.quick-link-edit .button { padding: 7px 9px; }
 
 /* Login dùng cùng hệ hình kính xanh của bản cũ */
 .login-page { min-height: 100vh; display: grid; place-items: center; padding: 18px; }
@@ -319,7 +334,7 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
 .counter span { color: var(--accent); }
 .toolbar-concept { display: flex; align-items: center; gap: 8px; width: min(360px, 100%); color: var(--muted); white-space: nowrap; }
 .toolbar-concept select { width: auto; flex: 1; min-width: 0; margin: 0; padding: 9px 34px 9px 11px; border-radius: 12px; }
-.toolbar-inner > .row { margin-left: auto; }
+.client-toolbar-actions { margin-left: auto; display: flex; align-items: center; gap: 16px; }
 .gallery-shell.shell { padding-top: 0; }
 .client-head { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start; margin-bottom: 18px; }
 .client-title h1 { margin: 0; font-size: clamp(25px, 4vw, 42px); letter-spacing: 0; }
@@ -343,7 +358,7 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
 .photo.selected { border-color: var(--accent); }
 .photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .heart {
-  position: absolute; bottom: 46px; right: 9px; width: 42px; height: 42px;
+  position: absolute; bottom: 9px; right: 9px; width: 42px; height: 42px;
   border-radius: 999px; display: grid; place-items: center; padding: 0;
   background: rgba(255,255,255,.88); color: var(--accent); font-size: 22px; line-height: 1;
   box-shadow: 0 8px 18px rgba(42,89,150,.22);
@@ -671,10 +686,11 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
   .studio-banner { font-size: 23px; padding-top: 16px; }
   .toolbar { padding: 9px 0; margin-bottom: 12px; }
   .toolbar-inner { display: grid; grid-template-columns: 1fr; gap: 8px; }
-  .counter { width: 100%; text-align: center; }
   .toolbar-concept { width: 100%; }
-  .toolbar-inner > .row { width: 100%; margin-left: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .toolbar-inner button { width: 100%; min-width: 0; padding: 10px 7px; font-size: 12px; }
+  .client-toolbar-actions { width: 100%; margin-left: 0; display: grid; gap: 8px; }
+  .client-toolbar-actions .counter { text-align: center; }
+  .client-toolbar-actions .row { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .client-toolbar-actions button { width: 100%; min-width: 0; padding: 10px 7px; font-size: 12px; }
   .photos { gap: 4px; }
   .justified-row {
     display: grid;

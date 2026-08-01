@@ -186,14 +186,16 @@ export default function ClientView({ albumId }: { albumId: string }) {
       <div className="studio-banner"><span>{album.studioSettings.studioName}</span></div>
       <div className="toolbar">
         <div className="toolbar-inner">
-          <div className="counter">Đã chọn <span>{selected.size}</span>{album.maxSelect ? ` / ${album.maxSelect}` : ""} ảnh</div>
           <label className="toolbar-concept"><span>Chọn theo concept</span><select value={folder} onChange={(e) => switchFolder(e.target.value)}>
-            <option value="all">Tất cả thư mục ({album.photoCount})</option>
-            {album.folders.map((f) => <option key={f.name} value={f.name}>{f.name.split(" / ").at(-1)} ({f.count})</option>)}
+            <option value="all">Tất cả thư mục ({album.photoCount} ảnh)</option>
+            {album.folders.map((f) => <option key={f.name} value={f.name}>{f.name.split(" / ").at(-1)} ({f.count} ảnh)</option>)}
           </select></label>
-          <div className="row">
-            <button className="secondary btn-icon" onClick={openReview}><Heart size={17} /> Xem ảnh đã chọn</button>
-            <button className="btn-icon" onClick={submit} disabled={!selected.size || submitting}>{submitting ? <span className="spinner small" /> : <Check size={17} />} Gửi ảnh chọn</button>
+          <div className="client-toolbar-actions">
+            <div className="counter">Đã chọn <span>{selected.size}</span>{album.maxSelect ? ` / ${album.maxSelect}` : ""} ảnh</div>
+            <div className="row">
+              <button className="secondary btn-icon" onClick={openReview}><Heart size={17} /> Xem ảnh đã chọn</button>
+              <button className="btn-icon" onClick={submit} disabled={!selected.size || submitting}>{submitting ? <span className="spinner small" /> : <Check size={17} />} Gửi ảnh chọn</button>
+            </div>
           </div>
         </div>
       </div>

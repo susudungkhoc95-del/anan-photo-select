@@ -54,6 +54,26 @@ export type Selection = {
 
 export type Draft = Omit<Selection, "submittedAt"> & { savedAt: string };
 
+export type GuideTemplate = {
+  id: string;
+  name: string;
+  guide: string;
+};
+
+export type QuickLink = {
+  id: string;
+  label: string;
+  url: string;
+};
+
+export type StudioSettings = {
+  studioName: string;
+  defaultGuide: string;
+  defaultGuideTemplateId: string;
+  guideTemplates: GuideTemplate[];
+  quickLinks: QuickLink[];
+};
+
 export type WorkflowList = {
   id: string;
   workspaceId: string;

@@ -7,7 +7,8 @@ import {
   Sparkles, Trash2
 } from "lucide-react";
 import { rpc } from "@/components/App";
-import type { Album } from "@/lib/types";
+import QuickLinks from "@/components/QuickLinks";
+import type { Album, GuideTemplate, QuickLink, StudioSettings } from "@/lib/types";
 
 type ListedAlbum = Album & { clientUrl: string; spreadsheetUrl: string };
 type AlbumPage = { items: ListedAlbum[]; total: number; hasMore: boolean; nextOffset: number };
@@ -44,6 +45,9 @@ export default function AdminView() {
   const [toast, setToast] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectionSettingsOpen, setSelectionSettingsOpen] = useState(false);
+  const [guideTemplates, setGuideTemplates] = useState<GuideTemplate[]>([]);
+  const [selectedGuideTemplateId, setSelectedGuideTemplateId] = useState("");
+  const [quickLinks, setQuickLinks] = useState<QuickLink[]>([]);
 
   useEffect(() => {
     document.body.classList.add("admin-mode");
@@ -72,7 +76,12 @@ export default function AdminView() {
 
   useEffect(() => {
     if (auth !== "yes") return;
-    rpc<{ defaultGuide: string }>("getSettings").then((s) => setForm((f) => ({ ...f, guide: s.defaultGuide }))).catch(() => {});
+    rpc<StudioSettings>("getSettings").then((s) => {
+      setGuideTemplates(s.guideTemplates);
+      setSelectedGuideTemplateId(s.defaultGuideTemplateId);
+      setQuickLinks(s.quickLinks);
+      setForm((f) => ({ ...f, guide: s.defaultGuide }));
+    }).catch(() => {});
   }, [auth]);
 
   useEffect(() => {
@@ -127,7 +136,7 @@ export default function AdminView() {
   if (auth === "no") return (
     <main className="login-page">
       <form className="login-card" onSubmit={login}>
-        <div className="login-logo"><img src="/anan-logo.png" alt="ANAN STUDIO" /></div>
+        <div className="login-logo"><img src="/dp-logo.png" alt="DP Select" /></div>
         <h1>DP select</h1>
         <p className="muted">Đăng nhập để tạo link chọn ảnh và xem kết quả của khách.</p>
         <label><span>Mật khẩu quản trị</span><div className="input-icon"><KeyRound size={17} /><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus required /></div></label>
@@ -140,13 +149,14 @@ export default function AdminView() {
   return (
     <main className="admin-page shell" id="adminView">
       <header className="admin-header topbar">
-        <div className="admin-logo-mark"><img src="/anan-logo.png" alt="ANAN STUDIO" /></div>
+        <div className="admin-logo-mark"><img src="/dp-logo.png" alt="DP Select" /></div>
         <div className="topbar-actions">
           <button className="secondary btn-icon" onClick={() => load(false)}><RotateCcw size={17} /> <span className="full-label">Tải lại album</span><span className="short-label">Tải lại</span></button>
           <button className="secondary theme-toggle" onClick={logout} aria-label="Đăng xuất"><LogOut size={18} /></button>
         </div>
       </header>
       <nav className="app-tabs" aria-label="Khu vực quản trị"><a className="active" href="/">DP Select</a><a href="/workflow">DP Workflow</a></nav>
+      <QuickLinks links={quickLinks} />
       <div className="admin-grid">
         <section className="panel create-panel">
           <div className="panel-heading"><span className="panel-icon"><Sparkles size={20} /></span><h1>Tạo trang chọn ảnh</h1></div>
@@ -157,6 +167,15 @@ export default function AdminView() {
             <label>Link nhóm chat khách<span className="input-with-icon"><LinkIcon className="input-symbol" size={18} /><input value={form.customerChatUrl} onChange={(e) => setForm({ ...form, customerChatUrl: e.target.value })} placeholder="https://zalo.me/g/... hoặc https://m.me/..." /></span></label>
             <button type="button" className={`secondary selection-settings-toggle ${selectionSettingsOpen ? "open" : ""}`} onClick={() => setSelectionSettingsOpen((open) => !open)}>Thông số chọn ảnh <ChevronDown size={18} /></button>
             {selectionSettingsOpen && <div className="selection-settings-fields">
+              {guideTemplates.length > 0 && <label>Mẫu hướng dẫn
+                <select value={selectedGuideTemplateId} onChange={(e) => {
+                  const template = guideTemplates.find((item) => item.id === e.target.value);
+                  setSelectedGuideTemplateId(e.target.value);
+                  if (template) setForm((current) => ({ ...current, guide: template.guide }));
+                }}>
+                  {guideTemplates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}
+                </select>
+              </label>}
               <label>Số ảnh tối đa khách được chọn<input type="number" min="0" value={form.maxSelect} onChange={(e) => setForm({ ...form, maxSelect: e.target.value })} /></label>
               <label>Số ảnh phóng to 60x90<input type="number" min="0" value={form.largePrintLimit} onChange={(e) => setForm({ ...form, largePrintLimit: e.target.value })} /></label>
               <label>Số ảnh để bàn<input type="number" min="0" value={form.tablePrintLimit} onChange={(e) => setForm({ ...form, tablePrintLimit: e.target.value })} /></label>
@@ -182,8 +201,13 @@ export default function AdminView() {
           {hasMore && <div className="load-more"><button className="secondary" onClick={() => load(true)}>Tải thêm album</button></div>}
         </section>
       </div>
-      <button className="secondary settings-fab" onClick={() => setSettingsOpen(true)} aria-label="Mở cấu hình"><Settings size={19} /></button>
-      {settingsOpen && <SettingsModal initial={form.guide} onClose={() => setSettingsOpen(false)} onSaved={(guide) => setForm((f) => ({ ...f, guide }))} />}
+      <button className="secondary settings-fab" onClick={() => setSettingsOpen((open) => !open)} aria-label={settingsOpen ? "Đóng cấu hình" : "Mở cấu hình"}><Settings size={19} /></button>
+      {settingsOpen && <SettingsModal templates={guideTemplates} quickLinks={quickLinks} defaultTemplateId={selectedGuideTemplateId} onClose={() => setSettingsOpen(false)} onSaved={(settings) => {
+        setGuideTemplates(settings.guideTemplates);
+        setSelectedGuideTemplateId(settings.defaultGuideTemplateId);
+        setQuickLinks(settings.quickLinks);
+        setForm((f) => ({ ...f, guide: settings.defaultGuide }));
+      }} />}
       {toast && <div className="toast">{toast}</div>}
     </main>
   );
@@ -237,13 +261,51 @@ function AlbumCard({ album, onAction, onNotify }: { album: ListedAlbum; onAction
   );
 }
 
-function SettingsModal({ initial, onClose, onSaved }: { initial: string; onClose: () => void; onSaved: (v: string) => void }) {
-  const [guide, setGuide] = useState(initial);
+function SettingsModal({ templates: initialTemplates, quickLinks: initialQuickLinks, defaultTemplateId: initialDefaultTemplateId, onClose, onSaved }: { templates: GuideTemplate[]; quickLinks: QuickLink[]; defaultTemplateId: string; onClose: () => void; onSaved: (settings: StudioSettings) => void }) {
+  const [templates, setTemplates] = useState<GuideTemplate[]>(initialTemplates.length ? initialTemplates : [{ id: "default", name: "Mẫu mặc định", guide: "" }]);
+  const [selectedId, setSelectedId] = useState(initialDefaultTemplateId || initialTemplates[0]?.id || "default");
+  const [defaultTemplateId, setDefaultTemplateId] = useState(initialDefaultTemplateId || initialTemplates[0]?.id || "default");
+  const [quickLinks, setQuickLinks] = useState<QuickLink[]>(initialQuickLinks);
   const [busy, setBusy] = useState(false);
-  async function save() { setBusy(true); await rpc("saveSettings", { defaultGuide: guide }); onSaved(guide); onClose(); }
+  const selected = templates.find((template) => template.id === selectedId) || templates[0];
+  function updateSelected(patch: Partial<GuideTemplate>) {
+    setTemplates((current) => current.map((template) => template.id === selected.id ? { ...template, ...patch } : template));
+  }
+  function addTemplate() {
+    const id = `template-${Date.now()}`;
+    setTemplates((current) => [...current, { id, name: `Mẫu ${current.length + 1}`, guide: selected?.guide || "" }]);
+    setSelectedId(id);
+  }
+  function removeSelected() {
+    if (templates.length === 1) return;
+    const next = templates.filter((template) => template.id !== selected.id);
+    setTemplates(next);
+    setSelectedId(next[0].id);
+    if (defaultTemplateId === selected.id) setDefaultTemplateId(next[0].id);
+  }
+  function addQuickLink() { setQuickLinks((current) => [...current, { id: `quick-${Date.now()}`, label: "Thư mục mới", url: "" }]); }
+  function updateQuickLink(id: string, patch: Partial<QuickLink>) { setQuickLinks((current) => current.map((link) => link.id === id ? { ...link, ...patch } : link)); }
+  async function save() {
+    setBusy(true);
+    try { const settings = await rpc<StudioSettings>("saveSettings", { guideTemplates: templates, defaultGuideTemplateId: defaultTemplateId, quickLinks }); onSaved(settings); onClose(); }
+    finally { setBusy(false); }
+  }
   return <div className="modal-backdrop" onMouseDown={onClose}><div className="modal-card settings-modal" onMouseDown={(e) => e.stopPropagation()}>
-    <p className="eyebrow">CÀI ĐẶT</p><h2>Hướng dẫn mặc định</h2><p className="muted">Nội dung này tự điền khi tạo album mới.</p>
-    <textarea rows={12} value={guide} onChange={(e) => setGuide(e.target.value)} />
+    <p className="eyebrow">CÀI ĐẶT</p><h2>Mẫu hướng dẫn</h2><p className="muted">Lưu nhiều mẫu để chọn nhanh khi tạo album mới.</p>
+    <div className="template-toolbar">
+      <select value={selected.id} onChange={(e) => setSelectedId(e.target.value)}>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>
+      <button className="secondary compact" type="button" onClick={addTemplate}>+ Mẫu mới</button>
+    </div>
+    <label>Tên mẫu<input value={selected.name} onChange={(e) => updateSelected({ name: e.target.value })} placeholder="Ví dụ: Gói 40 ảnh" /></label>
+    <label>Hướng dẫn<textarea rows={10} value={selected.guide} onChange={(e) => updateSelected({ guide: e.target.value })} /></label>
+    <div className="template-options">
+      <label className="checkbox-label"><input type="radio" checked={defaultTemplateId === selected.id} onChange={() => setDefaultTemplateId(selected.id)} /> Dùng làm mẫu mặc định</label>
+      {templates.length > 1 && <button className="button ghost danger-text" type="button" onClick={removeSelected}>Xoá mẫu này</button>}
+    </div>
+    <div className="quick-links-settings"><div><h3>Truy cập nhanh</h3><p className="muted">Các nút nhỏ chỉ hiện ở trang quản trị.</p></div>
+      {quickLinks.map((link) => <div className="quick-link-edit" key={link.id}><input value={link.label} onChange={(e) => updateQuickLink(link.id, { label: e.target.value })} aria-label="Tên nút" /><input value={link.url} onChange={(e) => updateQuickLink(link.id, { url: e.target.value })} placeholder="https://drive.google.com/..." aria-label="Link nút" /><button className="button ghost danger-text" type="button" onClick={() => setQuickLinks((current) => current.filter((item) => item.id !== link.id))}>Xoá</button></div>)}
+      <button className="secondary compact" type="button" onClick={addQuickLink}>+ Thêm nút</button>
+    </div>
     <div className="modal-actions"><button className="button ghost" onClick={onClose}>Huỷ</button><button onClick={save} disabled={busy}>Lưu thay đổi</button></div>
   </div></div>;
 }
