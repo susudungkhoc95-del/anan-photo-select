@@ -408,17 +408,17 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
   scrollbar-gutter: stable;
 }
 .review-item {
-  display: grid; grid-template-columns: 86px 1fr; gap: 12px; padding: 12px;
+  display: grid; grid-template-columns: 144px minmax(0, 1fr); gap: 12px; padding: 12px;
   border: 1px solid var(--line); border-radius: 18px; background: var(--panel);
   box-shadow: none;
 }
 .review-photo-button {
-  width: 86px; height: 110px; padding: 0; border: 0; border-radius: 14px;
+  width: 144px; height: 192px; padding: 0; border: 0; border-radius: 14px;
   overflow: hidden; background: transparent; box-shadow: none;
 }
 .review-photo-button:hover { transform: scale(1.02); }
 .review-photo-button:focus-visible { outline: 3px solid rgba(52,124,255,.4); outline-offset: 2px; }
-.review-item img { width: 86px; height: 110px; object-fit: cover; border-radius: 14px; background: rgba(219,233,255,.82); }
+.review-item img { width: 144px; height: 192px; object-fit: cover; border-radius: 14px; background: rgba(219,233,255,.82); }
 .review-meta { display: grid; gap: 8px; align-content: start; }
 .review-options { display: flex; gap: 8px; flex-wrap: wrap; }
 .print-toggle {
