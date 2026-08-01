@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Check, ExternalLink, Link as LinkIcon, MoreVertical, Plus, Search, Settings, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, ExternalLink, Link as LinkIcon, MoreVertical, Plus, Search, Settings, Trash2, X } from "lucide-react";
 import { rpc } from "@/components/App";
 import QuickLinks from "@/components/QuickLinks";
 import type { QuickLink, StudioSettings, WorkflowBoard, WorkflowCard, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
@@ -111,10 +111,9 @@ export default function WorkflowView() {
 
   return <main className="workflow-page">
     <header className="workflow-header">
-      <div className="workflow-brand"><img src="/dp-logo.png" alt="DP Select" /></div>
+      <div className="workflow-header-left"><div className="workflow-brand"><img src="/dp-logo.png" alt="DP Select" /></div><nav className="app-tabs header-tabs" aria-label="Khu vực quản trị"><a href="/">DP Select</a><a className="active" href="/workflow">DP Workflow</a></nav></div>
       <div className="workflow-header-actions"><div className="workflow-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm kiếm thẻ..." />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div></div>
     </header>
-    <nav className="app-tabs" aria-label="Khu vực quản trị"><a href="/">DP Select</a><a className="active" href="/workflow">DP Workflow</a></nav>
     <QuickLinks links={quickLinks} />
     {message && <div className="workflow-message notice">{message}<button className="text-button" onClick={() => setMessage("")}>Đóng</button></div>}
     {query && <p className="workflow-search-note">Xóa tìm kiếm để sắp xếp thẻ.</p>}
@@ -132,7 +131,7 @@ export default function WorkflowView() {
     {labelsOpen && <LabelsModal board={board} onClose={() => setLabelsOpen(false)} onChanged={load} />}
     {createModal && <CreateWorkflowModal state={createModal} onClose={() => setCreateModal(null)} onCreate={(value) => createModal.type === "list" ? addList(value) : addCard(createModal.list, value)} />}
     {deleteList && <DeleteListModal list={deleteList} lists={board.lists} cardCount={board.cards.filter((card) => card.listId === deleteList.id).length} onClose={() => setDeleteList(null)} onDeleted={async (targetListId) => { try { await rpc("deleteWorkflowList", { listId: deleteList.id, targetListId }); setDeleteList(null); await load(); } catch (error) { setMessage((error as Error).message); } }} />}
-    <button type="button" className="secondary settings-fab workflow-settings-fab" onClick={() => setLabelsOpen(true)} aria-label="Cài đặt Workflow"><Settings size={19} /></button>
+    <button type="button" className="secondary settings-fab workflow-settings-fab" onClick={() => setLabelsOpen((open) => !open)} aria-label={labelsOpen ? "Đóng cài đặt Workflow" : "Cài đặt Workflow"}><Settings size={19} /></button>
   </main>;
 }
 
@@ -245,6 +244,7 @@ function LabelsModal({ board, onClose, onChanged }: { board: WorkflowBoard; onCl
   const [name, setName] = useState("");
   const [color, setColor] = useState("#3b82f6");
   const [busy, setBusy] = useState(false);
+  const [labelsSectionOpen, setLabelsSectionOpen] = useState(false);
   async function create() {
     if (!name.trim()) return;
     setBusy(true);
@@ -260,9 +260,14 @@ function LabelsModal({ board, onClose, onChanged }: { board: WorkflowBoard; onCl
     try { await rpc("deleteWorkflowLabel", { labelId: label.id }); await onChanged(); } finally { setBusy(false); }
   }
   return <div className="modal-backdrop workflow-modal-backdrop" onMouseDown={onClose}><section className="workflow-labels-modal" onMouseDown={(event) => event.stopPropagation()}>
-    <header><div><p className="eyebrow">DP WORKFLOW</p><h2>Quản lý nhãn</h2></div><button className="icon-button" onClick={onClose} aria-label="Đóng"><X /></button></header>
-    <div className="workflow-label-create"><input value={name} maxLength={60} onChange={(event) => setName(event.target.value)} placeholder="Tên nhãn mới" /><ColorPalette color={color} onChange={setColor} /><button disabled={busy || !name.trim()} onClick={create}><Plus size={16} /> Thêm nhãn</button></div>
-    <div className="workflow-label-list">{board.labels.length ? board.labels.map((label) => <LabelEditor key={label.id} label={label} disabled={busy} onUpdate={update} onRemove={remove} />) : <p className="muted">Chưa có nhãn nào.</p>}</div>
+    <header><p className="eyebrow settings-title">CÀI ĐẶT</p><button className="icon-button" onClick={onClose} aria-label="Đóng"><X /></button></header>
+    <section className={`settings-section ${labelsSectionOpen ? "open" : ""}`}>
+      <button type="button" className="settings-section-trigger" onClick={() => setLabelsSectionOpen((open) => !open)} aria-expanded={labelsSectionOpen}><span><b>Quản lý nhãn</b><small>Tạo, đổi tên và đổi màu nhãn cho thẻ.</small></span><ChevronDown size={19} /></button>
+      {labelsSectionOpen && <div className="settings-section-content">
+        <div className="workflow-label-create"><input value={name} maxLength={60} onChange={(event) => setName(event.target.value)} placeholder="Tên nhãn mới" /><ColorPalette color={color} onChange={setColor} /><button disabled={busy || !name.trim()} onClick={create}><Plus size={16} /> Thêm nhãn</button></div>
+        <div className="workflow-label-list">{board.labels.length ? board.labels.map((label) => <LabelEditor key={label.id} label={label} disabled={busy} onUpdate={update} onRemove={remove} />) : <p className="muted">Chưa có nhãn nào.</p>}</div>
+      </div>}
+    </section>
     <footer><button className="secondary" onClick={onClose}>Đóng</button></footer>
   </section></div>;
 }

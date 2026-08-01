@@ -149,13 +149,15 @@ export default function AdminView() {
   return (
     <main className="admin-page shell" id="adminView">
       <header className="admin-header topbar">
-        <div className="admin-logo-mark"><img src="/dp-logo.png" alt="DP Select" /></div>
+        <div className="admin-header-left">
+          <div className="admin-logo-mark"><img src="/dp-logo.png" alt="DP Select" /></div>
+          <nav className="app-tabs header-tabs" aria-label="Khu vực quản trị"><a className="active" href="/">DP Select</a><a href="/workflow">DP Workflow</a></nav>
+        </div>
         <div className="topbar-actions">
           <button className="secondary btn-icon" onClick={() => load(false)}><RotateCcw size={17} /> <span className="full-label">Tải lại album</span><span className="short-label">Tải lại</span></button>
           <button className="secondary theme-toggle" onClick={logout} aria-label="Đăng xuất"><LogOut size={18} /></button>
         </div>
       </header>
-      <nav className="app-tabs" aria-label="Khu vực quản trị"><a className="active" href="/">DP Select</a><a href="/workflow">DP Workflow</a></nav>
       <QuickLinks links={quickLinks} />
       <div className="admin-grid">
         <section className="panel create-panel">
@@ -267,6 +269,7 @@ function SettingsModal({ templates: initialTemplates, quickLinks: initialQuickLi
   const [defaultTemplateId, setDefaultTemplateId] = useState(initialDefaultTemplateId || initialTemplates[0]?.id || "default");
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>(initialQuickLinks);
   const [busy, setBusy] = useState(false);
+  const [openSection, setOpenSection] = useState<"templates" | "quick-links" | null>(null);
   const selected = templates.find((template) => template.id === selectedId) || templates[0];
   function updateSelected(patch: Partial<GuideTemplate>) {
     setTemplates((current) => current.map((template) => template.id === selected.id ? { ...template, ...patch } : template));
@@ -291,21 +294,29 @@ function SettingsModal({ templates: initialTemplates, quickLinks: initialQuickLi
     finally { setBusy(false); }
   }
   return <div className="modal-backdrop" onMouseDown={onClose}><div className="modal-card settings-modal" onMouseDown={(e) => e.stopPropagation()}>
-    <p className="eyebrow">CÀI ĐẶT</p><h2>Mẫu hướng dẫn</h2><p className="muted">Lưu nhiều mẫu để chọn nhanh khi tạo album mới.</p>
-    <div className="template-toolbar">
-      <select value={selected.id} onChange={(e) => setSelectedId(e.target.value)}>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>
-      <button className="secondary compact" type="button" onClick={addTemplate}>+ Mẫu mới</button>
-    </div>
-    <label>Tên mẫu<input value={selected.name} onChange={(e) => updateSelected({ name: e.target.value })} placeholder="Ví dụ: Gói 40 ảnh" /></label>
-    <label>Hướng dẫn<textarea rows={10} value={selected.guide} onChange={(e) => updateSelected({ guide: e.target.value })} /></label>
-    <div className="template-options">
-      <label className="checkbox-label"><input type="radio" checked={defaultTemplateId === selected.id} onChange={() => setDefaultTemplateId(selected.id)} /> Dùng làm mẫu mặc định</label>
-      {templates.length > 1 && <button className="button ghost danger-text" type="button" onClick={removeSelected}>Xoá mẫu này</button>}
-    </div>
-    <div className="quick-links-settings"><div><h3>Truy cập nhanh</h3><p className="muted">Các nút nhỏ chỉ hiện ở trang quản trị.</p></div>
-      {quickLinks.map((link) => <div className="quick-link-edit" key={link.id}><input value={link.label} onChange={(e) => updateQuickLink(link.id, { label: e.target.value })} aria-label="Tên nút" /><input value={link.url} onChange={(e) => updateQuickLink(link.id, { url: e.target.value })} placeholder="https://drive.google.com/..." aria-label="Link nút" /><button className="button ghost danger-text" type="button" onClick={() => setQuickLinks((current) => current.filter((item) => item.id !== link.id))}>Xoá</button></div>)}
-      <button className="secondary compact" type="button" onClick={addQuickLink}>+ Thêm nút</button>
-    </div>
+    <p className="eyebrow settings-title">CÀI ĐẶT</p>
+    <section className={`settings-section ${openSection === "templates" ? "open" : ""}`}>
+      <button type="button" className="settings-section-trigger" onClick={() => setOpenSection((section) => section === "templates" ? null : "templates")} aria-expanded={openSection === "templates"}><span><b>Mẫu hướng dẫn</b><small>Lưu mẫu để dùng nhanh khi tạo album.</small></span><ChevronDown size={19} /></button>
+      {openSection === "templates" && <div className="settings-section-content">
+        <div className="template-toolbar">
+          <select value={selected.id} onChange={(e) => setSelectedId(e.target.value)}>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select>
+          <button className="secondary compact" type="button" onClick={addTemplate}>+ Mẫu mới</button>
+        </div>
+        <label>Tên mẫu<input value={selected.name} onChange={(e) => updateSelected({ name: e.target.value })} placeholder="Ví dụ: Gói 40 ảnh" /></label>
+        <label>Hướng dẫn<textarea rows={10} value={selected.guide} onChange={(e) => updateSelected({ guide: e.target.value })} /></label>
+        <div className="template-options">
+          <label className="checkbox-label"><input type="radio" checked={defaultTemplateId === selected.id} onChange={() => setDefaultTemplateId(selected.id)} /> Dùng làm mẫu mặc định</label>
+          {templates.length > 1 && <button className="button ghost danger-text" type="button" onClick={removeSelected}>Xoá mẫu này</button>}
+        </div>
+      </div>}
+    </section>
+    <section className={`settings-section ${openSection === "quick-links" ? "open" : ""}`}>
+      <button type="button" className="settings-section-trigger" onClick={() => setOpenSection((section) => section === "quick-links" ? null : "quick-links")} aria-expanded={openSection === "quick-links"}><span><b>Truy cập nhanh</b><small>Các nút Drive chỉ hiện ở trang quản trị.</small></span><ChevronDown size={19} /></button>
+      {openSection === "quick-links" && <div className="settings-section-content quick-links-settings">
+        {quickLinks.map((link) => <div className="quick-link-edit" key={link.id}><input value={link.label} onChange={(e) => updateQuickLink(link.id, { label: e.target.value })} aria-label="Tên nút" /><input value={link.url} onChange={(e) => updateQuickLink(link.id, { url: e.target.value })} placeholder="https://drive.google.com/..." aria-label="Link nút" /><button className="button ghost danger-text" type="button" onClick={() => setQuickLinks((current) => current.filter((item) => item.id !== link.id))}>Xoá</button></div>)}
+        <button className="secondary compact" type="button" onClick={addQuickLink}>+ Thêm nút</button>
+      </div>}
+    </section>
     <div className="modal-actions"><button className="button ghost" onClick={onClose}>Huỷ</button><button onClick={save} disabled={busy}>Lưu thay đổi</button></div>
   </div></div>;
 }
