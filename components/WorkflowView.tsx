@@ -4,12 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { DndContext, DragEndEvent, DragOverlay, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowLeft, Check, ExternalLink, GripVertical, Link as LinkIcon, Plus, Search, Trash2, X } from "lucide-react";
+import { Check, ExternalLink, GripVertical, LayoutPanelTop, Link as LinkIcon, Plus, Search, Trash2, X } from "lucide-react";
 import { rpc } from "@/components/App";
 import type { WorkflowBoard, WorkflowCard, WorkflowLink, WorkflowList } from "@/lib/types";
 import { workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
 
 type ModalState = { cardId: string } | null;
+type CreateState = { type: "list" } | { type: "card"; list: WorkflowList } | null;
 
 function formatTime(value: string) {
   if (!value) return "—";
@@ -22,6 +23,7 @@ export default function WorkflowView() {
   const [query, setQuery] = useState("");
   const [message, setMessage] = useState("");
   const [cardModal, setCardModal] = useState<ModalState>(null);
+  const [createModal, setCreateModal] = useState<CreateState>(null);
   const [deleteList, setDeleteList] = useState<WorkflowList | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -30,6 +32,11 @@ export default function WorkflowView() {
     catch (error) { setMessage((error as Error).message); }
   }
 
+  useEffect(() => {
+    document.body.classList.add("admin-mode");
+    document.body.classList.remove("admin-light-mode");
+    return () => document.body.classList.remove("admin-mode", "admin-light-mode");
+  }, []);
   useEffect(() => { fetch("/api/auth").then((response) => response.json()).then(({ authenticated }) => setAuth(authenticated ? "yes" : "no")); }, []);
   useEffect(() => { if (auth === "yes") void load(); }, [auth]);
 
@@ -38,10 +45,8 @@ export default function WorkflowView() {
     return board.cards.filter((card) => workflowCardMatches(card, board.links.filter((link) => link.cardId === card.id), query));
   }, [board, query]);
 
-  async function addList() {
-    const name = window.prompt("Tên danh sách mới:");
-    if (!name?.trim()) return;
-    try { await rpc("createWorkflowList", { name }); await load(); } catch (error) { setMessage((error as Error).message); }
+  async function addList(name: string) {
+    try { await rpc("createWorkflowList", { name }); setCreateModal(null); await load(); } catch (error) { setMessage((error as Error).message); }
   }
 
   async function renameList(list: WorkflowList) {
@@ -50,10 +55,8 @@ export default function WorkflowView() {
     try { await rpc("updateWorkflowList", { listId: list.id, name }); await load(); } catch (error) { setMessage((error as Error).message); }
   }
 
-  async function addCard(list: WorkflowList) {
-    const title = window.prompt("Tên thẻ:");
-    if (!title?.trim()) return;
-    try { await rpc("createWorkflowCard", { listId: list.id, title }); await load(); } catch (error) { setMessage((error as Error).message); }
+  async function addCard(list: WorkflowList, title: string) {
+    try { await rpc("createWorkflowCard", { listId: list.id, title }); setCreateModal(null); await load(); } catch (error) { setMessage((error as Error).message); }
   }
 
   async function onDragEnd(event: DragEndEvent) {
@@ -97,25 +100,28 @@ export default function WorkflowView() {
 
   return <main className="workflow-page">
     <header className="workflow-header">
-      <a className="secondary btn-icon" href="/"><ArrowLeft size={17} /> DP Select</a>
-      <div><p className="eyebrow">QUẢN LÝ HẬU KỲ</p><h1>DP Workflow</h1></div>
+      <div className="workflow-brand"><img src="/anan-logo.png" alt="ANAN STUDIO" /><div><p className="eyebrow">ANAN WEDDING STUDIO</p><h1>DP Workflow</h1></div></div>
       <div className="workflow-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm kiếm thẻ..." />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div>
     </header>
+    <nav className="app-tabs" aria-label="Khu vực quản trị"><a href="/"><LayoutPanelTop size={19} /> DP Select</a><a className="active" href="/workflow"><WorkflowIcon /> DP Workflow</a></nav>
     {message && <div className="workflow-message notice">{message}<button className="text-button" onClick={() => setMessage("")}>Đóng</button></div>}
     {query && <p className="workflow-search-note">Xóa tìm kiếm để sắp xếp thẻ.</p>}
     <DndContext sensors={sensors} onDragEnd={onDragEnd}>
       <SortableContext items={board.lists.map((list) => `list-${list.id}`)} strategy={horizontalListSortingStrategy}>
         <div className="workflow-board">
-          {board.lists.map((list) => <WorkflowColumn key={list.id} list={list} cards={filtered.filter((card) => card.listId === list.id)} links={board.links} searching={Boolean(query)} onAdd={() => addCard(list)} onOpen={(cardId) => setCardModal({ cardId })} onRename={() => renameList(list)} onDelete={() => setDeleteList(list)} />)}
-          <button className="workflow-add-list" onClick={addList}><Plus size={18} /> Thêm danh sách</button>
+          {board.lists.map((list) => <WorkflowColumn key={list.id} list={list} cards={filtered.filter((card) => card.listId === list.id)} links={board.links} searching={Boolean(query)} onAdd={() => setCreateModal({ type: "card", list })} onOpen={(cardId) => setCardModal({ cardId })} onRename={() => renameList(list)} onDelete={() => setDeleteList(list)} />)}
+          <button type="button" className="workflow-add-list" onClick={() => setCreateModal({ type: "list" })}><Plus size={18} /> Thêm danh sách</button>
         </div>
       </SortableContext>
       <DragOverlay />
     </DndContext>
     {cardModal && <CardModal board={board} cardId={cardModal.cardId} onClose={() => setCardModal(null)} onChanged={load} />}
+    {createModal && <CreateWorkflowModal state={createModal} onClose={() => setCreateModal(null)} onCreate={(value) => createModal.type === "list" ? addList(value) : addCard(createModal.list, value)} />}
     {deleteList && <DeleteListModal list={deleteList} lists={board.lists} cardCount={board.cards.filter((card) => card.listId === deleteList.id).length} onClose={() => setDeleteList(null)} onDeleted={async (targetListId) => { try { await rpc("deleteWorkflowList", { listId: deleteList.id, targetListId }); setDeleteList(null); await load(); } catch (error) { setMessage((error as Error).message); } }} />}
   </main>;
 }
+
+function WorkflowIcon() { return <LayoutPanelTop size={19} />; }
 
 function WorkflowColumn({ list, cards, links, searching, onAdd, onOpen, onRename, onDelete }: { list: WorkflowList; cards: WorkflowCard[]; links: WorkflowLink[]; searching: boolean; onAdd: () => void; onOpen: (id: string) => void; onRename: () => void; onDelete: () => void }) {
   const sortable = useSortable({ id: `list-${list.id}`, data: { type: "list" } });
@@ -126,8 +132,21 @@ function WorkflowColumn({ list, cards, links, searching, onAdd, onOpen, onRename
     <SortableContext items={cards.map((card) => `card-${card.id}`)} strategy={rectSortingStrategy}>
       <div className="workflow-cards">{cards.map((card) => <WorkflowCardItem key={card.id} card={card} list={list} links={links.filter((link) => link.cardId === card.id)} onOpen={() => onOpen(card.id)} />)}{!cards.length && <p className="workflow-empty">{searching ? "Không có kết quả" : "Chưa có thẻ"}</p>}</div>
     </SortableContext>
-    {!searching && <button className="workflow-add-card" onClick={onAdd}><Plus size={17} /> Thêm thẻ</button>}
+    {!searching && <button type="button" className="workflow-add-card" onClick={onAdd}><Plus size={17} /> Thêm thẻ</button>}
   </section>;
+}
+
+function CreateWorkflowModal({ state, onClose, onCreate }: { state: Exclude<CreateState, null>; onClose: () => void; onCreate: (value: string) => void }) {
+  const [value, setValue] = useState("");
+  const label = state.type === "list" ? "Tên danh sách" : "Tên thẻ";
+  const title = state.type === "list" ? "Thêm danh sách" : `Thêm thẻ vào “${state.list.name}”`;
+  return <div className="modal-backdrop workflow-modal-backdrop" onMouseDown={onClose}>
+    <form className="workflow-create-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); if (value.trim()) onCreate(value.trim()); }}>
+      <header><div><p className="eyebrow">DP WORKFLOW</p><h2>{title}</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Đóng"><X /></button></header>
+      <label>{label}<input autoFocus maxLength={200} value={value} onChange={(event) => setValue(event.target.value)} placeholder={state.type === "list" ? "Ví dụ: CHỜ DUYỆT" : "Ví dụ: Chỉnh màu album"} /></label>
+      <footer><button type="button" className="secondary" onClick={onClose}>Huỷ</button><button type="submit" disabled={!value.trim()}><Plus size={16} /> Tạo mới</button></footer>
+    </form>
+  </div>;
 }
 
 function WorkflowCardItem({ card, list, links, onOpen }: { card: WorkflowCard; list: WorkflowList; links: WorkflowLink[]; onOpen: () => void }) {

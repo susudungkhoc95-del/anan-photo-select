@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Archive, Check, Copy, ExternalLink, FolderSync, Images, KeyRound,
+  Archive, Check, Copy, ExternalLink, FolderSync, Images, KeyRound, LayoutPanelTop,
   Link as LinkIcon, LogOut, Moon, RotateCcw, Search, Settings, Sheet,
-  Sparkles, Sun, Trash2, Workflow
+  Sparkles, Sun, Trash2
 } from "lucide-react";
 import { rpc } from "@/components/App";
 import type { Album } from "@/lib/types";
@@ -146,12 +146,12 @@ export default function AdminView() {
         <div className="admin-logo-mark"><img src="/anan-logo.png" alt="ANAN STUDIO" /></div>
         <div className="brand"><span className="brand-copy"><strong>DP select</strong><span>Tạo link chọn ảnh từ thư mục Google Drive</span></span></div>
         <div className="topbar-actions">
-          <a className="button secondary btn-icon" href="/workflow"><Workflow size={17} /> DP Workflow</a>
           <button className="secondary theme-toggle" onClick={toggleTheme} aria-label="Đổi giao diện">{lightMode ? <Moon size={18} /> : <Sun size={18} />}</button>
           <button className="secondary btn-icon" onClick={() => load(false)}><RotateCcw size={17} /> <span className="full-label">Tải lại album</span><span className="short-label">Tải lại</span></button>
           <button className="secondary theme-toggle" onClick={logout} aria-label="Đăng xuất"><LogOut size={18} /></button>
         </div>
       </header>
+      <nav className="app-tabs" aria-label="Khu vực quản trị"><a className="active" href="/"><LayoutPanelTop size={19} /> DP Select</a><a href="/workflow"><LayoutPanelTop size={19} /> DP Workflow</a></nav>
       <div className="admin-grid">
         <section className="panel create-panel">
           <div className="panel-heading"><span className="panel-icon"><Sparkles size={20} /></span><h1>Tạo trang chọn ảnh</h1></div>
