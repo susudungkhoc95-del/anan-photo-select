@@ -575,7 +575,6 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
 .workflow-list-drag-overlay span { color: var(--muted); font-size: 12px; }
 .workflow-card h3 { margin: 0; font-size: 14px; line-height: 1.38; }
 .workflow-card p { margin: 8px 0 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: var(--muted); font-size: 12px; white-space: pre-line; }
-.workflow-dp-summary { color: #9ec6ed !important; }
 .workflow-label-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
 .workflow-label-chips span { padding: 3px 7px; border: 1px solid color-mix(in srgb, var(--label-color) 72%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--label-color) 18%, transparent); color: #eff7ff; font-size: 11px; font-weight: 800; }
 .workflow-card footer { display: flex; align-items: center; gap: 7px; margin-top: 10px; color: var(--muted); font-size: 12px; min-width: 0; }

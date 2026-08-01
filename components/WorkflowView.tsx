@@ -173,7 +173,7 @@ function WorkflowCardItem({ card, list, links, labels, onOpen, onQuickEdit }: { 
   const age = workflowAge(card, list);
   return <article ref={sortable.setNodeRef} style={{ transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition }} className={`workflow-card ${sortable.isDragging ? "dragging" : ""}`} {...sortable.attributes} {...sortable.listeners} onClick={onOpen}>
     <button type="button" className="icon-button workflow-card-menu" aria-label={`Cài đặt nhanh ${card.title}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onQuickEdit(); }}><MoreVertical size={17} /></button>
-    <h3>{card.title}</h3>{card.dpSummary && <p className="workflow-dp-summary">{card.dpSummary}</p>}{card.note && <p>{card.note}</p>}
+    <h3>{card.title}</h3>{card.note && <p>{card.note}</p>}
     <footer><span className={`workflow-age ${age.level}`}>{age.label}</span>{labels.length > 0 && <div className="workflow-label-chips">{labels.map((label) => <span key={label.id} style={{ "--label-color": label.color } as React.CSSProperties}>{label.name}</span>)}</div>}{links.length > 0 && <span><LinkIcon size={13} /> {links.length}</span>}</footer>
   </article>;
 }
