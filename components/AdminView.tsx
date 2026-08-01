@@ -14,6 +14,18 @@ import type { Album, GuideTemplate, QuickLink, StudioSettings } from "@/lib/type
 type ListedAlbum = Album & { clientUrl: string; spreadsheetUrl: string };
 type AlbumPage = { items: ListedAlbum[]; total: number; hasMore: boolean; nextOffset: number };
 const ADMIN_SESSION_KEY = "anan-admin-session";
+const ADMIN_SETTINGS_CACHE_KEY = "anan-admin-settings";
+const ADMIN_ALBUMS_CACHE_KEY = "anan-admin-albums";
+
+function readSessionCache<T>(key: string): T | null {
+  if (typeof window === "undefined") return null;
+  try { return JSON.parse(sessionStorage.getItem(key) || "null") as T | null; }
+  catch { return null; }
+}
+
+function writeSessionCache(key: string, value: unknown) {
+  try { sessionStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
 
 const initialForm = {
   title: "", folderUrl: "", rawFolderUrl: "", customerChatUrl: "", maxSelect: "0",
@@ -32,24 +44,26 @@ function formatSubmittedAt(value: string) {
 }
 
 export default function AdminView() {
+  const [settingsCache] = useState<StudioSettings | null>(() => readSessionCache<StudioSettings>(ADMIN_SETTINGS_CACHE_KEY));
+  const [albumsCache] = useState<AlbumPage | null>(() => readSessionCache<AlbumPage>(ADMIN_ALBUMS_CACHE_KEY));
   const [auth, setAuth] = useState<"loading" | "yes" | "no">(() => typeof window !== "undefined" && sessionStorage.getItem(ADMIN_SESSION_KEY) === "yes" ? "yes" : "loading");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
-  const [form, setForm] = useState(initialForm);
-  const [albums, setAlbums] = useState<ListedAlbum[]>([]);
+  const [form, setForm] = useState(() => ({ ...initialForm, guide: settingsCache?.defaultGuide || "" }));
+  const [albums, setAlbums] = useState<ListedAlbum[]>(() => albumsCache?.items || []);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("newest");
   const [status, setStatus] = useState("active");
-  const [hasMore, setHasMore] = useState(false);
+  const [hasMore, setHasMore] = useState(() => Boolean(albumsCache?.hasMore));
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState("");
   const [toast, setToast] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectionSettingsOpen, setSelectionSettingsOpen] = useState(false);
-  const [guideTemplates, setGuideTemplates] = useState<GuideTemplate[]>([]);
-  const [selectedGuideTemplateId, setSelectedGuideTemplateId] = useState("");
-  const [quickLinks, setQuickLinks] = useState<QuickLink[]>([]);
+  const [guideTemplates, setGuideTemplates] = useState<GuideTemplate[]>(() => settingsCache?.guideTemplates || []);
+  const [selectedGuideTemplateId, setSelectedGuideTemplateId] = useState(() => settingsCache?.defaultGuideTemplateId || "");
+  const [quickLinks, setQuickLinks] = useState<QuickLink[]>(() => settingsCache?.quickLinks || []);
 
   useEffect(() => {
     document.body.classList.add("admin-mode");
@@ -66,6 +80,7 @@ export default function AdminView() {
       });
       setAlbums((current) => append ? [...current, ...data.items] : data.items);
       setHasMore(data.hasMore);
+      if (!append && !query && sort === "newest" && status === "active") writeSessionCache(ADMIN_ALBUMS_CACHE_KEY, data);
     } catch (error) {
       if ((error as { status?: number }).status === 401) setAuth("no");
       else setMessage((error as Error).message);
@@ -83,6 +98,7 @@ export default function AdminView() {
   useEffect(() => {
     if (auth !== "yes") return;
     rpc<StudioSettings>("getSettings").then((s) => {
+      writeSessionCache(ADMIN_SETTINGS_CACHE_KEY, s);
       setGuideTemplates(s.guideTemplates);
       setSelectedGuideTemplateId(s.defaultGuideTemplateId);
       setQuickLinks(s.quickLinks);
