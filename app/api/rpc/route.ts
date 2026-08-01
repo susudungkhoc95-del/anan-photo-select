@@ -16,19 +16,24 @@ import {
   saveDraft,
   saveSelection,
   saveSettings,
+  updateCustomerChat,
   updateRawFolder
 } from "@/lib/google";
 import {
   createWorkflowCard,
+  createWorkflowLabel,
   createWorkflowLink,
   createWorkflowList,
   deleteWorkflowCard,
+  deleteWorkflowLabel,
   deleteWorkflowLink,
   deleteWorkflowList,
   getWorkflowBoard,
   moveWorkflowCard,
   reorderWorkflowLists,
+  setWorkflowCardLabels,
   updateWorkflowCard,
+  updateWorkflowLabel,
   updateWorkflowLink,
   updateWorkflowList
 } from "@/lib/workflow";
@@ -43,6 +48,7 @@ const adminActions = new Set([
   "archiveAlbum",
   "restoreAlbum",
   "updateRawFolder",
+  "updateCustomerChat",
   "createRawSelectionFolder",
   "getSettings",
   "saveSettings",
@@ -55,6 +61,10 @@ const adminActions = new Set([
   "updateWorkflowCard",
   "moveWorkflowCard",
   "deleteWorkflowCard",
+  "createWorkflowLabel",
+  "updateWorkflowLabel",
+  "deleteWorkflowLabel",
+  "setWorkflowCardLabels",
   "createWorkflowLink",
   "updateWorkflowLink",
   "deleteWorkflowLink"
@@ -83,6 +93,7 @@ export async function POST(request: Request) {
       case "archiveAlbum": data = await archiveAlbum(String(payload.albumId || "")); break;
       case "restoreAlbum": data = await archiveAlbum(String(payload.albumId || ""), true); break;
       case "updateRawFolder": data = await updateRawFolder(payload); break;
+      case "updateCustomerChat": data = await updateCustomerChat(payload); break;
       case "createRawSelectionFolder": data = await createRawSelectionFolder(String(payload.albumId || "")); break;
       case "getSettings": data = await getSettings(); break;
       case "saveSettings": data = await saveSettings(payload); break;
@@ -95,6 +106,10 @@ export async function POST(request: Request) {
       case "updateWorkflowCard": data = await updateWorkflowCard(payload); break;
       case "moveWorkflowCard": data = await moveWorkflowCard(payload); break;
       case "deleteWorkflowCard": data = await deleteWorkflowCard(payload); break;
+      case "createWorkflowLabel": data = await createWorkflowLabel(payload); break;
+      case "updateWorkflowLabel": data = await updateWorkflowLabel(payload); break;
+      case "deleteWorkflowLabel": data = await deleteWorkflowLabel(payload); break;
+      case "setWorkflowCardLabels": data = await setWorkflowCardLabels(payload); break;
       case "createWorkflowLink": data = await createWorkflowLink(payload); break;
       case "updateWorkflowLink": data = await updateWorkflowLink(payload); break;
       case "deleteWorkflowLink": data = await deleteWorkflowLink(payload); break;

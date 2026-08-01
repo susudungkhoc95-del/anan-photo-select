@@ -187,6 +187,10 @@ export default function ClientView({ albumId }: { albumId: string }) {
       <div className="toolbar">
         <div className="toolbar-inner">
           <div className="counter">Đã chọn <span>{selected.size}</span>{album.maxSelect ? ` / ${album.maxSelect}` : ""} ảnh</div>
+          <label className="toolbar-concept"><span>Chọn theo concept</span><select value={folder} onChange={(e) => switchFolder(e.target.value)}>
+            <option value="all">Tất cả thư mục ({album.photoCount})</option>
+            {album.folders.map((f) => <option key={f.name} value={f.name}>{f.name.split(" / ").at(-1)} ({f.count})</option>)}
+          </select></label>
           <div className="row">
             <button className="secondary btn-icon" onClick={openReview}><Heart size={17} /> Xem ảnh đã chọn</button>
             <button className="btn-icon" onClick={submit} disabled={!selected.size || submitting}>{submitting ? <span className="spinner small" /> : <Check size={17} />} Gửi ảnh chọn</button>
@@ -199,13 +203,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
           <div className="client-title"><h1>{album.title}</h1><p className="hint guide">{album.guide}</p></div>
           <button className="secondary btn-icon" onClick={() => { navigator.clipboard.writeText(location.href); notify("Đã copy link."); }}><Copy size={16} /> Copy link ảnh</button>
         </div>
-        <div className="filters client-filters">
-          <label>Chọn theo concept<select value={folder} onChange={(e) => switchFolder(e.target.value)}>
-              <option value="all">Tất cả thư mục ({album.photoCount})</option>
-              {album.folders.map((f) => <option key={f.name} value={f.name}>{f.name.split(" / ").at(-1)} ({f.count})</option>)}
-            </select></label>
-          <div className="hint page-status">Đang hiển thị {photos.length} / {total} ảnh</div>
-        </div>
+        <div className="hint page-status">Đang hiển thị {photos.length} / {total} ảnh</div>
         <JustifiedGallery albumId={albumId} photos={photos} selected={selected} onOpen={setZoom} onToggle={toggle} />
         {loading && <div className="grid-loader show"><span className="spinner" /> Đang tải thêm ảnh...</div>}
         {!loading && !photos.length && <div className="empty">Chưa có ảnh để hiển thị.</div>}

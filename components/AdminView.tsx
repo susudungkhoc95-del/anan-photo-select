@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Archive, Check, Copy, ExternalLink, FolderSync, Images, KeyRound, LayoutPanelTop,
-  Link as LinkIcon, LogOut, Moon, RotateCcw, Search, Settings, Sheet,
-  Sparkles, Sun, Trash2
+  Archive, Check, ChevronDown, Copy, ExternalLink, FolderSync, Images, KeyRound,
+  Link as LinkIcon, LogOut, RotateCcw, Search, Settings, Sheet,
+  Sparkles, Trash2
 } from "lucide-react";
 import { rpc } from "@/components/App";
 import type { Album } from "@/lib/types";
@@ -13,7 +13,7 @@ type ListedAlbum = Album & { clientUrl: string; spreadsheetUrl: string };
 type AlbumPage = { items: ListedAlbum[]; total: number; hasMore: boolean; nextOffset: number };
 
 const initialForm = {
-  title: "", folderUrl: "", rawFolderUrl: "", maxSelect: "0",
+  title: "", folderUrl: "", rawFolderUrl: "", customerChatUrl: "", maxSelect: "0",
   largePrintLimit: "2", tablePrintLimit: "10", guide: ""
 };
 
@@ -41,23 +41,15 @@ export default function AdminView() {
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState("");
+  const [toast, setToast] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [lightMode, setLightMode] = useState(false);
+  const [selectionSettingsOpen, setSelectionSettingsOpen] = useState(false);
 
   useEffect(() => {
     document.body.classList.add("admin-mode");
-    const saved = localStorage.getItem("anan-admin-theme") === "light";
-    setLightMode(saved);
-    document.body.classList.toggle("admin-light-mode", saved);
+    document.body.classList.remove("admin-light-mode");
     return () => document.body.classList.remove("admin-mode", "admin-light-mode");
   }, []);
-
-  function toggleTheme() {
-    const next = !lightMode;
-    setLightMode(next);
-    document.body.classList.toggle("admin-light-mode", next);
-    localStorage.setItem("anan-admin-theme", next ? "light" : "dark");
-  }
 
   const load = useCallback(async (append = false) => {
     setLoading(true);
@@ -126,6 +118,11 @@ export default function AdminView() {
     } catch (error) { setMessage((error as Error).message); }
   }
 
+  function notify(message: string) {
+    setToast(message);
+    window.setTimeout(() => setToast(""), 2500);
+  }
+
   if (auth === "loading") return <div className="page-loader"><span className="spinner" /> Đang kiểm tra phiên…</div>;
   if (auth === "no") return (
     <main className="login-page">
@@ -144,14 +141,12 @@ export default function AdminView() {
     <main className="admin-page shell" id="adminView">
       <header className="admin-header topbar">
         <div className="admin-logo-mark"><img src="/anan-logo.png" alt="ANAN STUDIO" /></div>
-        <div className="brand"><span className="brand-copy"><strong>DP select</strong><span>Tạo link chọn ảnh từ thư mục Google Drive</span></span></div>
         <div className="topbar-actions">
-          <button className="secondary theme-toggle" onClick={toggleTheme} aria-label="Đổi giao diện">{lightMode ? <Moon size={18} /> : <Sun size={18} />}</button>
           <button className="secondary btn-icon" onClick={() => load(false)}><RotateCcw size={17} /> <span className="full-label">Tải lại album</span><span className="short-label">Tải lại</span></button>
           <button className="secondary theme-toggle" onClick={logout} aria-label="Đăng xuất"><LogOut size={18} /></button>
         </div>
       </header>
-      <nav className="app-tabs" aria-label="Khu vực quản trị"><a className="active" href="/"><LayoutPanelTop size={19} /> DP Select</a><a href="/workflow"><LayoutPanelTop size={19} /> DP Workflow</a></nav>
+      <nav className="app-tabs" aria-label="Khu vực quản trị"><a className="active" href="/">DP Select</a><a href="/workflow">DP Workflow</a></nav>
       <div className="admin-grid">
         <section className="panel create-panel">
           <div className="panel-heading"><span className="panel-icon"><Sparkles size={20} /></span><h1>Tạo trang chọn ảnh</h1></div>
@@ -159,10 +154,14 @@ export default function AdminView() {
             <label>Tên album<input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ví dụ: Linh & Minh - 20.05.2026" /></label>
             <label>Link thư mục Drive chứa ảnh<span className="input-with-icon"><Images className="input-symbol" size={18} /><input value={form.folderUrl} onChange={(e) => setForm({ ...form, folderUrl: e.target.value })} placeholder="https://drive.google.com/drive/folders/…" required /></span></label>
             <label>Link thư mục Drive chứa ảnh RAW<span className="input-with-icon"><Images className="input-symbol" size={18} /><input value={form.rawFolderUrl} onChange={(e) => setForm({ ...form, rawFolderUrl: e.target.value })} placeholder="https://drive.google.com/drive/folders/…" /></span></label>
-            <label>Số ảnh tối đa khách được chọn<input type="number" min="0" value={form.maxSelect} onChange={(e) => setForm({ ...form, maxSelect: e.target.value })} /></label>
-            <label>Số ảnh phóng to 60x90<input type="number" min="0" value={form.largePrintLimit} onChange={(e) => setForm({ ...form, largePrintLimit: e.target.value })} /></label>
-            <label>Số ảnh để bàn<input type="number" min="0" value={form.tablePrintLimit} onChange={(e) => setForm({ ...form, tablePrintLimit: e.target.value })} /></label>
-            <label>Hướng dẫn chọn ảnh<textarea rows={7} value={form.guide} onChange={(e) => setForm({ ...form, guide: e.target.value })} /></label>
+            <label>Link nhóm chat khách<span className="input-with-icon"><LinkIcon className="input-symbol" size={18} /><input value={form.customerChatUrl} onChange={(e) => setForm({ ...form, customerChatUrl: e.target.value })} placeholder="https://zalo.me/g/... hoặc https://m.me/..." /></span></label>
+            <button type="button" className={`secondary selection-settings-toggle ${selectionSettingsOpen ? "open" : ""}`} onClick={() => setSelectionSettingsOpen((open) => !open)}>Thông số chọn ảnh <ChevronDown size={18} /></button>
+            {selectionSettingsOpen && <div className="selection-settings-fields">
+              <label>Số ảnh tối đa khách được chọn<input type="number" min="0" value={form.maxSelect} onChange={(e) => setForm({ ...form, maxSelect: e.target.value })} /></label>
+              <label>Số ảnh phóng to 60x90<input type="number" min="0" value={form.largePrintLimit} onChange={(e) => setForm({ ...form, largePrintLimit: e.target.value })} /></label>
+              <label>Số ảnh để bàn<input type="number" min="0" value={form.tablePrintLimit} onChange={(e) => setForm({ ...form, tablePrintLimit: e.target.value })} /></label>
+              <label>Hướng dẫn chọn ảnh<textarea rows={7} value={form.guide} onChange={(e) => setForm({ ...form, guide: e.target.value })} /></label>
+            </div>}
             <button className="btn-icon" disabled={creating}>{creating ? <><span className="spinner small" /> Đang quét Drive…</> : <><LinkIcon size={18} /> Tạo link gửi khách</>}</button>
           </form>
         </section>
@@ -177,7 +176,7 @@ export default function AdminView() {
           {message && <div className="notice">{message}</div>}
           <div className="album-list">
             {!albums.length && !loading && <div className="empty-state">Chưa có album nào trong mục này.</div>}
-            {albums.map((album) => <AlbumCard key={album.id} album={album} onAction={action} />)}
+            {albums.map((album) => <AlbumCard key={album.id} album={album} onAction={action} onNotify={notify} />)}
           </div>
           {loading && <div className="center muted"><span className="spinner small" /> Đang tải…</div>}
           {hasMore && <div className="load-more"><button className="secondary" onClick={() => load(true)}>Tải thêm album</button></div>}
@@ -185,13 +184,16 @@ export default function AdminView() {
       </div>
       <button className="secondary settings-fab" onClick={() => setSettingsOpen(true)} aria-label="Mở cấu hình"><Settings size={19} /></button>
       {settingsOpen && <SettingsModal initial={form.guide} onClose={() => setSettingsOpen(false)} onSaved={(guide) => setForm((f) => ({ ...f, guide }))} />}
+      {toast && <div className="toast">{toast}</div>}
     </main>
   );
 }
 
-function AlbumCard({ album, onAction }: { album: ListedAlbum; onAction: (name: string, id: string, payload?: Record<string, unknown>) => Promise<void> }) {
+function AlbumCard({ album, onAction, onNotify }: { album: ListedAlbum; onAction: (name: string, id: string, payload?: Record<string, unknown>) => Promise<void>; onNotify: (message: string) => void }) {
   const [raw, setRaw] = useState(album.rawFolderUrl || "");
+  const [chat, setChat] = useState(album.customerChatUrl || "");
   const [busy, setBusy] = useState("");
+  const [linksOpen, setLinksOpen] = useState(false);
   const run = async (name: string, payload?: Record<string, unknown>) => {
     if ((name === "deleteAlbum" || name === "archiveAlbum") && !confirm(name === "deleteAlbum" ? "Xoá album khỏi ứng dụng? Ảnh gốc trên Drive không bị xoá." : "Lưu trữ album này?")) return;
     setBusy(name); await onAction(name, album.id, payload); setBusy("");
@@ -199,28 +201,38 @@ function AlbumCard({ album, onAction }: { album: ListedAlbum; onAction: (name: s
   return (
     <article className="album-card album-item">
       <div className="album-card-top album-title-row">
-        <div><h3>{album.title}</h3><p>{album.photoCount} ảnh · tối đa {album.maxSelect || "không giới hạn"} · {new Date(album.createdAt).toLocaleDateString("vi-VN")}</p></div>
+        <h3>{album.title}</h3>
         <div className="submitted-status">
           <span className={`status submit-badge ${album.submittedAt ? "" : "pending"}`}>{album.submittedAt ? <><Check size={13} /> Đã gửi {album.submittedCount} ảnh</> : "Chưa gửi"}</span>
           {album.submittedAt && <span className="submitted-at">Gửi lúc {formatSubmittedAt(album.submittedAt)}</span>}
         </div>
       </div>
-      <div className="raw-line">
-        <input value={raw} onChange={(e) => setRaw(e.target.value)} placeholder="Link thư mục RAW" />
-        <button className="secondary compact" onClick={() => run("updateRawFolder", { rawFolderUrl: raw })}>Lưu RAW</button>
-        {album.rawSelectionFolderUrl ? (
-          <a className="button secondary compact" href={album.rawSelectionFolderUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Link RAW chọn</a>
-        ) : (
-          <button className="secondary compact" disabled={!album.submittedAt || !raw || Boolean(busy)} onClick={() => run("createRawSelectionFolder")}><FolderSync size={15} /> Tạo thư mục RAW chọn</button>
-        )}
-      </div>
+      <div className="album-card-footer">
+        <button className={`icon-button album-expand ${linksOpen ? "open" : ""}`} onClick={() => setLinksOpen((open) => !open)} aria-label={linksOpen ? "Ẩn link album" : "Hiện link album"}><ChevronDown size={18} /></button>
       <div className="card-actions">
-        <button className="secondary compact" onClick={() => navigator.clipboard.writeText(album.clientUrl)}><Copy size={15} /> Copy link</button>
+        <button className="secondary compact" onClick={() => { navigator.clipboard.writeText(album.clientUrl).then(() => onNotify("Đã copy link gửi khách.")).catch(() => onNotify("Không thể copy link. Hãy thử lại.")); }}><Copy size={15} /> Copy link</button>
         <a className="button secondary compact" href={album.clientUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Mở</a>
         {album.spreadsheetUrl && <a className="button secondary compact" href={album.spreadsheetUrl} target="_blank" rel="noreferrer"><Sheet size={15} /> Trang Tính</a>}
         <button className="icon-button" title={album.status === "archived" ? "Khôi phục" : "Lưu trữ"} onClick={() => run(album.status === "archived" ? "restoreAlbum" : "archiveAlbum")}><Archive size={16} /></button>
         <button className="icon-button danger" title="Xoá" onClick={() => run("deleteAlbum")}><Trash2 size={16} /></button>
       </div>
+      </div>
+      {linksOpen && <div className="album-link-details">
+        <div className="raw-line">
+          <input value={raw} onChange={(e) => setRaw(e.target.value)} placeholder="Link thư mục RAW" />
+          <button className="secondary compact" onClick={() => run("updateRawFolder", { rawFolderUrl: raw })}>Lưu RAW</button>
+          {album.rawSelectionFolderUrl ? (
+            <a className="button secondary compact" href={album.rawSelectionFolderUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Link RAW chọn</a>
+          ) : (
+            <button className="secondary compact" disabled={!album.submittedAt || !raw || Boolean(busy)} onClick={() => run("createRawSelectionFolder")}><FolderSync size={15} /> Tạo thư mục RAW chọn</button>
+          )}
+        </div>
+        <div className="raw-line">
+          <input value={chat} onChange={(e) => setChat(e.target.value)} placeholder="Link nhóm chat khách" />
+          <button className="secondary compact" onClick={() => run("updateCustomerChat", { customerChatUrl: chat })}>Lưu nhóm chat</button>
+          {album.customerChatUrl && <a className="button secondary compact" href={album.customerChatUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Mở nhóm chat</a>}
+        </div>
+      </div>}
     </article>
   );
 }

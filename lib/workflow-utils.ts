@@ -13,6 +13,7 @@ export function workflowCardMatches(card: WorkflowCard, links: WorkflowLink[], q
 export function workflowAge(card: WorkflowCard, list: WorkflowList, currentTime = Date.now()) {
   const base = card.selectionSubmittedAt || card.createdAt;
   const days = Math.max(0, Math.floor((currentTime - new Date(base).getTime()) / 86_400_000));
+  if (list.systemKey === "WAITING_SELECTION") return { days, label: "Chờ khách chọn", level: "normal" as const };
   if (list.systemKey === "DONE") return { days, label: `Hoàn thành · ${days} ngày`, level: "done" as const };
   if (days > 10) return { days, label: `Quá 10 ngày · ${days} ngày`, level: "late" as const };
   if (days === 10) return { days, label: "Đã đến hạn · 10 ngày", level: "late" as const };

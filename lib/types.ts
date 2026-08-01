@@ -15,6 +15,7 @@ export type Album = {
   folderUrl: string;
   rawFolderId?: string;
   rawFolderUrl?: string;
+  customerChatUrl?: string;
   rawSelectionFolderId?: string;
   rawSelectionFolderUrl?: string;
   rawLastReport?: RawReport | null;
@@ -58,7 +59,7 @@ export type WorkflowList = {
   workspaceId: string;
   name: string;
   position: number;
-  systemKey: "TODO_INBOX" | "IN_PROGRESS" | "DONE" | "";
+  systemKey: "TODO_INBOX" | "IN_PROGRESS" | "DONE" | "WAITING_SELECTION" | "";
   createdAt: string;
   updatedAt: string;
 };
@@ -78,6 +79,25 @@ export type WorkflowCard = {
   updatedAt: string;
   completedAt: string;
   createdBy: string;
+  dpSummary: string;
+};
+
+export type WorkflowLabel = {
+  id: string;
+  workspaceId: string;
+  name: string;
+  color: string;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WorkflowCardLabel = {
+  id: string;
+  workspaceId: string;
+  cardId: string;
+  labelId: string;
+  createdAt: string;
 };
 
 export type WorkflowLink = {
@@ -111,6 +131,8 @@ export type WorkflowBoard = {
   cards: WorkflowCard[];
   links: WorkflowLink[];
   activities: WorkflowActivity[];
+  labels: WorkflowLabel[];
+  cardLabels: WorkflowCardLabel[];
 };
 
 export const DEFAULT_GUIDE =

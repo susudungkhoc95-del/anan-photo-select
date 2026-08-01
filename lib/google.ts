@@ -189,6 +189,16 @@ function clean(value: unknown, max = 500) {
   return String(value || "").trim().slice(0, max);
 }
 
+function webUrl(value: unknown, label: string) {
+  const url = clean(value, 2000);
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error();
+    return parsed.toString();
+  } catch { throw new Error(`${label} phải bắt đầu bằng http:// hoặc https://.`); }
+}
+
 export function normalizeSearchText(value: unknown) {
   return String(value || "")
     .normalize("NFD")
@@ -277,6 +287,7 @@ export async function createAlbum(payload: Record<string, unknown>) {
   const folderId = extractFolderId(folderUrl);
   if (!folderId) throw new Error("Không đọc được ID thư mục Drive.");
   const rawFolderUrl = clean(payload.rawFolderUrl, 1000);
+  const customerChatUrl = webUrl(payload.customerChatUrl, "Link nhóm chat khách");
   const rawFolderId = rawFolderUrl ? extractFolderId(rawFolderUrl) : "";
   if (rawFolderUrl && !rawFolderId) throw new Error("Không đọc được ID thư mục RAW.");
   const { drive } = getGoogleApi();
@@ -306,6 +317,7 @@ export async function createAlbum(payload: Record<string, unknown>) {
     folderUrl,
     rawFolderId,
     rawFolderUrl,
+    customerChatUrl,
     maxSelect: Math.max(0, Number(payload.maxSelect || 0)),
     largePrintLimit: Math.max(0, Number(payload.largePrintLimit ?? 2)),
     tablePrintLimit: Math.max(0, Number(payload.tablePrintLimit ?? 10)),
@@ -729,6 +741,14 @@ export async function updateRawFolder(payload: Record<string, unknown>) {
   album.rawSelectionFolderId = "";
   album.rawSelectionFolderUrl = "";
   album.rawLastReport = null;
+  album.updatedAt = new Date().toISOString();
+  await upsertJson(ALBUMS, album.id, album);
+  return { ok: true };
+}
+
+export async function updateCustomerChat(payload: Record<string, unknown>) {
+  const album = await loadAlbum(clean(payload.albumId, 80));
+  album.customerChatUrl = webUrl(payload.customerChatUrl, "Link nhóm chat khách");
   album.updatedAt = new Date().toISOString();
   await upsertJson(ALBUMS, album.id, album);
   return { ok: true };
