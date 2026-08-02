@@ -499,7 +499,9 @@ export async function createOrUpdateCardFromSelection(album: Album, selection: S
     if (existing) {
       const wasWaiting = Boolean(waiting && existing.listId === waiting.id);
       existing.dpSelectSubmissionId = selection.sessionId;
-      existing.selectionSubmittedAt = selection.submittedAt;
+      // Keep the original customer submission as the work-age baseline.
+      // Re-submitting choices updates the result sheet but must not reset “Ngày N”.
+      existing.selectionSubmittedAt = existing.selectionSubmittedAt || selection.submittedAt;
       existing.dpSummary = dpSelectionSummary(selection);
       if (wasWaiting) {
         existing.listId = todo.id;
