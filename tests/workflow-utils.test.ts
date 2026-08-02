@@ -17,11 +17,12 @@ describe("workflow search", () => {
 
 describe("workflow age", () => {
   const at = (days: number) => Date.parse("2026-08-01T00:00:00.000Z") + days * 86_400_000;
-  it("uses the 7, 10 and over-10-day states", () => {
+  it("uses rolling 24-hour periods, counting the first period as Ngày 1", () => {
+    expect(workflowAge(card, list, at(1)).label).toBe("Ngày 2");
     expect(workflowAge(card, list, at(4)).level).toBe("normal");
     expect(workflowAge(card, list, at(8)).level).toBe("warning");
-    expect(workflowAge(card, list, at(10)).label).toContain("Đã đến hạn");
-    expect(workflowAge(card, list, at(12)).label).toContain("Quá 10 ngày");
+    expect(workflowAge(card, list, at(9)).label).toBe("Ngày 10");
+    expect(workflowAge(card, list, at(12)).label).toBe("Ngày 13");
   });
 
   it("does not show overdue status for DONE", () => {

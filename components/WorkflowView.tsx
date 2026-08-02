@@ -34,8 +34,10 @@ function formatTime(value: string) {
 }
 
 export default function WorkflowView() {
-  const [auth, setAuth] = useState<"loading" | "yes" | "no">(() => typeof window !== "undefined" && sessionStorage.getItem(ADMIN_SESSION_KEY) === "yes" ? "yes" : "loading");
-  const [board, setBoard] = useState<WorkflowBoard | null>(cachedBoard);
+  // The first client render must match SSR. Read sessionStorage only after mount,
+  // otherwise a saved browser session renders the board before hydration.
+  const [auth, setAuth] = useState<"loading" | "yes" | "no">("loading");
+  const [board, setBoard] = useState<WorkflowBoard | null>(null);
   const [query, setQuery] = useState("");
   const [message, setMessage] = useState("");
   const [cardModal, setCardModal] = useState<ModalState>(null);
@@ -83,6 +85,8 @@ export default function WorkflowView() {
     let active = true;
     // Start both requests at once. A cached board paints immediately while the
     // fresh board keeps the workflow accurate in the background.
+    const cached = cachedBoard();
+    if (cached) setBoard(cached);
     const boardRequest = rpc<WorkflowBoard>("getWorkflowBoard");
     void boardRequest.catch(() => {});
     fetch("/api/auth").then((response) => response.json()).then(({ authenticated }) => {

@@ -46,7 +46,9 @@ function formatSubmittedAt(value: string) {
 export default function AdminView() {
   const [settingsCache] = useState<StudioSettings | null>(() => readSessionCache<StudioSettings>(ADMIN_SETTINGS_CACHE_KEY));
   const [albumsCache] = useState<AlbumPage | null>(() => readSessionCache<AlbumPage>(ADMIN_ALBUMS_CACHE_KEY));
-  const [auth, setAuth] = useState<"loading" | "yes" | "no">(() => typeof window !== "undefined" && sessionStorage.getItem(ADMIN_SESSION_KEY) === "yes" ? "yes" : "loading");
+  // Keep SSR and the browser's first render identical; the saved session is
+  // restored by the authentication request below after hydration.
+  const [auth, setAuth] = useState<"loading" | "yes" | "no">("loading");
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [form, setForm] = useState(() => ({ ...initialForm, guide: settingsCache?.defaultGuide || "" }));
