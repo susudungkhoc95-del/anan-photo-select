@@ -250,7 +250,10 @@ function AlbumCard({ album, onAction, onNotify }: { album: ListedAlbum; onAction
   return (
     <article className="album-card album-item">
       <div className="album-card-top album-title-row">
-        <h3>{album.title}</h3>
+        <div className="album-name">
+          <h3>{album.title}</h3>
+          <span>Tạo lúc {formatSubmittedAt(album.createdAt)}</span>
+        </div>
         <div className="submitted-status">
           <span className={`status submit-badge ${album.submittedAt ? "" : "pending"}`}>{album.submittedAt ? <><Check size={13} /> Đã gửi {album.submittedCount} ảnh</> : "Chưa gửi"}</span>
           {album.submittedAt && <span className="submitted-at">Gửi lúc {formatSubmittedAt(album.submittedAt)}</span>}

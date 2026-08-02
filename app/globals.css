@@ -217,7 +217,9 @@ body.admin-light-mode .panel-icon {
 .album-card-top, .album-title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .album-card h3 { margin: 0; font-size: 16px; }
 .album-card p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
-.album-title-row h3 { min-width: 0; flex: 1; }
+.album-name { min-width: 0; flex: 1; display: grid; gap: 4px; }
+.album-title-row h3 { min-width: 0; margin: 0; }
+.album-name > span { color: var(--muted); font-size: 12px; font-weight: 600; }
 .album-expand { flex: 0 0 auto; width: 34px; height: 34px; min-height: 34px; transition: transform 180ms ease; }
 .album-expand.open { transform: rotate(180deg); }
 .album-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }

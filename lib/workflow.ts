@@ -178,10 +178,13 @@ async function syncWaitingSelectionCards(workspaceId: string, board: WorkflowBoa
     }
     if (album.submittedAt) continue;
     const timestamp = now();
+    // The card represents the album from its creation, even though Workflow may
+    // first discover it a few moments later during a background sync.
+    const cardCreatedAt = album.createdAt || timestamp;
     const cardId = `dp_${createHash("sha256").update(`${workspaceId}:${album.id}`).digest("hex").slice(0, 24)}`;
     const card: WorkflowCard = {
       id: cardId, workspaceId, listId: waiting.id, title: text(album.title, 200) || "Album DP Select", note: "", position: nextPosition++,
-      source: "dp_select", dpSelectAlbumId: album.id, dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: timestamp, updatedAt: timestamp,
+      source: "dp_select", dpSelectAlbumId: album.id, dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: cardCreatedAt, updatedAt: timestamp,
       completedAt: "", createdBy: "dp_select", dpSummary: `Chờ khách gửi ảnh chọn · ${album.photoCount} ảnh trong album`
     };
     await writeRow(TABS.cards, card.id, workspaceId, cardValues(card));
@@ -522,7 +525,7 @@ export async function createOrUpdateCardFromSelection(album: Album, selection: S
     }
     const timestamp = now();
     const cardId = `dp_${createHash("sha256").update(`${workspaceId}:${album.id}`).digest("hex").slice(0, 24)}`;
-    const card: WorkflowCard = { id: cardId, workspaceId, listId: todo.id, title: text(album.title, 200) || "Album DP Select", note: "", position: Math.max(-1, ...board.cards.filter((item) => item.listId === todo.id).map((item) => item.position)) + 1, source: "dp_select", dpSelectAlbumId: album.id, dpSelectSubmissionId: selection.sessionId, selectionSubmittedAt: selection.submittedAt, createdAt: timestamp, updatedAt: timestamp, completedAt: "", createdBy: "dp_select", dpSummary: dpSelectionSummary(selection) };
+    const card: WorkflowCard = { id: cardId, workspaceId, listId: todo.id, title: text(album.title, 200) || "Album DP Select", note: "", position: Math.max(-1, ...board.cards.filter((item) => item.listId === todo.id).map((item) => item.position)) + 1, source: "dp_select", dpSelectAlbumId: album.id, dpSelectSubmissionId: selection.sessionId, selectionSubmittedAt: selection.submittedAt, createdAt: album.createdAt || timestamp, updatedAt: timestamp, completedAt: "", createdBy: "dp_select", dpSummary: dpSelectionSummary(selection) };
     await writeRow(TABS.cards, card.id, workspaceId, cardValues(card));
     try {
       const link: WorkflowLink = { id: randomUUID(), workspaceId, cardId: card.id, label: "Sheet ảnh chọn", url: spreadsheetUrl, position: 0, createdAt: timestamp, updatedAt: timestamp };
