@@ -210,9 +210,9 @@ body.admin-light-mode .panel-icon {
 .library-heading .filters select { width: 156px; min-height: 36px; margin: 0; padding: 7px 27px 7px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; }
 .album-list { display: grid; gap: 10px; margin-top: 12px; }
 .album-item {
-  border: 1px solid var(--line); border-radius: 22px; padding: 18px; display: grid; gap: 12px;
-  background: var(--panel); box-shadow: 0 14px 32px rgba(0,0,0,.18);
-  backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--line); border-radius: 22px; padding: 18px; display: grid; gap: 12px; overflow: hidden;
+  background: transparent; box-shadow: none;
+  backdrop-filter: none;
 }
 .album-card-top, .album-title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .album-card h3 { margin: 0; font-size: 16px; }
