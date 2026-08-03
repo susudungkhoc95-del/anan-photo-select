@@ -5,7 +5,7 @@ import Link from "next/link";
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Check, ChevronDown, ExternalLink, Link as LinkIcon, MoreVertical, Plus, Search, Settings, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, Copy, ExternalLink, MoreVertical, Plus, Search, Settings, Trash2, X } from "lucide-react";
 import { rpc } from "@/components/App";
 import type { WorkflowBoard, WorkflowCard, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
 import { normalizeWorkflowText, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
@@ -39,6 +39,13 @@ function formatTime(value: string) {
   return new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(value));
 }
 
+function formatWeddingDate(value: string) {
+  if (!value) return "";
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return value;
+  return Number(year) === new Date().getFullYear() ? `${day}/${month}` : `${day}/${month}/${year.slice(-2)}`;
+}
+
 export default function WorkflowView() {
   // The first client render must match SSR. Read sessionStorage only after mount,
   // otherwise a saved browser session renders the board before hydration.
@@ -53,10 +60,14 @@ export default function WorkflowView() {
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [quickCardId, setQuickCardId] = useState<string | null>(null);
   const refreshingRef = useRef(false);
+  const refreshPendingRef = useRef(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const load = useCallback(async (silent = false) => {
-    if (refreshingRef.current) return;
+    if (refreshingRef.current) {
+      refreshPendingRef.current = true;
+      return;
+    }
     refreshingRef.current = true;
     try {
       const nextBoard = await rpc<WorkflowBoard>("getWorkflowBoard");
@@ -64,7 +75,13 @@ export default function WorkflowView() {
       setBoard(nextBoard);
     }
     catch (error) { if (!silent) setMessage((error as Error).message); }
-    finally { refreshingRef.current = false; }
+    finally {
+      refreshingRef.current = false;
+      if (refreshPendingRef.current) {
+        refreshPendingRef.current = false;
+        void load(true);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -185,13 +202,13 @@ export default function WorkflowView() {
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragCancel={() => setActiveDragId(null)} onDragEnd={(event) => { void onDragEnd(event).finally(() => setActiveDragId(null)); }}>
       <SortableContext items={board.lists.map((list) => `list-${list.id}`)} strategy={horizontalListSortingStrategy}>
         <div className="workflow-board">
-          {board.lists.map((list) => <WorkflowColumn key={list.id} list={list} cards={filtered.filter((card) => card.listId === list.id)} links={board.links} labels={board.labels} cardLabelIds={board.cardLabels} searching={Boolean(query)} onAdd={() => setCreateModal({ type: "card", list })} onOpen={(cardId) => setCardModal({ cardId })} onQuickEdit={setQuickCardId} onRename={() => renameList(list)} onDelete={() => setDeleteList(list)} />)}
+          {board.lists.map((list) => <WorkflowColumn key={list.id} list={list} cards={filtered.filter((card) => card.listId === list.id)} labels={board.labels} cardLabelIds={board.cardLabels} searching={Boolean(query)} onAdd={() => setCreateModal({ type: "card", list })} onOpen={(cardId) => setCardModal({ cardId })} onQuickEdit={setQuickCardId} onRename={() => renameList(list)} onDelete={() => setDeleteList(list)} />)}
           <button type="button" className="workflow-add-list" onClick={() => setCreateModal({ type: "list" })}><Plus size={18} /> Thêm danh sách</button>
         </div>
       </SortableContext>
       <DragOverlay>{activeDragId?.startsWith("card-") && <WorkflowCardPreview card={board.cards.find((card) => `card-${card.id}` === activeDragId)} />}{activeDragId?.startsWith("list-") && <WorkflowListPreview list={board.lists.find((list) => `list-${list.id}` === activeDragId)} />}</DragOverlay>
     </DndContext>
-    {cardModal && <CardModal board={board} cardId={cardModal.cardId} onClose={() => setCardModal(null)} onChanged={load} />}
+    {cardModal && <CardModal board={board} cardId={cardModal.cardId} onClose={() => setCardModal(null)} onChanged={load} onDeleted={(cardId) => { setBoard((current) => current ? { ...current, cards: current.cards.filter((item) => item.id !== cardId), links: current.links.filter((item) => item.cardId !== cardId), cardLabels: current.cardLabels.filter((item) => item.cardId !== cardId), activities: current.activities.filter((item) => item.cardId !== cardId) } : current); setCardModal(null); void load(true); }} onError={(error) => setMessage(error.message)} />}
     {quickCardId && <QuickCardModal board={board} cardId={quickCardId} onClose={() => setQuickCardId(null)} onChanged={load} />}
     {labelsOpen && <LabelsModal board={board} onClose={() => setLabelsOpen(false)} onChanged={load} />}
     {createModal && <CreateWorkflowModal state={createModal} onClose={() => setCreateModal(null)} onCreate={(value) => createModal.type === "list" ? addList(value) : addCard(createModal.list, value)} />}
@@ -200,14 +217,14 @@ export default function WorkflowView() {
   </main>;
 }
 
-function WorkflowColumn({ list, cards, links, labels, cardLabelIds, searching, onAdd, onOpen, onQuickEdit, onRename, onDelete }: { list: WorkflowList; cards: WorkflowCard[]; links: WorkflowLink[]; labels: WorkflowLabel[]; cardLabelIds: WorkflowBoard["cardLabels"]; searching: boolean; onAdd: () => void; onOpen: (id: string) => void; onQuickEdit: (id: string) => void; onRename: () => void; onDelete: () => void }) {
+function WorkflowColumn({ list, cards, labels, cardLabelIds, searching, onAdd, onOpen, onQuickEdit, onRename, onDelete }: { list: WorkflowList; cards: WorkflowCard[]; labels: WorkflowLabel[]; cardLabelIds: WorkflowBoard["cardLabels"]; searching: boolean; onAdd: () => void; onOpen: (id: string) => void; onQuickEdit: (id: string) => void; onRename: () => void; onDelete: () => void }) {
   const sortable = useSortable({ id: `list-${list.id}`, data: { type: "list" } });
   const droppable = useDroppable({ id: `column-${list.id}`, data: { type: "column" } });
   const style = { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition };
   return <section ref={(node) => { sortable.setNodeRef(node); droppable.setNodeRef(node); }} style={style} className={`workflow-column ${sortable.isDragging ? "dragging" : ""}`}>
     <header><div><h2 className="workflow-list-title" {...sortable.attributes} {...sortable.listeners} title="Giữ để kéo danh sách">{list.name}</h2><span>{cards.length} thẻ</span></div><details><summary aria-label="Menu danh sách">•••</summary><button onClick={onRename}>Đổi tên</button><button onClick={onDelete}>Xóa danh sách</button></details></header>
     <SortableContext items={cards.map((card) => `card-${card.id}`)} strategy={rectSortingStrategy}>
-      <div className="workflow-cards">{cards.map((card) => <WorkflowCardItem key={card.id} card={card} list={list} links={links.filter((link) => link.cardId === card.id)} labels={labels.filter((label) => cardLabelIds.some((assignment) => assignment.cardId === card.id && assignment.labelId === label.id))} onOpen={() => onOpen(card.id)} onQuickEdit={() => onQuickEdit(card.id)} />)}{!cards.length && <p className="workflow-empty">{searching ? "Không có kết quả" : "Chưa có thẻ"}</p>}</div>
+      <div className="workflow-cards">{cards.map((card) => <WorkflowCardItem key={card.id} card={card} list={list} labels={labels.filter((label) => cardLabelIds.some((assignment) => assignment.cardId === card.id && assignment.labelId === label.id))} onOpen={() => onOpen(card.id)} onQuickEdit={() => onQuickEdit(card.id)} />)}{!cards.length && <p className="workflow-empty">{searching ? "Không có kết quả" : "Chưa có thẻ"}</p>}</div>
     </SortableContext>
     {!searching && <button type="button" className="workflow-add-card" onClick={onAdd}><Plus size={17} /> Thêm thẻ</button>}
   </section>;
@@ -236,63 +253,71 @@ function CreateWorkflowModal({ state, onClose, onCreate }: { state: Exclude<Crea
   </div>;
 }
 
-function WorkflowCardItem({ card, list, links, labels, onOpen, onQuickEdit }: { card: WorkflowCard; list: WorkflowList; links: WorkflowLink[]; labels: WorkflowLabel[]; onOpen: () => void; onQuickEdit: () => void }) {
+function WorkflowCardItem({ card, list, labels, onOpen, onQuickEdit }: { card: WorkflowCard; list: WorkflowList; labels: WorkflowLabel[]; onOpen: () => void; onQuickEdit: () => void }) {
   const sortable = useSortable({ id: `card-${card.id}`, data: { type: "card" } });
   const age = workflowAge(card, list);
   return <article ref={sortable.setNodeRef} style={{ transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition }} className={`workflow-card ${sortable.isDragging ? "dragging" : ""}`} {...sortable.attributes} {...sortable.listeners} onClick={onOpen}>
     <button type="button" className="icon-button workflow-card-menu" aria-label={`Cài đặt nhanh ${card.title}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onQuickEdit(); }}><MoreVertical size={17} /></button>
     <h3>{card.title}</h3>{card.note && <p>{card.note}</p>}
-    <footer><span className={`workflow-age ${age.level}`}>{age.label}</span>{labels.length > 0 && <div className="workflow-label-chips">{labels.map((label) => <span key={label.id} style={{ "--label-color": label.color } as React.CSSProperties}>{label.name}</span>)}</div>}{links.length > 0 && <span><LinkIcon size={13} /> {links.length}</span>}</footer>
+    <footer><span className={`workflow-age ${age.level}`}>{age.label}</span>{labels.length > 0 && <div className="workflow-label-chips">{labels.map((label) => <span key={label.id} style={{ "--label-color": label.color } as React.CSSProperties}>{label.name}</span>)}</div>}{card.weddingDate && <span className="workflow-card-wedding-date">Ngày cưới {formatWeddingDate(card.weddingDate)}</span>}</footer>
   </article>;
 }
 
-function CardModal({ board, cardId, onClose, onChanged }: { board: WorkflowBoard; cardId: string; onClose: () => void; onChanged: () => Promise<void> }) {
+function CardModal({ board, cardId, onClose, onChanged, onDeleted, onError }: { board: WorkflowBoard; cardId: string; onClose: () => void; onChanged: () => Promise<void>; onDeleted: (cardId: string) => void; onError: (error: Error) => void }) {
   const card = board.cards.find((item) => item.id === cardId)!;
   const list = board.lists.find((item) => item.id === card.listId)!;
   const [title, setTitle] = useState(card.title);
   const [note, setNote] = useState(card.note);
-  const [label, setLabel] = useState("");
-  const [url, setUrl] = useState("");
+  const [weddingDate, setWeddingDate] = useState(card.weddingDate);
   const [busy, setBusy] = useState(false);
+  const [cardError, setCardError] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
   const links = board.links.filter((item) => item.cardId === card.id);
-  const activities = board.activities.filter((item) => item.cardId === card.id);
-  const selectedLabelIds = board.cardLabels.filter((item) => item.cardId === card.id).map((item) => item.labelId);
+  const activities = board.activities.filter((item) => item.cardId === card.id).slice(0, 3);
+  const [selectedLabelIds, setSelectedLabelIds] = useState(() => board.cardLabels.filter((item) => item.cardId === card.id).map((item) => item.labelId));
   const age = workflowAge(card, list);
-  async function save() { setBusy(true); try { await rpc("updateWorkflowCard", { cardId: card.id, title, note }); await onChanged(); onClose(); } finally { setBusy(false); } }
-  async function addLink() { if (!label.trim() || !url.trim()) return; setBusy(true); try { await rpc("createWorkflowLink", { cardId: card.id, label, url }); setLabel(""); setUrl(""); await onChanged(); } finally { setBusy(false); } }
+  async function save() { setBusy(true); try { await rpc("updateWorkflowCard", { cardId: card.id, title, note, weddingDate }); await rpc("setWorkflowCardLabels", { cardId: card.id, labelIds: selectedLabelIds }); await onChanged(); onClose(); } finally { setBusy(false); } }
   async function editLink(link: WorkflowLink) { const nextLabel = window.prompt("Tên hiển thị:", link.label); if (nextLabel === null) return; const nextUrl = window.prompt("URL:", link.url); if (nextUrl === null) return; await rpc("updateWorkflowLink", { linkId: link.id, label: nextLabel, url: nextUrl }); await onChanged(); }
-  async function removeLink(linkId: string) { if (!confirm("Xóa link này?")) return; await rpc("deleteWorkflowLink", { linkId }); await onChanged(); }
-  async function removeCard() { if (!confirm("Xóa thẻ này cùng toàn bộ link và lịch sử?")) return; await rpc("deleteWorkflowCard", { cardId: card.id }); await onChanged(); onClose(); }
-  async function toggleLabel(labelId: string) {
+  async function copyLink(link: WorkflowLink) {
+    await navigator.clipboard.writeText(link.url);
+    setCopiedLinkId(link.id);
+    window.setTimeout(() => setCopiedLinkId((current) => current === link.id ? null : current), 1600);
+  }
+  async function removeCard() {
     setBusy(true);
-    try {
-      const next = selectedLabelIds.includes(labelId) ? selectedLabelIds.filter((id) => id !== labelId) : [...selectedLabelIds, labelId];
-      await rpc("setWorkflowCardLabels", { cardId: card.id, labelIds: next });
-      await onChanged();
-    } finally { setBusy(false); }
+    try { await rpc("deleteWorkflowCard", { cardId: card.id }); onDeleted(card.id); }
+    catch (error) { const nextError = error as Error; setCardError(nextError.message); onError(nextError); }
+    finally { setBusy(false); }
+  }
+  async function toggleLabel(labelId: string) {
+    setSelectedLabelIds((current) => current.includes(labelId) ? current.filter((id) => id !== labelId) : [...current, labelId]);
   }
   return <div className="modal-backdrop workflow-modal-backdrop" onMouseDown={onClose}><section className="workflow-modal" onMouseDown={(event) => event.stopPropagation()}>
-    <header><div><p className="eyebrow">{card.source === "dp_select" ? "TỪ DP SELECT" : "THẺ THỦ CÔNG"}</p><h2>Chi tiết thẻ</h2></div><button className="icon-button" onClick={onClose} aria-label="Đóng"><X /></button></header>
+    <header><div><h2>Chi tiết thẻ</h2><p className="eyebrow">{card.source === "dp_select" ? "TỪ DP SELECT" : "THẺ THỦ CÔNG"}</p></div><button className="icon-button" onClick={onClose} aria-label="Đóng"><X /></button></header>
     <label>Tên thẻ<input value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} /></label>
-    <div className="workflow-time"><span>Khách gửi ảnh: <b>{formatTime(card.selectionSubmittedAt)}</b></span><span>Thẻ tạo: <b>{formatTime(card.createdAt)}</b></span><span className={age.level}>Trạng thái: <b>{age.label}</b></span><span>Cập nhật: <b>{formatTime(card.updatedAt)}</b></span>{card.completedAt && <span>Hoàn thành: <b>{formatTime(card.completedAt)}</b></span>}</div>
-    <section className="workflow-links"><h3>Đường link</h3>{links.map((link) => <div key={link.id} className="workflow-link"><a href={link.url} target="_blank" rel="noopener noreferrer">{link.label}<ExternalLink size={14} /></a><span><button className="text-button" onClick={() => editLink(link)}>Sửa</button><button className="text-button danger" onClick={() => removeLink(link.id)}>Xóa</button></span></div>)}<div className="workflow-new-link"><input value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Tên link" /><input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://..." /><button className="secondary" disabled={busy} onClick={addLink}><Plus size={16} /> Thêm link</button></div></section>
+    <div className="workflow-date-field"><label>Ngày cưới<input type="date" value={weddingDate} onChange={(event) => setWeddingDate(event.target.value)} /></label><button type="button" className="secondary compact" disabled={!weddingDate || busy} onClick={() => setWeddingDate("")}>Xóa ngày</button></div>
+    {cardError && <div className="workflow-message notice">{cardError}</div>}
+    <div className="workflow-time"><span className="workflow-created">Thẻ tạo: <b>{formatTime(card.createdAt)}</b></span><span className="workflow-submitted">Khách gửi ảnh: <b>{formatTime(card.selectionSubmittedAt)}</b></span><span className="workflow-updated">Cập nhật: <b>{formatTime(card.updatedAt)}</b></span>{card.completedAt && <span className="workflow-completed">Hoàn thành: <b>{formatTime(card.completedAt)}</b></span>}<span className={`workflow-status ${age.level}`}>Trạng thái: <b>{age.label}</b></span></div>
+    <section className="workflow-links"><h3>Đường link</h3>{links.map((link) => { const isSheetLink = link.label.toLowerCase().includes("sheet"); return <div key={link.id} className="workflow-link"><span className="workflow-link-main"><a href={link.url} target="_blank" rel="noopener noreferrer">{link.label}<ExternalLink size={13} /></a>{isSheetLink && card.dpSummary && <small className="workflow-link-summary">{card.dpSummary}</small>}</span><span className="workflow-link-actions">{isSheetLink && <button type="button" className="text-button" onClick={() => void copyLink(link)}><Copy size={13} />{copiedLinkId === link.id ? "Đã copy" : "Copy"}</button>}<button type="button" className="text-button" onClick={() => void editLink(link)}>Sửa</button></span></div>; })}</section>
     <label>Ghi chú<textarea rows={5} value={note} onChange={(event) => setNote(event.target.value)} /></label>
-    {card.dpSummary && <section className="workflow-dp-info"><h3>Tóm tắt DP Select</h3><p>{card.dpSummary}</p></section>}
     <section className="workflow-card-labels"><h3>Nhãn</h3>{board.labels.length ? <div className="workflow-label-picker">{board.labels.map((label) => <label key={label.id} className={selectedLabelIds.includes(label.id) ? "selected" : ""} style={{ "--label-color": label.color } as React.CSSProperties}><input type="checkbox" checked={selectedLabelIds.includes(label.id)} disabled={busy} onChange={() => toggleLabel(label.id)} />{label.name}</label>)}</div> : <p className="muted">Chưa có nhãn. Bấm nút Nhãn ở đầu trang để tạo nhãn.</p>}</section>
     <section className="workflow-activity"><h3>Lịch sử hoạt động</h3>{activities.length ? activities.map((item) => <p key={item.id}><time>{formatTime(item.createdAt)}</time>{item.description}</p>) : <p className="muted">Chưa có hoạt động.</p>}</section>
-    <footer><button className="danger" onClick={removeCard}><Trash2 size={16} /> Xóa thẻ</button><span /><button className="secondary" onClick={onClose}>Đóng</button><button disabled={busy} onClick={save}><Check size={16} /> Lưu thay đổi</button></footer>
+    {confirmingDelete && <div className="workflow-delete-confirm"><span>Xóa thẻ này cùng toàn bộ link và lịch sử?</span><button type="button" className="secondary compact" disabled={busy} onClick={() => setConfirmingDelete(false)}>Hủy</button><button type="button" className="danger compact" disabled={busy} onClick={() => void removeCard()}>Xác nhận xóa</button></div>}
+    <footer><button type="button" className="danger" disabled={busy} onClick={() => setConfirmingDelete(true)}><Trash2 size={16} /> Xóa thẻ</button><span /><button type="button" className="secondary" disabled={busy} onClick={onClose}>Đóng</button><button type="button" disabled={busy} onClick={() => void save()}><Check size={16} /> Lưu thay đổi</button></footer>
   </section></div>;
 }
 
 function QuickCardModal({ board, cardId, onClose, onChanged }: { board: WorkflowBoard; cardId: string; onClose: () => void; onChanged: () => Promise<void> }) {
   const card = board.cards.find((item) => item.id === cardId)!;
   const [title, setTitle] = useState(card.title);
+  const [weddingDate, setWeddingDate] = useState(card.weddingDate);
   const [labelIds, setLabelIds] = useState(board.cardLabels.filter((item) => item.cardId === card.id).map((item) => item.labelId));
   const [busy, setBusy] = useState(false);
   async function save() {
     setBusy(true);
     try {
-      if (title.trim() !== card.title) await rpc("updateWorkflowCard", { cardId: card.id, title: title.trim(), note: card.note });
+      if (title.trim() !== card.title || weddingDate !== card.weddingDate) await rpc("updateWorkflowCard", { cardId: card.id, title: title.trim(), note: card.note, weddingDate });
       await rpc("setWorkflowCardLabels", { cardId: card.id, labelIds });
       await onChanged(); onClose();
     } finally { setBusy(false); }
@@ -300,6 +325,7 @@ function QuickCardModal({ board, cardId, onClose, onChanged }: { board: Workflow
   return <div className="modal-backdrop workflow-modal-backdrop" onMouseDown={onClose}><section className="workflow-quick-card-modal" onMouseDown={(event) => event.stopPropagation()}>
     <header><div><p className="eyebrow">CÀI ĐẶT NHANH</p><h2>Thẻ công việc</h2></div><button className="icon-button" onClick={onClose} aria-label="Đóng"><X /></button></header>
     <label>Tên thẻ<input autoFocus value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} /></label>
+    <div className="workflow-date-field"><label>Ngày cưới<input type="date" value={weddingDate} onChange={(event) => setWeddingDate(event.target.value)} /></label><button type="button" className="secondary compact" disabled={!weddingDate || busy} onClick={() => setWeddingDate("")}>Xóa ngày</button></div>
     <section className="workflow-card-labels"><h3>Gắn nhãn</h3>{board.labels.length ? <div className="workflow-label-picker">{board.labels.map((label) => <label key={label.id} className={labelIds.includes(label.id) ? "selected" : ""} style={{ "--label-color": label.color } as React.CSSProperties}><input type="checkbox" checked={labelIds.includes(label.id)} onChange={() => setLabelIds((current) => current.includes(label.id) ? current.filter((id) => id !== label.id) : [...current, label.id])} />{label.name}</label>)}</div> : <p className="muted">Chưa có nhãn. Dùng nút bánh răng ở góc dưới phải để tạo nhãn.</p>}</section>
     <footer><button className="secondary" onClick={onClose}>Huỷ</button><button disabled={busy || !title.trim()} onClick={save}><Check size={16} /> Lưu</button></footer>
   </section></div>;

@@ -75,7 +75,7 @@ function listFrom(values: string[]): WorkflowList {
   return { id: values[0], workspaceId: values[1], name: values[2], position: position(values[3]), systemKey: values[4] as WorkflowList["systemKey"], createdAt: values[5], updatedAt: values[6] };
 }
 function cardFrom(values: string[]): WorkflowCard {
-  return { id: values[0], workspaceId: values[1], listId: values[2], title: values[3], note: values[4], position: position(values[5]), source: values[6] === "dp_select" ? "dp_select" : "manual", dpSelectAlbumId: values[7], dpSelectSubmissionId: values[8], selectionSubmittedAt: values[9], createdAt: values[10], updatedAt: values[11], completedAt: values[12], createdBy: values[13], dpSummary: values[14] || "" };
+  return { id: values[0], workspaceId: values[1], listId: values[2], title: values[3], note: values[4], weddingDate: values[15] || "", position: position(values[5]), source: values[6] === "dp_select" ? "dp_select" : "manual", dpSelectAlbumId: values[7], dpSelectSubmissionId: values[8], selectionSubmittedAt: values[9], createdAt: values[10], updatedAt: values[11], completedAt: values[12], createdBy: values[13], dpSummary: values[14] || "" };
 }
 function linkFrom(values: string[]): WorkflowLink {
   return { id: values[0], workspaceId: values[1], cardId: values[2], label: values[3], url: values[4], position: position(values[5]), createdAt: values[6], updatedAt: values[7] };
@@ -91,7 +91,7 @@ function cardLabelFrom(values: string[]): WorkflowCardLabel {
 }
 
 function listValues(record: WorkflowList) { return [record.id, record.workspaceId, record.name, String(record.position), record.systemKey, record.createdAt, record.updatedAt]; }
-function cardValues(record: WorkflowCard) { return [record.id, record.workspaceId, record.listId, record.title, record.note, String(record.position), record.source, record.dpSelectAlbumId, record.dpSelectSubmissionId, record.selectionSubmittedAt, record.createdAt, record.updatedAt, record.completedAt, record.createdBy, record.dpSummary]; }
+function cardValues(record: WorkflowCard) { return [record.id, record.workspaceId, record.listId, record.title, record.note, String(record.position), record.source, record.dpSelectAlbumId, record.dpSelectSubmissionId, record.selectionSubmittedAt, record.createdAt, record.updatedAt, record.completedAt, record.createdBy, record.dpSummary, record.weddingDate]; }
 function linkValues(record: WorkflowLink) { return [record.id, record.workspaceId, record.cardId, record.label, record.url, String(record.position), record.createdAt, record.updatedAt]; }
 function activityValues(record: WorkflowActivity) { return [record.id, record.workspaceId, record.cardId, record.activityType, record.description, record.oldValue, record.newValue, record.actorId, record.actorName, record.source, record.createdAt]; }
 function labelValues(record: WorkflowLabel) { return [record.id, record.workspaceId, record.name, record.color, String(record.position), record.createdAt, record.updatedAt]; }
@@ -183,7 +183,7 @@ async function syncWaitingSelectionCards(workspaceId: string, board: WorkflowBoa
     const cardCreatedAt = album.createdAt || timestamp;
     const cardId = `dp_${createHash("sha256").update(`${workspaceId}:${album.id}`).digest("hex").slice(0, 24)}`;
     const card: WorkflowCard = {
-      id: cardId, workspaceId, listId: waiting.id, title: text(album.title, 200) || "Album DP Select", note: "", position: nextPosition++,
+      id: cardId, workspaceId, listId: waiting.id, title: text(album.title, 200) || "Album DP Select", note: "", weddingDate: "", position: nextPosition++,
       source: "dp_select", dpSelectAlbumId: album.id, dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: cardCreatedAt, updatedAt: timestamp,
       completedAt: "", createdBy: "dp_select", dpSummary: `Chờ khách gửi ảnh chọn · ${album.photoCount} ảnh trong album`
     };
@@ -224,10 +224,35 @@ function findLabel(board: WorkflowBoard, id: unknown) {
   return label;
 }
 
+async function syncNoteLabel(workspaceId: string, board: WorkflowBoard, card: WorkflowCard) {
+  const labelName = "Có ghi chú";
+  let noteLabel = board.labels.find((label) => label.name.trim().toLocaleLowerCase() === labelName.toLocaleLowerCase());
+  if (card.note.trim() && !noteLabel) {
+    const timestamp = now();
+    noteLabel = { id: randomUUID(), workspaceId, name: labelName, color: "#3b82f6", position: Math.max(-1, ...board.labels.map((label) => label.position)) + 1, createdAt: timestamp, updatedAt: timestamp };
+    await writeRow(TABS.labels, noteLabel.id, workspaceId, labelValues(noteLabel));
+    board.labels.push(noteLabel);
+  }
+  if (!noteLabel) return;
+  const assignments = board.cardLabels.filter((assignment) => assignment.cardId === card.id && assignment.labelId === noteLabel!.id);
+  if (card.note.trim() && !assignments.length) {
+    const assignment: WorkflowCardLabel = { id: randomUUID(), workspaceId, cardId: card.id, labelId: noteLabel.id, createdAt: now() };
+    await writeRow(TABS.cardLabels, assignment.id, workspaceId, cardLabelValues(assignment));
+    board.cardLabels.push(assignment);
+  } else if (!card.note.trim()) {
+    await Promise.all(assignments.map((assignment) => clearRecord(TABS.cardLabels, assignment.id, workspaceId)));
+  }
+}
+
 function labelColor(value: unknown) {
   const color = text(value, 7);
   if (!(LABEL_COLORS as readonly string[]).includes(color.toLowerCase())) throw new Error("Hãy chọn một trong 6 màu nhãn có sẵn.");
   return color.toLowerCase();
+}
+
+function normalizeWeddingDate(value: unknown) {
+  const date = text(value, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : "";
 }
 
 async function resequenceCards(workspaceId: string, cards: WorkflowCard[], orderedIds: string[]) {
@@ -315,8 +340,9 @@ export async function createWorkflowCard(payload: Record<string, unknown>) {
     const board = await boardForCurrentWorkspace();
     const list = findList(board, payload.listId || board.lists[0]?.id);
     const timestamp = now();
-    const card: WorkflowCard = { id: randomUUID(), workspaceId, listId: list.id, title: requiredText(payload.title, "Tên thẻ"), note: text(payload.note, 5000), position: Math.max(-1, ...board.cards.filter((item) => item.listId === list.id).map((item) => item.position)) + 1, source: "manual", dpSelectAlbumId: "", dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: timestamp, updatedAt: timestamp, completedAt: list.systemKey === "DONE" ? timestamp : "", createdBy: "admin", dpSummary: "" };
+    const card: WorkflowCard = { id: randomUUID(), workspaceId, listId: list.id, title: requiredText(payload.title, "Tên thẻ"), note: text(payload.note, 5000), weddingDate: normalizeWeddingDate(payload.weddingDate), position: Math.max(-1, ...board.cards.filter((item) => item.listId === list.id).map((item) => item.position)) + 1, source: "manual", dpSelectAlbumId: "", dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: timestamp, updatedAt: timestamp, completedAt: list.systemKey === "DONE" ? timestamp : "", createdBy: "admin", dpSummary: "" };
     await writeRow(TABS.cards, card.id, workspaceId, cardValues(card));
+    await syncNoteLabel(workspaceId, board, card);
     await appendActivity(workspaceId, card.id, "CARD_CREATED", "Đã tạo thẻ thủ công.", "manual");
     return card;
   });
@@ -329,10 +355,12 @@ export async function updateWorkflowCard(payload: Record<string, unknown>) {
     const card = findCard(board, payload.cardId);
     const title = requiredText(payload.title, "Tên thẻ");
     const note = text(payload.note, 5000);
+    const weddingDate = payload.weddingDate === undefined ? card.weddingDate : normalizeWeddingDate(payload.weddingDate);
     if (card.title !== title) await appendActivity(workspaceId, card.id, "CARD_TITLE_UPDATED", "Đã cập nhật tên thẻ.", "manual", card.title, title);
     if (card.note !== note) await appendActivity(workspaceId, card.id, "CARD_NOTE_UPDATED", "Đã cập nhật ghi chú.", "manual", card.note, note);
-    card.title = title; card.note = note; card.updatedAt = now();
+    card.title = title; card.note = note; card.weddingDate = weddingDate; card.updatedAt = now();
     await writeRow(TABS.cards, card.id, workspaceId, cardValues(card));
+    await syncNoteLabel(workspaceId, board, card);
     return card;
   });
 }
@@ -415,21 +443,25 @@ export async function setWorkflowCardLabels(payload: Record<string, unknown>) {
   return serialise(workspaceId, async () => {
     const board = await boardForCurrentWorkspace();
     const card = findCard(board, payload.cardId);
+    await syncNoteLabel(workspaceId, board, card);
     const labelIds = Array.isArray(payload.labelIds) ? payload.labelIds.map((id) => text(id, 100)).filter(Boolean) : [];
     if (new Set(labelIds).size !== labelIds.length) throw new Error("Nhãn bị trùng.");
     labelIds.forEach((id) => findLabel(board, id));
     const current = board.cardLabels.filter((assignment) => assignment.cardId === card.id);
     const currentIds = new Set(current.map((assignment) => assignment.labelId));
     const targetIds = new Set(labelIds);
+    const noteLabel = board.labels.find((label) => label.name.trim().toLocaleLowerCase() === "có ghi chú");
+    if (card.note.trim() && noteLabel) targetIds.add(noteLabel.id);
+    if (!card.note.trim() && noteLabel) targetIds.delete(noteLabel.id);
     await Promise.all(current.filter((assignment) => !targetIds.has(assignment.labelId)).map((assignment) => clearRecord(TABS.cardLabels, assignment.id, workspaceId)));
     const timestamp = now();
-    for (const labelId of labelIds) {
+    for (const labelId of targetIds) {
       if (currentIds.has(labelId)) continue;
       const assignment: WorkflowCardLabel = { id: randomUUID(), workspaceId, cardId: card.id, labelId, createdAt: timestamp };
       await writeRow(TABS.cardLabels, assignment.id, workspaceId, cardLabelValues(assignment));
     }
     const oldValue = current.map((assignment) => assignment.labelId).sort().join(",");
-    const newValue = [...labelIds].sort().join(",");
+    const newValue = [...targetIds].sort().join(",");
     if (oldValue !== newValue) await appendActivity(workspaceId, card.id, "CARD_LABELS_UPDATED", "Đã cập nhật nhãn.", "manual", oldValue, newValue);
     return { ok: true };
   });
@@ -525,7 +557,7 @@ export async function createOrUpdateCardFromSelection(album: Album, selection: S
     }
     const timestamp = now();
     const cardId = `dp_${createHash("sha256").update(`${workspaceId}:${album.id}`).digest("hex").slice(0, 24)}`;
-    const card: WorkflowCard = { id: cardId, workspaceId, listId: todo.id, title: text(album.title, 200) || "Album DP Select", note: "", position: Math.max(-1, ...board.cards.filter((item) => item.listId === todo.id).map((item) => item.position)) + 1, source: "dp_select", dpSelectAlbumId: album.id, dpSelectSubmissionId: selection.sessionId, selectionSubmittedAt: selection.submittedAt, createdAt: album.createdAt || timestamp, updatedAt: timestamp, completedAt: "", createdBy: "dp_select", dpSummary: dpSelectionSummary(selection) };
+    const card: WorkflowCard = { id: cardId, workspaceId, listId: todo.id, title: text(album.title, 200) || "Album DP Select", note: "", weddingDate: "", position: Math.max(-1, ...board.cards.filter((item) => item.listId === todo.id).map((item) => item.position)) + 1, source: "dp_select", dpSelectAlbumId: album.id, dpSelectSubmissionId: selection.sessionId, selectionSubmittedAt: selection.submittedAt, createdAt: album.createdAt || timestamp, updatedAt: timestamp, completedAt: "", createdBy: "dp_select", dpSummary: dpSelectionSummary(selection) };
     await writeRow(TABS.cards, card.id, workspaceId, cardValues(card));
     try {
       const link: WorkflowLink = { id: randomUUID(), workspaceId, cardId: card.id, label: "Sheet ảnh chọn", url: spreadsheetUrl, position: 0, createdAt: timestamp, updatedAt: timestamp };
