@@ -458,6 +458,7 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
 }
 .album-note textarea { min-height: 72px; }
 .review-panel > footer { flex: 0 0 auto; display: flex; gap: 10px; margin-top: 12px; }
+.submit-summary { margin-right: auto; align-self: center; color: var(--muted); font-size: 13px; }
 
 /* Xem lớn */
 .zoom-backdrop {
@@ -540,6 +541,81 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
   position: fixed; z-index: 100; left: 50%; bottom: 22px; transform: translateX(-50%);
   background: rgba(8,32,66,.92); color: #fff; padding: 11px 14px; border-radius: 16px;
   max-width: calc(100vw - 30px); text-align: center;
+}
+.undo-toast {
+  position: fixed; z-index: 101; left: 50%; bottom: 22px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 30px);
+  padding: 8px 8px 8px 14px; border: 1px solid var(--line); border-radius: 14px;
+  background: var(--panel-strong); color: var(--ink); box-shadow: var(--shadow);
+}
+.send-flight-overlay {
+  position: fixed; inset: 0; z-index: 110; display: grid; place-items: center;
+  pointer-events: none; background: rgba(7, 53, 128, .22); backdrop-filter: blur(4px);
+}
+.send-flight-stage { position: relative; width: min(430px, calc(100vw - 40px)); height: 250px; display: grid; place-items: center; }
+.send-flight-stage p {
+  position: absolute; left: 0; right: 0; bottom: -24px; margin: 0; color: #eaf3ff;
+  text-align: center; font-size: 15px; font-weight: 800; text-shadow: 0 2px 12px rgba(3, 31, 88, .72);
+}
+.send-flight-overlay.success .send-flight-stage p {
+  color: #6aa7ff;
+  text-shadow: 0 2px 16px rgba(52, 124, 255, .65);
+}
+.send-flight-photo {
+  position: absolute; left: 50%; top: 45%; width: 52px; height: 68px;
+  display: grid; place-items: center; border: 2px solid rgba(125, 184, 255, .98); border-radius: 8px;
+  background: transparent; color: #a9d2ff;
+  box-shadow: 0 9px 20px rgba(4, 46, 119, .2), 0 0 0 1px rgba(255,255,255,.12); opacity: 0;
+  animation: send-photo-flight 4.2s cubic-bezier(.22,.75,.25,1) both;
+}
+.send-flight-photo.photo-1 { --photo-x: -86px; --photo-rotate: -11deg; animation-delay: 70ms; }
+.send-flight-photo.photo-2 { --photo-x: 0px; --photo-rotate: 3deg; animation-delay: 150ms; }
+.send-flight-photo.photo-3 { --photo-x: 86px; --photo-rotate: 12deg; animation-delay: 230ms; }
+.send-flight-plane {
+  position: absolute; left: 50%; top: 48%; display: grid; place-items: center; z-index: 2;
+  color: #75b6ff; filter: drop-shadow(0 12px 20px rgba(3, 47, 124, .5));
+  opacity: 0; animation: send-plane-flight 4.2s cubic-bezier(.22,.75,.25,1) both;
+}
+.send-flight-plane svg { transform: rotate(-12deg); stroke-width: 1.4; }
+.send-flight-lines { position: absolute; inset: 0; overflow: hidden; }
+.send-flight-lines i {
+  position: absolute; left: 6%; width: 36%; height: 1px; background: rgba(117, 182, 255, .8);
+  transform-origin: left center; opacity: 0; animation: send-line-flight 1.5s ease-out 2.75s both;
+}
+.send-flight-lines i:nth-child(1) { top: 34%; transform: rotate(-13deg); }
+.send-flight-lines i:nth-child(2) { top: 49%; left: 0; width: 30%; animation-delay: 2.9s; }
+.send-flight-lines i:nth-child(3) { top: 64%; transform: rotate(13deg); animation-delay: 3.05s; }
+@keyframes send-photo-flight {
+  0% { opacity: 0; transform: translate(calc(-50% + var(--photo-x)), 110px) rotate(var(--photo-rotate)) scale(.55); }
+  20% { opacity: 1; transform: translate(calc(-50% + var(--photo-x)), 24px) rotate(var(--photo-rotate)) scale(1); }
+  50% { opacity: 1; transform: translate(-50%, 2px) rotate(0deg) scale(.62); }
+  61% { opacity: 1; transform: translate(-50%, -3px) rotate(0deg) scale(.24); }
+  68% { opacity: 0; transform: translate(-50%, -3px) rotate(0deg) scale(.08); }
+  100% { opacity: 0; transform: translate(-50%, -3px) rotate(0deg) scale(.08); }
+}
+@keyframes send-plane-flight {
+  0% { opacity: 0; transform: translate(-28px, -3px) rotate(-10deg) scale(1); }
+  14% { opacity: 1; transform: translate(-28px, -3px) rotate(-10deg) scale(1); }
+  66% { opacity: 1; transform: translate(-28px, -3px) rotate(-10deg) scale(1); }
+  100% { opacity: 1; transform: translate(162px, -103px) rotate(-8deg) scale(1.08); }
+}
+@keyframes send-line-flight {
+  0% { opacity: 0; transform: scaleX(0); }
+  35% { opacity: .85; transform: scaleX(1); }
+  100% { opacity: 0; transform: translateX(130px) scaleX(.45); }
+}
+.send-flight-overlay.sending .send-flight-photo,
+.send-flight-overlay.sending .send-flight-plane,
+.send-flight-overlay.sending .send-flight-lines i {
+  animation-iteration-count: infinite;
+}
+.send-flight-overlay.success .send-flight-photo { animation-duration: 4.2s; }
+.send-flight-overlay.success .send-flight-plane { animation-duration: 4.2s; }
+@media (prefers-reduced-motion: reduce) {
+  .send-flight-photo, .send-flight-plane, .send-flight-lines i { animation: none; opacity: 1; }
+  .send-flight-photo { transform: translate(calc(-50% + var(--photo-x)), 20px) rotate(var(--photo-rotate)); }
+  .send-flight-plane { transform: translate(0, -20px) rotate(-12deg); }
+  .send-flight-lines i { transform: scaleX(1); }
 }
 .client-error { min-height: 100vh; display: grid; place-content: center; text-align: center; padding: 30px; }
 
@@ -782,4 +858,6 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
   .album-note { margin-top: 8px; }
   .album-note textarea { min-height: 58px; }
   .review-panel > footer { margin-top: 8px; }
+  .review-panel > footer { align-items: stretch; flex-wrap: wrap; }
+  .submit-summary { width: 100%; order: -1; }
 }

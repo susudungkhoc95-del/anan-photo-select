@@ -16,15 +16,24 @@ type AlbumPage = { items: ListedAlbum[]; total: number; hasMore: boolean; nextOf
 const ADMIN_SESSION_KEY = "anan-admin-session";
 const ADMIN_SETTINGS_CACHE_KEY = "anan-admin-settings";
 const ADMIN_ALBUMS_CACHE_KEY = "anan-admin-albums";
+const ADMIN_SETTINGS_CACHE_TTL = 30 * 60 * 1000;
+const ADMIN_ALBUMS_CACHE_TTL = 5 * 60 * 1000;
 
-function readSessionCache<T>(key: string): T | null {
+function readSessionCache<T>(key: string, maxAgeMs: number): T | null {
   if (typeof window === "undefined") return null;
-  try { return JSON.parse(sessionStorage.getItem(key) || "null") as T | null; }
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(key) || "null") as { data?: T; savedAt?: number } | null;
+    if (!cached || typeof cached.savedAt !== "number" || Date.now() - cached.savedAt >= maxAgeMs) {
+      sessionStorage.removeItem(key);
+      return null;
+    }
+    return cached.data ?? null;
+  }
   catch { return null; }
 }
 
 function writeSessionCache(key: string, value: unknown) {
-  try { sessionStorage.setItem(key, JSON.stringify(value)); } catch {}
+  try { sessionStorage.setItem(key, JSON.stringify({ data: value, savedAt: Date.now() })); } catch {}
 }
 
 const initialForm = {
@@ -44,8 +53,8 @@ function formatSubmittedAt(value: string) {
 }
 
 export default function AdminView() {
-  const [settingsCache] = useState<StudioSettings | null>(() => readSessionCache<StudioSettings>(ADMIN_SETTINGS_CACHE_KEY));
-  const [albumsCache] = useState<AlbumPage | null>(() => readSessionCache<AlbumPage>(ADMIN_ALBUMS_CACHE_KEY));
+  const [settingsCache] = useState<StudioSettings | null>(() => readSessionCache<StudioSettings>(ADMIN_SETTINGS_CACHE_KEY, ADMIN_SETTINGS_CACHE_TTL));
+  const [albumsCache] = useState<AlbumPage | null>(() => readSessionCache<AlbumPage>(ADMIN_ALBUMS_CACHE_KEY, ADMIN_ALBUMS_CACHE_TTL));
   // Keep SSR and the browser's first render identical; the saved session is
   // restored by the authentication request below after hydration.
   const [auth, setAuth] = useState<"loading" | "yes" | "no">("loading");
@@ -131,11 +140,14 @@ export default function AdminView() {
   async function create(event: React.FormEvent) {
     event.preventDefault(); setCreating(true); setMessage("");
     try {
-      const album = await rpc<{ clientUrl: string; photoCount: number }>("createAlbum", form);
+      const album = await rpc<ListedAlbum>("createAlbum", form);
       setMessage(`Đã tạo album ${album.photoCount} ảnh. Link khách: ${album.clientUrl}`);
       await navigator.clipboard.writeText(album.clientUrl).catch(() => {});
       setForm((f) => ({ ...initialForm, guide: f.guide }));
-      await load(false);
+      const matchesQuery = !query.trim() || album.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+      if (status === "active" && matchesQuery) {
+        setAlbums((current) => sort === "oldest" ? [...current, album] : [album, ...current]);
+      }
     } catch (error) { setMessage((error as Error).message); }
     finally { setCreating(false); }
   }
@@ -148,7 +160,56 @@ export default function AdminView() {
         setMessage(`Đã chọn xong ${result.copied || 0} ảnh RAW.`);
         window.setTimeout(() => setMessage(""), 4000);
       } else setMessage("Đã cập nhật.");
-      await load(false);
+      setAlbums((current) => {
+        if (name === "deleteAlbum") {
+          return current.filter((album) => album.id !== albumId);
+        }
+
+        if (name === "archiveAlbum" || name === "restoreAlbum") {
+          const nextStatus = name === "restoreAlbum" ? "active" : "archived";
+          // The item no longer belongs in the currently visible status tab.
+          if (nextStatus !== status) return current.filter((album) => album.id !== albumId);
+          return current.map((album) => album.id === albumId ? { ...album, status: nextStatus } : album);
+        }
+
+        return current.map((album) => {
+          if (album.id !== albumId) return album;
+          const updatedAt = new Date().toISOString();
+
+          if (name === "updateRawFolder") {
+            return {
+              ...album,
+              rawFolderUrl: String(payload.rawFolderUrl || ""),
+              rawFolderId: undefined,
+              rawSelectionFolderId: undefined,
+              rawSelectionFolderUrl: undefined,
+              rawLastReport: null,
+              updatedAt
+            };
+          }
+
+          if (name === "updateCustomerChat") {
+            return { ...album, customerChatUrl: String(payload.customerChatUrl || ""), updatedAt };
+          }
+
+          if (name === "createRawSelectionFolder") {
+            return {
+              ...album,
+              rawSelectionFolderUrl: String(result.url || ""),
+              rawLastReport: {
+                copied: Number(result.copied || 0),
+                skipped: Number(result.skipped || 0),
+                skippedNames: Array.isArray(result.skippedNames) ? result.skippedNames.map(String) : [],
+                missing: Array.isArray(result.missing) ? result.missing.map(String) : [],
+                checkedAt: String(result.checkedAt || updatedAt)
+              },
+              updatedAt
+            };
+          }
+
+          return album;
+        });
+      });
     } catch (error) { setMessage((error as Error).message); }
   }
 

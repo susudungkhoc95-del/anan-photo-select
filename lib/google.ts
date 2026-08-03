@@ -160,7 +160,7 @@ async function scanFolder(
   do {
     const result = await drive.files.list({
       q: `'${folderId}' in parents and trashed = false`,
-      fields: "nextPageToken,files(id,name,mimeType)",
+      fields: "nextPageToken,files(id,name,mimeType,imageMediaMetadata(width,height))",
       pageSize: 1000,
       pageToken,
       supportsAllDrives: true,
@@ -171,7 +171,13 @@ async function scanFolder(
       if (file.mimeType === "application/vnd.google-apps.folder") {
         await scanFolder(file.id, `${path} / ${file.name || "Thư mục"}`, output, imageOnly, excludeFolderId);
       } else if (!imageOnly || String(file.mimeType || "").startsWith("image/")) {
-        output.push({ id: file.id, name: file.name || file.id, folder: path });
+        output.push({
+          id: file.id,
+          name: file.name || file.id,
+          folder: path,
+          width: Number(file.imageMediaMetadata?.width || 0) || undefined,
+          height: Number(file.imageMediaMetadata?.height || 0) || undefined
+        });
       }
     }
     pageToken = result.data.nextPageToken || undefined;
@@ -181,10 +187,10 @@ async function scanFolder(
 async function writePhotos(album: Album, photos: Photo[]) {
   const { sheets, spreadsheetId } = getGoogleApi();
   await createSheet(album.photoSheet, true);
-  const values = [["ID", "TÊN FILE", "THƯ MỤC"], ...photos.map((p) => [p.id, p.name, p.folder])];
+  const values = [["ID", "TÊN FILE", "THƯ MỤC", "WIDTH", "HEIGHT"], ...photos.map((p) => [p.id, p.name, p.folder, p.width || "", p.height || ""])];
   await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: `${quoteSheet(album.photoSheet)}!A1:C${values.length}`,
+    range: `${quoteSheet(album.photoSheet)}!A1:E${values.length}`,
     valueInputOption: "RAW",
     requestBody: { values }
   });
@@ -239,7 +245,13 @@ export async function createAlbum(payload: Record<string, unknown>) {
   };
   await writePhotos(album, photos);
   await upsertJson(ALBUMS, id, album);
-  return publicAlbum(album);
+  return {
+    ...album,
+    clientUrl: albumUrl(album),
+    spreadsheetUrl: album.spreadsheetId
+      ? `https://docs.google.com/spreadsheets/d/${album.spreadsheetId}/edit`
+      : ""
+  };
 }
 
 export async function loadAlbum(id: string) {
@@ -299,10 +311,13 @@ export async function photoPage(payload: Record<string, unknown>) {
   const { sheets, spreadsheetId } = getGoogleApi();
   const result = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `${quoteSheet(album.photoSheet)}!A2:C`
+    range: `${quoteSheet(album.photoSheet)}!A2:E`
   });
   const folder = clean(payload.folder) || "all";
-  const all = (result.data.values || []).map((r) => ({ id: String(r[0]), name: String(r[1] || ""), folder: String(r[2] || "") }));
+  const all = (result.data.values || []).map((r) => ({
+    id: String(r[0]), name: String(r[1] || ""), folder: String(r[2] || ""),
+    width: Number(r[3] || 0) || undefined, height: Number(r[4] || 0) || undefined
+  }));
   const filtered = folder === "all" ? all : all.filter((p) => p.folder === folder);
   const offset = Math.max(0, Number(payload.offset || 0));
   const limit = Math.min(120, Math.max(1, Number(payload.limit || 80)));
@@ -321,7 +336,8 @@ function hydratePhoto(p: Photo) {
   const id = encodeURIComponent(p.id);
   return {
     ...p,
-    thumbUrl: `https://drive.google.com/thumbnail?id=${id}&sz=w700`,
+    thumbUrl: `https://drive.google.com/thumbnail?id=${id}&sz=w600`,
+    thumbSrcSet: [400, 600, 900].map((width) => `https://drive.google.com/thumbnail?id=${id}&sz=w${width} ${width}w`).join(", "),
     zoomUrl: `https://drive.google.com/thumbnail?id=${id}&sz=w4000`,
     downloadUrl: `https://drive.google.com/uc?export=download&id=${id}`,
     viewUrl: `https://drive.google.com/file/d/${id}/view`
@@ -368,10 +384,11 @@ async function allPhotos(album: Album) {
   const { sheets, spreadsheetId } = getGoogleApi();
   const result = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `${quoteSheet(album.photoSheet)}!A2:C`
+    range: `${quoteSheet(album.photoSheet)}!A2:E`
   });
   return (result.data.values || []).map((r) => ({
-    id: String(r[0]), name: String(r[1] || ""), folder: String(r[2] || "")
+    id: String(r[0]), name: String(r[1] || ""), folder: String(r[2] || ""),
+    width: Number(r[3] || 0) || undefined, height: Number(r[4] || 0) || undefined
   }));
 }
 

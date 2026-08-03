@@ -6,11 +6,12 @@ import ClientView from "@/components/ClientView";
 
 export type RpcError = Error & { status?: number };
 
-export async function rpc<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
+export async function rpc<T>(action: string, payload: Record<string, unknown> = {}, signal?: AbortSignal): Promise<T> {
   const response = await fetch("/api/rpc", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action, payload })
+    body: JSON.stringify({ action, payload }),
+    signal
   });
   const json = await response.json().catch(() => ({}));
   if (!response.ok) {

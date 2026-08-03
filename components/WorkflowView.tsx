@@ -15,17 +15,23 @@ type CreateState = { type: "list" } | { type: "card"; list: WorkflowList } | nul
 const LABEL_COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#a855f7"];
 const WORKFLOW_CACHE_KEY = "anan-workflow-board";
 const ADMIN_SESSION_KEY = "anan-admin-session";
+const WORKFLOW_CACHE_TTL = 60 * 1000;
 
 function cachedBoard(): WorkflowBoard | null {
   if (typeof window === "undefined") return null;
   try {
-    const value = JSON.parse(sessionStorage.getItem(WORKFLOW_CACHE_KEY) || "null") as WorkflowBoard | null;
+    const cached = JSON.parse(sessionStorage.getItem(WORKFLOW_CACHE_KEY) || "null") as { data?: WorkflowBoard; savedAt?: number } | null;
+    if (!cached || typeof cached.savedAt !== "number" || Date.now() - cached.savedAt >= WORKFLOW_CACHE_TTL) {
+      sessionStorage.removeItem(WORKFLOW_CACHE_KEY);
+      return null;
+    }
+    const value = cached.data;
     return value?.lists && value?.cards ? value : null;
   } catch { return null; }
 }
 
 function cacheBoard(board: WorkflowBoard) {
-  try { sessionStorage.setItem(WORKFLOW_CACHE_KEY, JSON.stringify(board)); } catch {}
+  try { sessionStorage.setItem(WORKFLOW_CACHE_KEY, JSON.stringify({ data: board, savedAt: Date.now() })); } catch {}
 }
 
 function formatTime(value: string) {

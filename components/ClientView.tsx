@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Copy, Download, Heart, ImageOff, Send, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy, Download, Heart, Image as ImageIcon, ImageOff, Send, X } from "lucide-react";
 import { rpc } from "@/components/App";
 import type { Draft, FolderStat, Selection } from "@/lib/types";
 
@@ -10,7 +10,7 @@ type AlbumPublic = {
   tablePrintLimit: number; photoCount: number; folders: FolderStat[]; pageSize: number;
   studioSettings: { studioName: string };
 };
-type Photo = { id: string; name: string; folder: string; thumbUrl: string; zoomUrl: string; downloadUrl: string; viewUrl: string };
+type Photo = { id: string; name: string; folder: string; width?: number; height?: number; thumbUrl: string; thumbSrcSet?: string; zoomUrl: string; downloadUrl: string; viewUrl: string };
 type Page = { items: Photo[]; total: number; hasMore: boolean; nextOffset: number };
 
 export default function ClientView({ albumId }: { albumId: string }) {
@@ -30,23 +30,34 @@ export default function ClientView({ albumId }: { albumId: string }) {
   const [reviewPhotos, setReviewPhotos] = useState<Photo[]>([]);
   const [reviewZoom, setReviewZoom] = useState<number | null>(null);
   const [zoom, setZoom] = useState<number | null>(null);
+  const [renderedCount, setRenderedCount] = useState(40);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [sendAnimation, setSendAnimation] = useState<"idle" | "sending" | "success">("idle");
   const [toast, setToast] = useState("");
+  const [undoSelection, setUndoSelection] = useState<{ id: string; large: boolean; table: boolean } | null>(null);
   const selectedRef = useRef(selected);
   const draftReady = useRef(false);
   const sessionId = useRef("");
   const nextOffsetRef = useRef(0);
   const loadingRef = useRef(false);
+  const photoRequestIdRef = useRef(0);
+  const photoAbortRef = useRef<AbortController | null>(null);
+  const undoTimerRef = useRef<number | null>(null);
+  const flightTimerRef = useRef<number | null>(null);
   const loadMoreSentinel = useRef<HTMLDivElement>(null);
   selectedRef.current = selected;
 
   const loadPage = useCallback(async (append: boolean, selectedFolder = folder) => {
     if (loadingRef.current) return undefined;
+    const requestId = ++photoRequestIdRef.current;
+    const controller = new AbortController();
+    photoAbortRef.current = controller;
     loadingRef.current = true;
     setLoading(true);
     try {
-      const page = await rpc<Page>("getPhotoPage", { albumId, folder: selectedFolder, offset: append ? nextOffsetRef.current : 0, limit: 80 });
+      const page = await rpc<Page>("getPhotoPage", { albumId, folder: selectedFolder, offset: append ? nextOffsetRef.current : 0, limit: 80 }, controller.signal);
+      if (requestId !== photoRequestIdRef.current) return undefined;
       setPhotos((current) => {
         if (!append) return page.items;
         const existing = new Set(current.map((photo) => photo.id));
@@ -55,41 +66,58 @@ export default function ClientView({ albumId }: { albumId: string }) {
       nextOffsetRef.current = page.nextOffset;
       setTotal(page.total); setHasMore(page.hasMore);
       return page;
-    } catch (e) { setError((e as Error).message); return undefined; }
-    finally { loadingRef.current = false; setLoading(false); }
+    } catch (e) {
+      if (requestId === photoRequestIdRef.current && (e as Error).name !== "AbortError") setError((e as Error).message);
+      return undefined;
+    } finally {
+      if (requestId === photoRequestIdRef.current) {
+        loadingRef.current = false;
+        setLoading(false);
+      }
+    }
   }, [albumId, folder]);
 
   useEffect(() => {
     sessionId.current = localStorage.getItem(`anan-session-${albumId}`) || crypto.randomUUID();
     localStorage.setItem(`anan-session-${albumId}`, sessionId.current);
-    Promise.all([
-      rpc<AlbumPublic>("getAlbum", { albumId }),
+    // Start the album and gallery immediately. Draft/selection restoration is
+    // independent and must not block the first photos from appearing.
+    void rpc<AlbumPublic>("getAlbum", { albumId })
+      .then((a) => {
+        setAlbum(a);
+        document.title = `${a.title} — ANAN Studio`;
+      })
+      .catch((e) => setError(e.message));
+
+    void loadPage(false, "all");
+
+    void Promise.all([
       rpc<Draft | null>("getDraft", { albumId }),
       rpc<(Selection & { selectedFiles: Photo[] }) | null>("getSelection", { albumId })
-    ]).then(([a, draft, selection]) => {
-      setAlbum(a);
+    ]).then(([draft, selection]) => {
       const saved = draft || selection;
       if (saved) {
         setSelected(new Set(saved.selectedIds || [])); setLarge(new Set(saved.largePrintIds || []));
         setTable(new Set(saved.tablePrintIds || [])); setNotes(saved.photoNotes || {}); setAlbumNote(saved.albumNote || "");
         if (selection) setSubmitted(true);
       }
+      // Do not let the autosave effect run before the server state is restored.
       draftReady.current = true;
-      document.title = `${a.title} — ANAN Studio`;
-    }).catch((e) => setError(e.message)).finally(() => loadPage(false, "all"));
+    }).catch((e) => setError(e.message));
   }, [albumId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const sentinel = loadMoreSentinel.current;
-    if (!sentinel || !hasMore) return;
+    if (!sentinel) return;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting) && !loadingRef.current) {
-        loadPage(true);
+        if (renderedCount < photos.length) setRenderedCount((current) => Math.min(current + 40, photos.length));
+        else if (hasMore) loadPage(true);
       }
     }, { rootMargin: "700px 0px" });
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, loadPage]);
+  }, [hasMore, loadPage, photos.length, renderedCount]);
 
   useEffect(() => {
     if (zoom !== null && zoom >= photos.length - 3 && hasMore && !loadingRef.current) {
@@ -115,6 +143,9 @@ export default function ClientView({ albumId }: { albumId: string }) {
     setSelected((current) => {
       const next = new Set(current);
       if (next.has(id)) {
+        if (undoTimerRef.current !== null) window.clearTimeout(undoTimerRef.current);
+        setUndoSelection({ id, large: large.has(id), table: table.has(id) });
+        undoTimerRef.current = window.setTimeout(() => setUndoSelection(null), 5000);
         next.delete(id);
         setLarge((v) => { const n = new Set(v); n.delete(id); return n; });
         setTable((v) => { const n = new Set(v); n.delete(id); return n; });
@@ -125,11 +156,28 @@ export default function ClientView({ albumId }: { albumId: string }) {
     });
   }
   function switchFolder(value: string) {
+    photoAbortRef.current?.abort();
+    photoRequestIdRef.current += 1;
+    loadingRef.current = false;
     setFolder(value);
     setPhotos([]);
+    setRenderedCount(40);
     setHasMore(false);
     nextOffsetRef.current = 0;
     loadPage(false, value);
+  }
+
+  function undoLastRemoval() {
+    if (!undoSelection || selected.has(undoSelection.id)) return;
+    setSelected((current) => new Set(current).add(undoSelection.id));
+    if (undoSelection.large && (!album?.largePrintLimit || large.size < album.largePrintLimit)) {
+      setLarge((current) => new Set(current).add(undoSelection.id));
+    }
+    if (undoSelection.table && (!album?.tablePrintLimit || table.size < album.tablePrintLimit)) {
+      setTable((current) => new Set(current).add(undoSelection.id));
+    }
+    setUndoSelection(null);
+    if (undoTimerRef.current !== null) window.clearTimeout(undoTimerRef.current);
   }
   function setPrint(id: string, kind: "large" | "table", checked: boolean) {
     const setter = kind === "large" ? setLarge : setTable;
@@ -144,13 +192,21 @@ export default function ClientView({ albumId }: { albumId: string }) {
   }
   async function submit() {
     if (!selected.size) return notify("Bạn chưa chọn ảnh nào.");
+    const selectedIds = [...selected];
+    const selectedCount = selectedIds.length;
+    setSendAnimation("sending");
     setSubmitting(true);
     try {
-      await rpc("saveSelection", { albumId, sessionId: sessionId.current, selectedIds: [...selected], largePrintIds: [...large], tablePrintIds: [...table], photoNotes: notes, albumNote });
+      await rpc("saveSelection", { albumId, sessionId: sessionId.current, selectedIds, largePrintIds: [...large], tablePrintIds: [...table], photoNotes: notes, albumNote });
       localStorage.removeItem(`anan-draft-${albumId}`);
-      setSubmitted(true); setReview(false); setReviewZoom(null); notify("Đã gửi danh sách ảnh thành công.");
-    } catch (e) { notify((e as Error).message); }
-    finally { setSubmitting(false); }
+      setSubmitted(true); setReview(false); setReviewZoom(null);
+      setSendAnimation("success");
+      if (flightTimerRef.current !== null) window.clearTimeout(flightTimerRef.current);
+      flightTimerRef.current = window.setTimeout(() => setSendAnimation("idle"), 4400);
+    } catch (e) {
+      setSendAnimation("idle");
+      notify(`Không thể gửi ${selectedCount} ảnh. ${(e as Error).message}`);
+    } finally { setSubmitting(false); }
   }
   async function openReview() {
     if (!selected.size) return notify("Bạn chưa chọn ảnh nào.");
@@ -180,6 +236,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
   const zoomPhoto = zoom === null ? null : photos[zoom];
   const selectedReviewPhotos = reviewPhotos.filter((photo) => selected.has(photo.id));
   const reviewZoomPhoto = reviewZoom === null ? null : selectedReviewPhotos[reviewZoom];
+  const visiblePhotos = photos.slice(0, renderedCount);
 
   return (
     <main className="client-page">
@@ -194,19 +251,19 @@ export default function ClientView({ albumId }: { albumId: string }) {
             <div className="counter">Đã chọn <span>{selected.size}</span>{album.maxSelect ? ` / ${album.maxSelect}` : ""} ảnh</div>
             <div className="row">
               <button className="secondary btn-icon" onClick={openReview}><Heart className="review-action-heart" size={17} fill="currentColor" /> Xem ảnh đã chọn</button>
-              <button className="btn-icon" onClick={submit} disabled={!selected.size || submitting}>{submitting ? <span className="spinner small" /> : <Send size={17} />} Gửi ảnh chọn</button>
+            <button className="btn-icon" onClick={submit} disabled={!selected.size || submitting}>{submitting ? <span className="spinner small" /> : <Send size={17} />} Gửi {selected.size} ảnh</button>
             </div>
           </div>
         </div>
       </div>
       <section className="gallery-shell shell">
-        {submitted && <div className="success-banner"><Check size={19} /><span><b>Danh sách đã được gửi.</b> Bạn vẫn có thể thay đổi và gửi lại nếu cần.</span></div>}
+        {submitted && sendAnimation === "idle" && <div className="success-banner"><Check size={19} /><span><b>Đã gửi {selected.size} ảnh.</b> Bạn vẫn có thể thay đổi và gửi lại nếu cần.</span></div>}
         <div className="client-head">
           <div className="client-title"><h1>{album.title}</h1><p className="hint guide">{album.guide}</p></div>
           <button className="secondary btn-icon" onClick={() => { navigator.clipboard.writeText(location.href); notify("Đã copy link."); }}><Copy size={16} /> Copy link ảnh</button>
         </div>
         <div className="hint page-status">Đang hiển thị {photos.length} / {total} ảnh</div>
-        <JustifiedGallery albumId={albumId} photos={photos} selected={selected} onOpen={setZoom} onToggle={toggle} />
+        <JustifiedGallery albumId={albumId} photos={visiblePhotos} selected={selected} onOpen={setZoom} onToggle={toggle} />
         {loading && <div className="grid-loader show"><span className="spinner" /> Đang tải thêm ảnh...</div>}
         {!loading && !photos.length && <div className="empty">Chưa có ảnh để hiển thị.</div>}
         <div ref={loadMoreSentinel} className="load-more-sentinel" aria-hidden="true" />
@@ -228,6 +285,8 @@ export default function ClientView({ albumId }: { albumId: string }) {
         onPrev={() => setReviewZoom((index) => index !== null && index > 0 ? index - 1 : (notify("Đây là ảnh đầu tiên."), index))}
         onNext={() => setReviewZoom((index) => index !== null && index < selectedReviewPhotos.length - 1 ? index + 1 : (notify("Đây là ảnh cuối cùng."), index))} />}
       {toast && <div className="toast">{toast}</div>}
+      {undoSelection && <div className="undo-toast"><span>Đã bỏ chọn ảnh</span><button className="secondary compact" onClick={undoLastRemoval}>Hoàn tác</button></div>}
+      {sendAnimation !== "idle" && <SendFlightAnimation count={selected.size} state={sendAnimation} />}
     </main>
   );
 }
@@ -275,7 +334,8 @@ function JustifiedGallery({ albumId, photos, selected, onOpen, onToggle }: {
     };
 
     photos.forEach((photo, index) => {
-      const ratio = Math.max(.42, Math.min(2.8, ratios[photo.id] || .78));
+      const metadataRatio = photo.width && photo.height ? photo.width / photo.height : 0;
+      const ratio = Math.max(.42, Math.min(2.8, ratios[photo.id] || metadataRatio || .78));
       if (isMobile) {
         // Mobile keeps two photos per row so portrait images remain easy to inspect.
         if (current.length === 2) finishRow();
@@ -337,7 +397,7 @@ function Review({ album, photos, selected, large, table, notes, albumNote, submi
       </article>)}
       <div className="album-note"><label>Lưu ý chung cho toàn bộ album<textarea rows={3} value={albumNote} onChange={(e) => onAlbumNote(e.target.value)} placeholder="Nhập lưu ý chung nếu có" /></label></div>
     </div>
-    <footer><button onClick={onSubmit} disabled={submitting}>{submitting ? <span className="spinner small" /> : <Send size={17} />} Gửi</button><button className="secondary" onClick={onClose}>Đóng</button></footer>
+    <footer><span className="submit-summary">Bạn đang gửi <strong>{selected.size} ảnh</strong>.</span><button onClick={onSubmit} disabled={submitting}>{submitting ? <span className="spinner small" /> : <Send size={17} />} Gửi {selected.size} ảnh</button><button className="secondary" onClick={onClose}>Đóng</button></footer>
   </div></div>;
 }
 
@@ -527,6 +587,17 @@ function Zoom({ albumId, photo, previousPhoto, nextPhoto, selected, onToggle, on
 
 function stripExt(name: string) { return name.replace(/\.(jpe?g|png|webp|heic|heif|tiff?)$/i, ""); }
 
+function SendFlightAnimation({ count, state }: { count: number; state: "sending" | "success" }) {
+  return <div className={`send-flight-overlay ${state}`} role="status" aria-live="polite">
+    <div className="send-flight-stage">
+      <div className="send-flight-lines" aria-hidden="true"><i /><i /><i /></div>
+      {[1, 2, 3].map((index) => <div key={index} className={`send-flight-photo photo-${index}`} aria-hidden="true"><ImageIcon size={28} strokeWidth={1.6} /></div>)}
+      <div className="send-flight-plane" aria-hidden="true"><Send size={56} /></div>
+      <p>{state === "sending" ? `Đang gửi ${count} ảnh…` : `Đã gửi ${count} ảnh`}</p>
+    </div>
+  </div>;
+}
+
 function DrivePhoto({ albumId, photo, zoom = false, onDimensions }: { albumId: string; photo: Photo; zoom?: boolean; onDimensions?: (width: number, height: number) => void }) {
   const sources = zoom
     ? [
@@ -560,6 +631,8 @@ function DrivePhoto({ albumId, photo, zoom = false, onDimensions }: { albumId: s
   return <img
     className={zoom ? "zoom-image" : undefined}
     src={sources[Math.min(sourceIndex, sources.length - 1)]}
+    srcSet={!zoom ? photo.thumbSrcSet : undefined}
+    sizes={zoom ? "100vw" : "(max-width: 560px) 50vw, (max-width: 1000px) 33vw, 25vw"}
     alt={photo.name}
     loading={zoom ? "eager" : "lazy"}
     decoding="async"

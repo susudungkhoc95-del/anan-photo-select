@@ -39,6 +39,8 @@ export type Photo = {
   id: string;
   name: string;
   folder: string;
+  width?: number;
+  height?: number;
 };
 
 export type Selection = {
