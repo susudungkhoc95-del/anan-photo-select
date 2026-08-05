@@ -13,6 +13,36 @@ type AlbumPublic = {
 type Photo = { id: string; name: string; folder: string; width?: number; height?: number; thumbUrl: string; thumbSrcSet?: string; zoomUrl: string; downloadUrl: string; viewUrl: string };
 type Page = { items: Photo[]; total: number; hasMore: boolean; nextOffset: number };
 
+type ImagePriority = "high" | "low";
+type ImageCacheEntry = { promise: Promise<boolean>; priority: ImagePriority };
+const imageCache = new Map<string, ImageCacheEntry>();
+const maxCachedImages = 48;
+
+function sizedDriveUrl(id: string, width: number) {
+  return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w${width}`;
+}
+
+function preloadImage(src: string, priority: ImagePriority): Promise<boolean> {
+  if (!src) return Promise.resolve(false);
+  const existing = imageCache.get(src);
+  if (existing && (existing.priority === "high" || priority === "low")) return existing.promise;
+
+  const image = new Image();
+  image.decoding = "async";
+  image.fetchPriority = priority;
+  const promise = new Promise<boolean>((resolve) => {
+    image.onload = async () => {
+      try { await image.decode(); } catch { /* The browser may already have decoded it. */ }
+      resolve(true);
+    };
+    image.onerror = () => resolve(false);
+    image.src = src;
+  });
+  imageCache.set(src, { promise, priority });
+  while (imageCache.size > maxCachedImages) imageCache.delete(imageCache.keys().next().value as string);
+  return promise;
+}
+
 export default function ClientView({ albumId }: { albumId: string }) {
   const [album, setAlbum] = useState<AlbumPublic | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -30,6 +60,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
   const [reviewPhotos, setReviewPhotos] = useState<Photo[]>([]);
   const [reviewZoom, setReviewZoom] = useState<number | null>(null);
   const [zoom, setZoom] = useState<number | null>(null);
+  const zoomIndexRef = useRef<number | null>(null);
   const [renderedCount, setRenderedCount] = useState(40);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -214,19 +245,27 @@ export default function ClientView({ albumId }: { albumId: string }) {
       const items = await rpc<Photo[]>("getPhotosByIds", { albumId, ids: [...selected] });
       const order = new Map([...selected].map((id, index) => [id, index]));
       setReviewPhotos(items.sort((a, b) => (order.get(a.id) || 0) - (order.get(b.id) || 0)));
+      zoomIndexRef.current = null;
       setZoom(null);
       setReviewZoom(null);
       setReview(true);
     } catch (e) { notify((e as Error).message); }
   }
   async function navigateZoom(direction: -1 | 1) {
-    if (zoom === null) return;
-    const next = zoom + direction;
+    const current = zoomIndexRef.current ?? zoom;
+    if (current === null) return;
+    const next = current + direction;
     if (next < 0) return notify("Đây là ảnh đầu tiên.");
-    if (next < photos.length) return setZoom(next);
+    if (next < photos.length) {
+      zoomIndexRef.current = next;
+      return setZoom(next);
+    }
     if (direction > 0 && hasMore) {
       const page = await loadPage(true);
-      if (page?.items.length) return setZoom(next);
+      if (page?.items.length) {
+        zoomIndexRef.current = next;
+        return setZoom(next);
+      }
     }
     notify("Đây là ảnh cuối cùng.");
   }
@@ -263,7 +302,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
           <button className="secondary btn-icon" onClick={() => { navigator.clipboard.writeText(location.href); notify("Đã copy link."); }}><Copy size={16} /> Copy link ảnh</button>
         </div>
         <div className="hint page-status">Đang hiển thị {photos.length} / {total} ảnh</div>
-        <JustifiedGallery albumId={albumId} photos={visiblePhotos} selected={selected} onOpen={setZoom} onToggle={toggle} />
+        <JustifiedGallery albumId={albumId} photos={visiblePhotos} selected={selected} onOpen={(index) => { zoomIndexRef.current = index; setZoom(index); }} onToggle={toggle} />
         {loading && <div className="grid-loader show"><span className="spinner" /> Đang tải thêm ảnh...</div>}
         {!loading && !photos.length && <div className="empty">Chưa có ảnh để hiển thị.</div>}
         <div ref={loadMoreSentinel} className="load-more-sentinel" aria-hidden="true" />
@@ -273,12 +312,15 @@ export default function ClientView({ albumId }: { albumId: string }) {
         onOpenPhoto={(id) => setReviewZoom(selectedReviewPhotos.findIndex((photo) => photo.id === id))}
         onPrint={setPrint} onNote={(id, value) => setNotes((n) => ({ ...n, [id]: value }))} onAlbumNote={setAlbumNote} onSubmit={submit} />}
       {zoomPhoto && <Zoom albumId={albumId} photo={zoomPhoto} previousPhoto={zoom !== null ? photos[zoom - 1] : undefined}
-        nextPhoto={zoom !== null ? photos[zoom + 1] : undefined} selected={selected.has(zoomPhoto.id)}
-        onToggle={() => toggle(zoomPhoto.id)} onClose={() => setZoom(null)}
+        nextPhoto={zoom !== null ? photos[zoom + 1] : undefined}
+        prefetchPhotos={zoom !== null ? [photos[zoom + 1], photos[zoom + 2], photos[zoom - 1]].filter(Boolean) : []}
+        selected={selected.has(zoomPhoto.id)}
+        onToggle={() => toggle(zoomPhoto.id)} onClose={() => { zoomIndexRef.current = null; setZoom(null); }}
         onPrev={() => navigateZoom(-1)} onNext={() => navigateZoom(1)} />}
       {reviewZoomPhoto && <Zoom albumId={albumId} photo={reviewZoomPhoto}
         previousPhoto={reviewZoom !== null ? selectedReviewPhotos[reviewZoom - 1] : undefined}
         nextPhoto={reviewZoom !== null ? selectedReviewPhotos[reviewZoom + 1] : undefined}
+        prefetchPhotos={reviewZoom !== null ? [selectedReviewPhotos[reviewZoom + 1], selectedReviewPhotos[reviewZoom + 2], selectedReviewPhotos[reviewZoom - 1]].filter(Boolean) : []}
         selected={selected.has(reviewZoomPhoto.id)}
         onToggle={() => { toggle(reviewZoomPhoto.id); setReviewZoom(null); }}
         onClose={() => setReviewZoom(null)}
@@ -401,8 +443,9 @@ function Review({ album, photos, selected, large, table, notes, albumNote, submi
   </div></div>;
 }
 
-function Zoom({ albumId, photo, previousPhoto, nextPhoto, selected, onToggle, onClose, onPrev, onNext }: {
+function Zoom({ albumId, photo, previousPhoto, nextPhoto, prefetchPhotos, selected, onToggle, onClose, onPrev, onNext }: {
   albumId: string; photo: Photo; previousPhoto?: Photo; nextPhoto?: Photo; selected: boolean;
+  prefetchPhotos?: Photo[];
   onToggle: () => void; onClose: () => void; onPrev: () => void; onNext: () => void;
 }) {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -411,6 +454,8 @@ function Zoom({ albumId, photo, previousPhoto, nextPhoto, selected, onToggle, on
   const closeRef = useRef(onClose);
   const prevRef = useRef(onPrev);
   const nextRef = useRef(onNext);
+  const prefetchRefs = useRef<HTMLImageElement[]>([]);
+  const prefetchKey = (prefetchPhotos || []).map((neighbor) => neighbor.id).join(",");
   closeRef.current = onClose;
   prevRef.current = onPrev;
   nextRef.current = onNext;
@@ -561,18 +606,23 @@ function Zoom({ albumId, photo, previousPhoto, nextPhoto, selected, onToggle, on
   }, [photo.id]);
 
   useEffect(() => {
-    [previousPhoto, nextPhoto].filter(Boolean).forEach((neighbor) => {
-      [
-        neighbor!.thumbUrl,
-        neighbor!.zoomUrl || neighbor!.thumbUrl,
-        `https://lh3.googleusercontent.com/d/${encodeURIComponent(neighbor!.id)}=w2400`
-      ].forEach((source) => {
-        const image = new Image();
-        image.decoding = "async";
-        image.src = source;
-      });
-    });
-  }, [previousPhoto, nextPhoto]);
+    prefetchRefs.current.forEach((image) => image.removeAttribute("src"));
+    prefetchRefs.current = [];
+    const neighbors = [...(prefetchPhotos || []), nextPhoto].filter((neighbor): neighbor is Photo => Boolean(neighbor));
+    const uniqueNeighbors = [...new Map(neighbors.map((neighbor) => [neighbor.id, neighbor])).values()];
+    const timers = uniqueNeighbors.slice(0, 3).map((neighbor, index) => window.setTimeout(() => {
+      const image = new Image();
+      image.decoding = "async";
+      image.fetchPriority = "low";
+      image.src = sizedDriveUrl(neighbor.id, 1800);
+      prefetchRefs.current.push(image);
+    }, index * 60));
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      prefetchRefs.current.forEach((image) => image.removeAttribute("src"));
+      prefetchRefs.current = [];
+    };
+  }, [nextPhoto?.id, prefetchKey]);
 
   return <div className="zoom-backdrop zoom-modal">
     <div className="zoom-top"><span>{stripExt(photo.name)}</span><div><a className="icon-button" href={photo.downloadUrl} target="_blank" aria-label="Tải ảnh gốc"><Download size={19} /></a><button className="icon-button" onClick={onClose} aria-label="Đóng"><X /></button></div></div>
@@ -602,8 +652,8 @@ function DrivePhoto({ albumId, photo, zoom = false, onDimensions }: { albumId: s
   const sources = zoom
     ? [
         photo.thumbUrl,
+        sizedDriveUrl(photo.id, 1800),
         photo.zoomUrl,
-        `https://lh3.googleusercontent.com/d/${encodeURIComponent(photo.id)}=w2400`,
         albumId ? `/api/image?albumId=${encodeURIComponent(albumId)}&photoId=${encodeURIComponent(photo.id)}` : photo.viewUrl
       ]
     : [
@@ -612,21 +662,27 @@ function DrivePhoto({ albumId, photo, zoom = false, onDimensions }: { albumId: s
         albumId ? `/api/image?albumId=${encodeURIComponent(albumId)}&photoId=${encodeURIComponent(photo.id)}` : photo.viewUrl
       ];
   const [sourceIndex, setSourceIndex] = useState(0);
+  const sharperImageRef = useRef<HTMLImageElement | null>(null);
   useEffect(() => {
     setSourceIndex(0);
     if (!zoom) return;
     let active = true;
     let candidate = 1;
-    const loadSharperSource = () => {
-      if (!active || candidate >= sources.length) return;
-      const image = new Image();
-      image.decoding = "async";
-      image.onload = () => { if (active) setSourceIndex(candidate); };
-      image.onerror = () => { candidate += 1; loadSharperSource(); };
-      image.src = sources[candidate];
+    sharperImageRef.current?.removeAttribute("src");
+    const loadSharperSource = async () => {
+      while (active && candidate < sources.length) {
+        const currentCandidate = candidate++;
+        const sourceLoaded = await preloadImage(sources[currentCandidate], "high");
+        if (active && sourceLoaded) setSourceIndex(currentCandidate);
+        if (sourceLoaded && currentCandidate >= 2) return;
+      }
     };
     loadSharperSource();
-    return () => { active = false; };
+    return () => {
+      active = false;
+      sharperImageRef.current?.removeAttribute("src");
+      sharperImageRef.current = null;
+    };
   }, [photo.id, zoom]); // eslint-disable-line react-hooks/exhaustive-deps
   return <img
     className={zoom ? "zoom-image" : undefined}
@@ -635,6 +691,7 @@ function DrivePhoto({ albumId, photo, zoom = false, onDimensions }: { albumId: s
     sizes={zoom ? "100vw" : "(max-width: 560px) 50vw, (max-width: 1000px) 33vw, 25vw"}
     alt={photo.name}
     loading={zoom ? "eager" : "lazy"}
+    fetchPriority={zoom ? "high" : "auto"}
     decoding="async"
     onLoad={(event) => onDimensions?.(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)}
     onError={() => setSourceIndex((index) => Math.min(index + 1, sources.length - 1))}
