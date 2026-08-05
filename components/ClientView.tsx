@@ -628,7 +628,7 @@ function Zoom({ albumId, photo, previousPhoto, nextPhoto, prefetchPhotos, select
     <div className="zoom-top"><span>{stripExt(photo.name)}</span><div><a className="icon-button" href={photo.downloadUrl} target="_blank" aria-label="Tải ảnh gốc"><Download size={19} /></a><button className="icon-button" onClick={onClose} aria-label="Đóng"><X /></button></div></div>
     <div className="zoom-stage" ref={stageRef}>
       <button className="zoom-nav zoom-prev prev" onClick={onPrev} aria-label="Ảnh trước"><ChevronLeft size={27} /></button>
-      <DrivePhoto albumId={albumId} photo={photo} zoom />
+      <DrivePhoto key={photo.id} albumId={albumId} photo={photo} zoom />
       <button className="zoom-nav zoom-next next" onClick={onNext} aria-label="Ảnh tiếp theo"><ChevronRight size={27} /></button>
     </div>
     <div className="zoom-bottom"><button className={`zoom-select zoom-heart ${selected ? "active" : ""}`} onClick={onToggle}><Heart fill={selected ? "currentColor" : "none"} /> {selected ? "Đã chọn" : "Chọn ảnh này"}</button></div>
