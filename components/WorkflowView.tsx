@@ -422,6 +422,7 @@ function LabelsModal({ board, onClose, onChanged }: { board: WorkflowBoard; onCl
   const [color, setColor] = useState("#3b82f6");
   const [busy, setBusy] = useState(false);
   const [labelsSectionOpen, setLabelsSectionOpen] = useState(false);
+  const [deleteLabel, setDeleteLabel] = useState<WorkflowLabel | null>(null);
   async function create() {
     if (!name.trim()) return;
     setBusy(true);
@@ -432,7 +433,12 @@ function LabelsModal({ board, onClose, onChanged }: { board: WorkflowBoard; onCl
     try { await rpc("updateWorkflowLabel", { labelId: label.id, name: changes.name ?? label.name, color: changes.color ?? label.color }); await onChanged(); } finally { setBusy(false); }
   }
   async function remove(label: WorkflowLabel) {
-    if (!confirm(`Xóa nhãn “${label.name}”?`)) return;
+    setDeleteLabel(label);
+  }
+  async function confirmRemoveLabel() {
+    if (!deleteLabel) return;
+    const label = deleteLabel;
+    setDeleteLabel(null);
     setBusy(true);
     try { await rpc("deleteWorkflowLabel", { labelId: label.id }); await onChanged(); } finally { setBusy(false); }
   }
@@ -446,6 +452,7 @@ function LabelsModal({ board, onClose, onChanged }: { board: WorkflowBoard; onCl
       </div>}
     </section>
     <footer><button className="secondary" onClick={onClose}>Đóng</button></footer>
+    {deleteLabel && <div className="modal-backdrop workflow-label-confirm-backdrop" onMouseDown={() => setDeleteLabel(null)}><section className="workflow-delete-modal" onMouseDown={(event) => event.stopPropagation()}><h2>Xóa nhãn?</h2><p>Bạn có chắc muốn xóa nhãn “{deleteLabel.name}”?</p><footer><button className="secondary" onClick={() => setDeleteLabel(null)}>Hủy</button><button className="danger" onClick={() => void confirmRemoveLabel()}>Xóa nhãn</button></footer></section></div>}
   </section></div>;
 }
 

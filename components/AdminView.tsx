@@ -305,10 +305,22 @@ function AlbumCard({ album, onAction, onNotify }: { album: ListedAlbum; onAction
   const [chat, setChat] = useState(album.customerChatUrl || "");
   const [busy, setBusy] = useState("");
   const [linksOpen, setLinksOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<"deleteAlbum" | "archiveAlbum" | null>(null);
   const run = async (name: string, payload?: Record<string, unknown>) => {
-    if ((name === "deleteAlbum" || name === "archiveAlbum") && !confirm(name === "deleteAlbum" ? "Xoá album khỏi ứng dụng? Ảnh gốc trên Drive không bị xoá." : "Lưu trữ album này?")) return;
+    if ((name === "deleteAlbum" || name === "archiveAlbum") && !confirmAction) {
+      setConfirmAction(name);
+      return;
+    }
     setBusy(name); await onAction(name, album.id, payload); setBusy("");
   };
+  async function confirmRun() {
+    if (!confirmAction) return;
+    const actionName = confirmAction;
+    setConfirmAction(null);
+    setBusy(actionName);
+    await onAction(actionName, album.id);
+    setBusy("");
+  }
   return (
     <article className="album-card album-item">
       <div className="album-card-top album-title-row">
@@ -347,6 +359,11 @@ function AlbumCard({ album, onAction, onNotify }: { album: ListedAlbum; onAction
           {album.customerChatUrl && <a className="button secondary compact" href={album.customerChatUrl} target="_blank" rel="noreferrer">Mở nhóm chat</a>}
         </div>
       </div>}
+      {confirmAction && <div className="modal-backdrop album-confirm-backdrop" onMouseDown={() => setConfirmAction(null)}><section className="album-confirm-modal" onMouseDown={(event) => event.stopPropagation()}>
+        <h2>{confirmAction === "deleteAlbum" ? "Xóa album?" : "Lưu trữ album?"}</h2>
+        <p>{confirmAction === "deleteAlbum" ? "Xoá album khỏi ứng dụng? Ảnh gốc trên Drive không bị xoá." : "Lưu trữ album này?"}</p>
+        <footer><button type="button" className="secondary" onClick={() => setConfirmAction(null)}>Hủy</button><button type="button" className={confirmAction === "deleteAlbum" ? "danger" : ""} onClick={() => void confirmRun()}>{confirmAction === "deleteAlbum" ? "Xóa album" : "Lưu trữ"}</button></footer>
+      </section></div>}
     </article>
   );
 }
