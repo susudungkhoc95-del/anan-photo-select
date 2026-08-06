@@ -235,7 +235,7 @@ export async function createAlbum(payload: Record<string, unknown>) {
     maxSelect: Math.max(0, Number(payload.maxSelect || 0)),
     largePrintLimit: Math.max(0, Number(payload.largePrintLimit ?? 2)),
     tablePrintLimit: Math.max(0, Number(payload.tablePrintLimit ?? 10)),
-    guide: clean(payload.guide, 5000) || settings.defaultGuide,
+    guide: payload.guide === undefined ? settings.defaultGuide : clean(payload.guide, 5000),
     photoCount: photos.length,
     folders: [...counts.entries()].sort().map(([name, count]) => ({ name, count })),
     photoSheet: photoSheetName(id),
@@ -759,7 +759,7 @@ export async function getSettings() {
     .map((template, index) => ({
       id: clean(template?.id, 80) || `template-${index + 1}`,
       name: clean(template?.name, 80) || `Mẫu ${index + 1}`,
-      guide: clean(template?.guide, 5000) || legacyGuide,
+      guide: template?.guide === undefined ? legacyGuide : clean(template?.guide, 5000),
       maxSelect: count(template?.maxSelect, 0),
       largePrintLimit: count(template?.largePrintLimit, 2),
       tablePrintLimit: count(template?.tablePrintLimit, 10)
@@ -770,7 +770,7 @@ export async function getSettings() {
   const defaultGuideTemplateId = guideTemplates.some((template) => template.id === saved?.defaultGuideTemplateId)
     ? String(saved?.defaultGuideTemplateId)
     : guideTemplates[0].id;
-  const defaultGuide = guideTemplates.find((template) => template.id === defaultGuideTemplateId)?.guide || legacyGuide;
+  const defaultGuide = guideTemplates.find((template) => template.id === defaultGuideTemplateId)?.guide ?? legacyGuide;
   const quickLinks: QuickLink[] = (Array.isArray(saved?.quickLinks) ? saved.quickLinks : [])
     .map((link, index) => {
       const item = link && typeof link === "object" ? link as Record<string, unknown> : {};
@@ -795,7 +795,7 @@ export async function saveSettings(payload: Record<string, unknown>) {
         const number = Number(value);
         return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : fallback;
       };
-      return { id, name: clean(item.name, 80) || `Mẫu ${index + 1}`, guide: clean(item.guide, 5000) || DEFAULT_GUIDE, maxSelect: count(item.maxSelect, 0), largePrintLimit: count(item.largePrintLimit, 2), tablePrintLimit: count(item.tablePrintLimit, 10) };
+      return { id, name: clean(item.name, 80) || `Mẫu ${index + 1}`, guide: item.guide === undefined ? DEFAULT_GUIDE : clean(item.guide, 5000), maxSelect: count(item.maxSelect, 0), largePrintLimit: count(item.largePrintLimit, 2), tablePrintLimit: count(item.tablePrintLimit, 10) };
     })
     .filter((template) => !ids.has(template.id) && Boolean(ids.add(template.id)))
     .slice(0, 20);
@@ -804,7 +804,7 @@ export async function saveSettings(payload: Record<string, unknown>) {
   const defaultGuideTemplateId = guideTemplates.some((template) => template.id === requestedDefault)
     ? requestedDefault
     : guideTemplates[0].id;
-  const defaultGuide = guideTemplates.find((template) => template.id === defaultGuideTemplateId)?.guide || DEFAULT_GUIDE;
+  const defaultGuide = guideTemplates.find((template) => template.id === defaultGuideTemplateId)?.guide ?? DEFAULT_GUIDE;
   const incomingLinks = Array.isArray(payload.quickLinks) ? payload.quickLinks : current.quickLinks;
   const linkIds = new Set<string>();
   const quickLinks: QuickLink[] = incomingLinks.map((link, index) => {
