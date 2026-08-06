@@ -206,7 +206,18 @@ export default function WorkflowView() {
         const sourceCards = board.cards.filter((item) => item.listId === card.listId && item.id !== card.id);
         const targetWithout = board.cards.filter((item) => item.listId === targetListId && item.id !== card.id);
         const insertAt = overCard ? targetWithout.findIndex((item) => item.id === overCard.id) : targetWithout.length;
-        const targetCards = [...targetWithout]; targetCards.splice(Math.max(0, insertAt), 0, { ...card, listId: targetListId });
+        let targetCards: WorkflowCard[];
+        if (targetListId === card.listId) {
+          // For a same-list drag, arrayMove handles both directions:
+          // A -> below B and B -> above A should produce the expected order.
+          const listCards = board.cards.filter((item) => item.listId === card.listId);
+          const oldIndex = listCards.findIndex((item) => item.id === card.id);
+          const overIndex = overCard ? listCards.findIndex((item) => item.id === overCard.id) : listCards.length - 1;
+          targetCards = arrayMove(listCards, oldIndex, Math.max(0, overIndex));
+        } else {
+          targetCards = [...targetWithout];
+          targetCards.splice(Math.max(0, insertAt), 0, { ...card, listId: targetListId });
+        }
         const cards = targetListId === card.listId
           // sourceCards and targetWithout are the same list in this case.
           // Combining both used to duplicate every card after a same-list drop.
