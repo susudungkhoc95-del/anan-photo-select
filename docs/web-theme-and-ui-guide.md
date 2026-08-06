@@ -192,6 +192,7 @@ Trang khách được nhận diện bằng `body:has(.client-page)`. Đây là t
 
 Các rule `body:has(.client-page) button.heart`, `.review-photo-button`, `.zoom-nav`, `.zoom-select` là rule bắt buộc phải giữ riêng khi đổi theme. Nếu gom tất cả button vào cùng một màu, giao diện chọn ảnh và modal zoom sẽ bị sai tương phản.
 
+
 ### 3.4. DP Workflow / Kanban
 
 Màn hình nằm trong `WorkflowView.tsx`, luôn thêm class `admin-mode` vào `body`.

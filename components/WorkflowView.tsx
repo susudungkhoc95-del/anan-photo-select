@@ -5,7 +5,7 @@ import Link from "next/link";
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Check, ChevronDown, Copy, ExternalLink, MoreVertical, Plus, Search, Settings, Trash2, X } from "lucide-react";
+import { ChevronDown, Copy, ExternalLink, MoreVertical, Plus, Search, Settings, Trash2, X } from "lucide-react";
 import { rpc } from "@/components/App";
 import type { WorkflowBoard, WorkflowCard, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
 import { normalizeWorkflowText, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
@@ -352,7 +352,7 @@ function CardModal({ board, cardId, onClose, onChanged, onDeleted, onError }: { 
     <section className="workflow-card-labels"><h3>Nhãn</h3>{board.labels.length ? <div className="workflow-label-picker">{board.labels.map((label) => <label key={label.id} className={selectedLabelIds.includes(label.id) ? "selected" : ""} style={{ "--label-color": label.color } as React.CSSProperties}><input type="checkbox" checked={selectedLabelIds.includes(label.id)} disabled={busy} onChange={() => toggleLabel(label.id)} />{label.name}</label>)}</div> : <p className="muted">Chưa có nhãn. Bấm nút Nhãn ở đầu trang để tạo nhãn.</p>}</section>
     <section className="workflow-activity"><h3>Lịch sử hoạt động</h3>{activities.length ? activities.map((item) => <p key={item.id}><time>{formatTime(item.createdAt)}</time>{item.description}</p>) : <p className="muted">Chưa có hoạt động.</p>}</section>
     {confirmingDelete && <div className="workflow-delete-confirm"><span>Xóa thẻ này cùng toàn bộ link và lịch sử?</span><button type="button" className="secondary compact" disabled={busy} onClick={() => setConfirmingDelete(false)}>Hủy</button><button type="button" className="danger compact" disabled={busy} onClick={() => void removeCard()}>Xác nhận xóa</button></div>}
-    <footer><button type="button" className="danger" disabled={busy} onClick={() => setConfirmingDelete(true)}><Trash2 size={16} /> Xóa thẻ</button><span /><button type="button" className="secondary" disabled={busy} onClick={onClose}>Đóng</button><button type="button" disabled={busy} onClick={() => void save()}><Check size={16} /> Lưu thay đổi</button></footer>
+    <footer><button type="button" className="danger" disabled={busy} onClick={() => setConfirmingDelete(true)}><Trash2 size={16} /> Xóa thẻ</button><span /><button type="button" className="secondary" disabled={busy} onClick={onClose}>Đóng</button><button type="button" disabled={busy} onClick={() => void save()}>Lưu thay đổi</button></footer>
   </section></div>;
 }
 
@@ -375,7 +375,7 @@ function QuickCardModal({ board, cardId, onClose, onChanged }: { board: Workflow
     <label>Tên thẻ<input autoFocus value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} /></label>
     <div className="workflow-date-field"><label>Ngày cưới<input type="date" value={weddingDate} onChange={(event) => setWeddingDate(event.target.value)} /></label><button type="button" className="secondary compact" disabled={!weddingDate || busy} onClick={() => setWeddingDate("")}>Xóa ngày</button></div>
     <section className="workflow-card-labels"><h3>Gắn nhãn</h3>{board.labels.length ? <div className="workflow-label-picker">{board.labels.map((label) => <label key={label.id} className={labelIds.includes(label.id) ? "selected" : ""} style={{ "--label-color": label.color } as React.CSSProperties}><input type="checkbox" checked={labelIds.includes(label.id)} onChange={() => setLabelIds((current) => current.includes(label.id) ? current.filter((id) => id !== label.id) : [...current, label.id])} />{label.name}</label>)}</div> : <p className="muted">Chưa có nhãn. Dùng nút bánh răng ở góc dưới phải để tạo nhãn.</p>}</section>
-    <footer><button className="secondary" onClick={onClose}>Huỷ</button><button disabled={busy || !title.trim()} onClick={save}><Check size={16} /> Lưu</button></footer>
+    <footer><button className="secondary" onClick={onClose}>Huỷ</button><button disabled={busy || !title.trim()} onClick={save}>Lưu</button></footer>
   </section></div>;
 }
 

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Archive, Check, ChevronDown, Copy, ExternalLink, FolderSync, Images, KeyRound,
+  Archive, ChevronDown, Copy, ExternalLink, FolderSync, Images, KeyRound,
   Link as LinkIcon, LogOut, Search, Settings, Sheet, X,
   Sparkles, Trash2
 } from "lucide-react";
@@ -113,7 +113,8 @@ export default function AdminView() {
       setGuideTemplates(s.guideTemplates);
       setSelectedGuideTemplateId(s.defaultGuideTemplateId);
       setQuickLinks(s.quickLinks);
-      setForm((f) => ({ ...f, guide: s.defaultGuide }));
+      const defaultTemplate = s.guideTemplates.find((template) => template.id === s.defaultGuideTemplateId);
+      setForm((f) => ({ ...f, guide: s.defaultGuide, ...(defaultTemplate ? { maxSelect: String(defaultTemplate.maxSelect), largePrintLimit: String(defaultTemplate.largePrintLimit), tablePrintLimit: String(defaultTemplate.tablePrintLimit) } : {}) }));
     }).catch(() => {});
   }, [auth]);
 
@@ -259,7 +260,7 @@ export default function AdminView() {
                 <select value={selectedGuideTemplateId} onChange={(e) => {
                   const template = guideTemplates.find((item) => item.id === e.target.value);
                   setSelectedGuideTemplateId(e.target.value);
-                  if (template) setForm((current) => ({ ...current, guide: template.guide }));
+                  if (template) setForm((current) => ({ ...current, guide: template.guide, maxSelect: String(template.maxSelect), largePrintLimit: String(template.largePrintLimit), tablePrintLimit: String(template.tablePrintLimit) }));
                 }}>
                   {guideTemplates.map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}
                 </select>
@@ -316,7 +317,7 @@ function AlbumCard({ album, onAction, onNotify }: { album: ListedAlbum; onAction
           <span>Tạo lúc {formatSubmittedAt(album.createdAt)}</span>
         </div>
         <div className="submitted-status">
-          <span className={`status submit-badge ${album.submittedAt ? "" : "pending"}`}>{album.submittedAt ? <><Check size={13} /> Đã gửi {album.submittedCount} ảnh</> : "Chưa gửi"}</span>
+          <span className={`status submit-badge ${album.submittedAt ? "" : "pending"}`}>{album.submittedAt ? <>Đã gửi {album.submittedCount} ảnh</> : "Chưa gửi"}</span>
           {album.submittedAt && <span className="submitted-at">Gửi lúc {formatSubmittedAt(album.submittedAt)}</span>}
         </div>
       </div>
@@ -343,7 +344,7 @@ function AlbumCard({ album, onAction, onNotify }: { album: ListedAlbum; onAction
         <div className="raw-line">
           <input value={chat} onChange={(e) => setChat(e.target.value)} placeholder="Link nhóm chat khách" />
           <button className="secondary compact" onClick={() => run("updateCustomerChat", { customerChatUrl: chat })}>Lưu nhóm chat</button>
-          {album.customerChatUrl && <a className="button secondary compact" href={album.customerChatUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Mở nhóm chat</a>}
+          {album.customerChatUrl && <a className="button secondary compact" href={album.customerChatUrl} target="_blank" rel="noreferrer">Mở nhóm chat</a>}
         </div>
       </div>}
     </article>
@@ -351,7 +352,7 @@ function AlbumCard({ album, onAction, onNotify }: { album: ListedAlbum; onAction
 }
 
 function SettingsModal({ templates: initialTemplates, quickLinks: initialQuickLinks, defaultTemplateId: initialDefaultTemplateId, onClose, onSaved }: { templates: GuideTemplate[]; quickLinks: QuickLink[]; defaultTemplateId: string; onClose: () => void; onSaved: (settings: StudioSettings) => void }) {
-  const [templates, setTemplates] = useState<GuideTemplate[]>(initialTemplates.length ? initialTemplates : [{ id: "default", name: "Mẫu mặc định", guide: "" }]);
+  const [templates, setTemplates] = useState<GuideTemplate[]>(initialTemplates.length ? initialTemplates : [{ id: "default", name: "Mẫu mặc định", guide: "", maxSelect: 0, largePrintLimit: 2, tablePrintLimit: 10 }]);
   const [selectedId, setSelectedId] = useState(initialDefaultTemplateId || initialTemplates[0]?.id || "default");
   const [defaultTemplateId, setDefaultTemplateId] = useState(initialDefaultTemplateId || initialTemplates[0]?.id || "default");
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>(initialQuickLinks);
@@ -363,7 +364,7 @@ function SettingsModal({ templates: initialTemplates, quickLinks: initialQuickLi
   }
   function addTemplate() {
     const id = `template-${Date.now()}`;
-    setTemplates((current) => [...current, { id, name: `Mẫu ${current.length + 1}`, guide: selected?.guide || "" }]);
+    setTemplates((current) => [...current, { id, name: `Mẫu ${current.length + 1}`, guide: selected?.guide || "", maxSelect: selected?.maxSelect || 0, largePrintLimit: selected?.largePrintLimit || 2, tablePrintLimit: selected?.tablePrintLimit || 10 }]);
     setSelectedId(id);
   }
   function removeSelected() {
@@ -390,6 +391,11 @@ function SettingsModal({ templates: initialTemplates, quickLinks: initialQuickLi
           <button className="secondary compact" type="button" onClick={addTemplate}>+ Mẫu mới</button>
         </div>
         <label>Tên mẫu<input value={selected.name} onChange={(e) => updateSelected({ name: e.target.value })} placeholder="Ví dụ: Gói 40 ảnh" /></label>
+        <div className="template-count-fields">
+          <label>Tổng ảnh được chọn<input type="number" min="0" value={selected.maxSelect} onChange={(e) => updateSelected({ maxSelect: Math.max(0, Number(e.target.value) || 0) })} /></label>
+          <label>Ảnh phóng to 60×90<input type="number" min="0" value={selected.largePrintLimit} onChange={(e) => updateSelected({ largePrintLimit: Math.max(0, Number(e.target.value) || 0) })} /></label>
+          <label>Ảnh để bàn<input type="number" min="0" value={selected.tablePrintLimit} onChange={(e) => updateSelected({ tablePrintLimit: Math.max(0, Number(e.target.value) || 0) })} /></label>
+        </div>
         <label>Hướng dẫn<textarea rows={10} value={selected.guide} onChange={(e) => updateSelected({ guide: e.target.value })} /></label>
         <div className="template-options">
           <label className="checkbox-label"><input type="radio" checked={defaultTemplateId === selected.id} onChange={() => setDefaultTemplateId(selected.id)} /> Dùng làm mẫu mặc định</label>

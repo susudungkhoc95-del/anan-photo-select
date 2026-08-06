@@ -60,6 +60,9 @@ export type GuideTemplate = {
   id: string;
   name: string;
   guide: string;
+  maxSelect: number;
+  largePrintLimit: number;
+  tablePrintLimit: number;
 };
 
 export type QuickLink = {

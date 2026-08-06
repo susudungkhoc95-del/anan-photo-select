@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Copy, Download, Heart, Image as ImageIcon, ImageOff, Send, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, Download, Heart, Image as ImageIcon, ImageOff, Send, X } from "lucide-react";
 import { rpc } from "@/components/App";
 import type { Draft, FolderStat, Selection } from "@/lib/types";
 
@@ -296,7 +296,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
         </div>
       </div>
       <section className="gallery-shell shell">
-        {submitted && sendAnimation === "idle" && <div className="success-banner"><Check size={19} /><span><b>Đã gửi {selected.size} ảnh.</b> Bạn vẫn có thể thay đổi và gửi lại nếu cần.</span></div>}
+        {submitted && sendAnimation === "idle" && <div className="success-banner"><span><b>Đã gửi {selected.size} ảnh.</b> Bạn vẫn có thể thay đổi và gửi lại nếu cần.</span></div>}
         <div className="client-head">
           <div className="client-title"><h1>{album.title}</h1><p className="hint guide">{album.guide}</p></div>
           <button className="secondary btn-icon" onClick={() => { navigator.clipboard.writeText(location.href); notify("Đã copy link."); }}><Copy size={16} /> Copy link ảnh</button>

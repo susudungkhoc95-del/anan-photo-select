@@ -185,13 +185,13 @@ body.admin-mode.admin-light-mode {
 .panel-heading { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
 .panel-icon {
   width: 48px; height: 48px; border-radius: 18px; display: inline-grid; place-items: center; flex: none;
-  background: linear-gradient(145deg, rgba(53, 224, 199, .20), rgba(255, 255, 255, .06));
-  border: 1px solid rgba(255, 255, 255, .14); color: var(--accent-dark);
-  box-shadow: var(--inner-light), 0 16px 34px rgba(0, 0, 0, .24);
+  background: rgba(53, 224, 199, .12);
+  border: 1px solid rgba(92, 222, 210, .28); color: var(--accent-dark);
+  box-shadow: none;
 }
 body.admin-light-mode .panel-icon {
-  background: linear-gradient(145deg, rgba(255,255,255,.82), rgba(210,230,255,.48));
-  color: var(--accent); box-shadow: var(--inner-light), 0 12px 28px rgba(42,89,150,.16);
+  background: rgba(255,255,255,.62);
+  color: var(--accent); box-shadow: none;
 }
 .form-stack { display: grid; gap: 13px; }
 .selection-settings-toggle { width: 100%; justify-content: space-between; padding: 10px 13px; }
@@ -240,6 +240,13 @@ body.admin-light-mode .submit-badge { background: rgba(46,226,117,.14); color: #
 body.admin-mode .card-actions a.button.secondary,
 body.admin-mode .raw-line a.button.secondary,
 body.admin-mode .card-actions .icon-button:not(.danger) {
+  background: #123d4b;
+  color: var(--ink);
+  border-color: var(--line);
+  box-shadow: none;
+}
+body.admin-mode .card-actions > button:not(.danger),
+body.admin-mode .card-actions > a.button {
   background: #123d4b;
   color: var(--ink);
   border-color: var(--line);
@@ -311,6 +318,7 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
 .settings-section-content { padding: 2px 14px 14px; border-top: 1px solid var(--line); }
 .template-toolbar { display: flex; gap: 8px; align-items: center; }
 .template-toolbar select { min-width: 0; flex: 1; }
+.template-count-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .template-options { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
 .checkbox-label { display: flex !important; grid-template-columns: auto 1fr; align-items: center; margin: 0 !important; font-size: 13px; }
 .checkbox-label input { width: auto; }
@@ -800,6 +808,10 @@ body:has(.client-page) button.zoom-select.active {
 .workflow-link { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid rgba(53,224,199,.12); }
 .workflow-link-main { display: inline-flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; }
 .workflow-link a { display: inline-flex; align-items: center; gap: 5px; min-width: 0; color: var(--accent-dark); font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+.platform-icon { display: inline-grid; place-items: center; flex: 0 0 auto; width: 17px; height: 17px; border-radius: 5px; color: #fff; font-size: 12px; font-weight: 900; line-height: 1; }
+.platform-icon-image { display: inline-block; flex: 0 0 auto; width: 18px; height: 18px; border-radius: 50%; object-fit: contain; }
+.platform-zalo { background: #087cf0; font-family: Arial, sans-serif; }
+.platform-link-icon { flex: 0 0 auto; color: var(--muted); }
 .workflow-link-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; font-weight: 500; }
 .workflow-link-actions { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; }
 .workflow-link-actions .text-button { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; }

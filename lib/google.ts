@@ -751,15 +751,22 @@ export async function getSettings() {
   const saved = await readJson<Partial<StudioSettings>>(SETTINGS, "studio");
   const legacyGuide = clean(saved?.defaultGuide, 5000) || DEFAULT_GUIDE;
   const savedTemplates = Array.isArray(saved?.guideTemplates) ? saved.guideTemplates : [];
+  const count = (value: unknown, fallback: number) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : fallback;
+  };
   const guideTemplates: GuideTemplate[] = savedTemplates
     .map((template, index) => ({
       id: clean(template?.id, 80) || `template-${index + 1}`,
       name: clean(template?.name, 80) || `Mẫu ${index + 1}`,
-      guide: clean(template?.guide, 5000) || legacyGuide
+      guide: clean(template?.guide, 5000) || legacyGuide,
+      maxSelect: count(template?.maxSelect, 0),
+      largePrintLimit: count(template?.largePrintLimit, 2),
+      tablePrintLimit: count(template?.tablePrintLimit, 10)
     }))
     .filter((template, index, templates) => templates.findIndex((item) => item.id === template.id) === index)
     .slice(0, 20);
-  if (!guideTemplates.length) guideTemplates.push({ id: "default", name: "Mẫu mặc định", guide: legacyGuide });
+  if (!guideTemplates.length) guideTemplates.push({ id: "default", name: "Mẫu mặc định", guide: legacyGuide, maxSelect: 0, largePrintLimit: 2, tablePrintLimit: 10 });
   const defaultGuideTemplateId = guideTemplates.some((template) => template.id === saved?.defaultGuideTemplateId)
     ? String(saved?.defaultGuideTemplateId)
     : guideTemplates[0].id;
@@ -784,7 +791,11 @@ export async function saveSettings(payload: Record<string, unknown>) {
     .map((template, index) => {
       const item = template && typeof template === "object" ? template as Record<string, unknown> : {};
       const id = clean(item.id, 80) || `template-${index + 1}`;
-      return { id, name: clean(item.name, 80) || `Mẫu ${index + 1}`, guide: clean(item.guide, 5000) || DEFAULT_GUIDE };
+      const count = (value: unknown, fallback: number) => {
+        const number = Number(value);
+        return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : fallback;
+      };
+      return { id, name: clean(item.name, 80) || `Mẫu ${index + 1}`, guide: clean(item.guide, 5000) || DEFAULT_GUIDE, maxSelect: count(item.maxSelect, 0), largePrintLimit: count(item.largePrintLimit, 2), tablePrintLimit: count(item.tablePrintLimit, 10) };
     })
     .filter((template) => !ids.has(template.id) && Boolean(ids.add(template.id)))
     .slice(0, 20);
