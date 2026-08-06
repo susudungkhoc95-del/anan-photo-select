@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "crypto";
-import { getWorkflowWorkspaceId, listAlbums } from "@/lib/google";
+import { archiveAlbum, getWorkflowWorkspaceId, listAlbums } from "@/lib/google";
 import type { Album, Selection, WorkflowActivity, WorkflowBoard, WorkflowCard, WorkflowCardLabel, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
 import { readAppRecords, removeAppRecord, saveAppRecord } from "@/lib/supabase";
 
@@ -406,6 +406,11 @@ export async function moveWorkflowCard(payload: Record<string, unknown>) {
     if (sourceList.id !== targetList.id) {
       const sourceOrderedIds = Array.isArray(payload.sourceOrderedIds) ? payload.sourceOrderedIds.map((id) => text(id, 100)) : [];
       await resequenceCards(workspaceId, board.cards.filter((item) => item.listId === sourceList.id && item.id !== card.id), sourceOrderedIds);
+    }
+    if (targetList.systemKey === "DONE" && card.dpSelectAlbumId) {
+      await archiveAlbum(card.dpSelectAlbumId);
+    } else if (sourceList.systemKey === "DONE" && card.dpSelectAlbumId) {
+      await archiveAlbum(card.dpSelectAlbumId, true);
     }
     if (sourceList.id !== targetList.id) await appendActivity(workspaceId, card.id, "CARD_MOVED", `Đã chuyển thẻ từ “${sourceList.name}” sang “${targetList.name}”.`, "manual", sourceList.id, targetList.id);
     return card;

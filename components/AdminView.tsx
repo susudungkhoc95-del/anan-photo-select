@@ -322,7 +322,7 @@ function AlbumCard({ album, onAction, onNotify }: { album: ListedAlbum; onAction
     setBusy("");
   }
   return (
-    <article className="album-card album-item">
+    <article className={`album-card album-item ${album.status === "archived" ? "archived" : ""}`}>
       <div className="album-card-top album-title-row">
         <div className="album-name">
           <h3>{album.title}</h3>

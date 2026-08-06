@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
+import { DndContext, DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { ChevronDown, Copy, ExternalLink, MoreVertical, Plus, Search, Settings, Trash2, X } from "lucide-react";
@@ -62,6 +62,7 @@ export default function WorkflowView() {
   const [pendingCardIds, setPendingCardIds] = useState<Set<string>>(() => new Set());
   const pendingCardsRef = useRef(new Map<string, WorkflowCard>());
   const pendingCardLabelsRef = useRef(new Map<string, string[]>());
+  const dragOriginRef = useRef<{ cardId: string; sourceListId: string; board: WorkflowBoard } | null>(null);
   const refreshingRef = useRef(false);
   const refreshPendingRef = useRef(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -212,34 +213,62 @@ export default function WorkflowView() {
         const overCard = board.cards.find((item) => `card-${item.id}` === overId);
         const targetListId = overCard?.listId || (overId.startsWith("column-") ? overId.slice(7) : overId.startsWith("list-") ? overId.slice(5) : "");
         if (!targetListId) return;
-        const sourceCards = board.cards.filter((item) => item.listId === card.listId && item.id !== card.id);
-        const targetWithout = board.cards.filter((item) => item.listId === targetListId && item.id !== card.id);
-        const insertAt = overCard ? targetWithout.findIndex((item) => item.id === overCard.id) : targetWithout.length;
-        let targetCards: WorkflowCard[];
-        if (targetListId === card.listId) {
-          // For a same-list drag, arrayMove handles both directions:
-          // A -> below B and B -> above A should produce the expected order.
-          const listCards = board.cards.filter((item) => item.listId === card.listId);
-          const oldIndex = listCards.findIndex((item) => item.id === card.id);
-          const overIndex = overCard ? listCards.findIndex((item) => item.id === overCard.id) : listCards.length - 1;
-          targetCards = arrayMove(listCards, oldIndex, Math.max(0, overIndex));
-        } else {
-          targetCards = [...targetWithout];
-          targetCards.splice(Math.max(0, insertAt), 0, { ...card, listId: targetListId });
+        const sourceListId = dragOriginRef.current?.cardId === cardId ? dragOriginRef.current.sourceListId : card.listId;
+        let cards = board.cards;
+        if (card.listId !== targetListId) {
+          const sourceCards = board.cards.filter((item) => item.listId === card.listId && item.id !== card.id);
+          const targetCards = board.cards.filter((item) => item.listId === targetListId && item.id !== card.id);
+          const insertAt = overCard ? targetCards.findIndex((item) => item.id === overCard.id) : targetCards.length;
+          targetCards.splice(insertAt < 0 ? targetCards.length : insertAt, 0, { ...card, listId: targetListId });
+          cards = [...board.cards.filter((item) => item.listId !== card.listId && item.listId !== targetListId), ...sourceCards, ...targetCards];
+          setBoard({ ...board, cards });
         }
-        const cards = targetListId === card.listId
-          // sourceCards and targetWithout are the same list in this case.
-          // Combining both used to duplicate every card after a same-list drop.
-          ? [...board.cards.filter((item) => item.listId !== card.listId), ...targetCards]
-          : [...board.cards.filter((item) => item.listId !== card.listId && item.listId !== targetListId), ...sourceCards, ...targetCards];
-        setBoard({ ...board, cards });
+        const sourceCards = cards.filter((item) => item.listId === sourceListId && item.id !== cardId);
+        const targetCards = cards.filter((item) => item.listId === targetListId);
         await rpc("moveWorkflowCard", { cardId, targetListId, orderedIds: targetCards.map((item) => item.id), sourceOrderedIds: sourceCards.map((item) => item.id) });
       }
     } catch (error) { setMessage((error as Error).message); await load(); }
   }
 
   function onDragStart(event: DragStartEvent) {
-    setActiveDragId(String(event.active.id));
+    const activeId = String(event.active.id);
+    setActiveDragId(activeId);
+    if (activeId.startsWith("card-")) {
+      const cardId = activeId.slice(5);
+      const card = board?.cards.find((item) => item.id === cardId);
+      if (card && board) dragOriginRef.current = { cardId, sourceListId: card.listId, board };
+    }
+  }
+
+  function onDragOver(event: DragOverEvent) {
+    const activeId = String(event.active.id);
+    if (!activeId.startsWith("card-") || !event.over) return;
+    const cardId = activeId.slice(5);
+    const overId = String(event.over.id);
+    setBoard((current) => {
+      if (!current) return current;
+      const card = current.cards.find((item) => item.id === cardId);
+      const overCard = current.cards.find((item) => `card-${item.id}` === overId);
+      const targetListId = overCard?.listId || (overId.startsWith("column-") ? overId.slice(7) : overId.startsWith("list-") ? overId.slice(5) : "");
+      if (!card || !targetListId) return current;
+
+      if (targetListId === card.listId) {
+        if (!overCard || overCard.id === card.id) return current;
+        const listCards = current.cards.filter((item) => item.listId === card.listId);
+        const oldIndex = listCards.findIndex((item) => item.id === card.id);
+        const overIndex = listCards.findIndex((item) => item.id === overCard.id);
+        if (oldIndex < 0 || overIndex < 0 || oldIndex === overIndex) return current;
+        const reordered = arrayMove(listCards, oldIndex, overIndex);
+        return { ...current, cards: [...current.cards.filter((item) => item.listId !== card.listId), ...reordered] };
+      }
+
+      const sourceCards = current.cards.filter((item) => item.listId === card.listId && item.id !== card.id);
+      const targetCards = current.cards.filter((item) => item.listId === targetListId && item.id !== card.id);
+      const insertAt = overCard ? Math.max(0, targetCards.findIndex((item) => item.id === overCard.id)) : targetCards.length;
+      const movedCard = { ...card, listId: targetListId };
+      targetCards.splice(insertAt < 0 ? targetCards.length : insertAt, 0, movedCard);
+      return { ...current, cards: [...current.cards.filter((item) => item.listId !== card.listId && item.listId !== targetListId), ...sourceCards, ...targetCards] };
+    });
   }
 
   async function setCardLabelsOptimistically(cardId: string, labelIds: string[]) {
@@ -277,7 +306,7 @@ export default function WorkflowView() {
     </header>
     {message && <div className="workflow-message notice">{message}<button className="text-button" onClick={() => setMessage("")}>Đóng</button></div>}
     {query && <p className="workflow-search-note">Xóa tìm kiếm để sắp xếp thẻ.</p>}
-    <DndContext sensors={sensors} onDragStart={onDragStart} onDragCancel={() => setActiveDragId(null)} onDragEnd={(event) => { void onDragEnd(event).finally(() => setActiveDragId(null)); }}>
+    <DndContext sensors={sensors} onDragStart={onDragStart} onDragOver={onDragOver} onDragCancel={() => { if (dragOriginRef.current) setBoard(dragOriginRef.current.board); dragOriginRef.current = null; setActiveDragId(null); }} onDragEnd={(event) => { void onDragEnd(event).finally(() => { dragOriginRef.current = null; setActiveDragId(null); }); }}>
       <SortableContext items={board.lists.map((list) => `list-${list.id}`)} strategy={horizontalListSortingStrategy}>
         <div className="workflow-board">
           {board.lists.map((list) => <WorkflowColumn key={list.id} list={list} cards={filtered.filter((card) => card.listId === list.id)} labels={board.labels} cardLabelIds={board.cardLabels} pendingCardIds={pendingCardIds} searching={Boolean(query)} onAdd={() => setCreateModal({ type: "card", list })} onOpen={(cardId) => setCardModal({ cardId })} onQuickEdit={setQuickCardId} onRename={() => renameList(list)} onDelete={() => setDeleteList(list)} />)}
