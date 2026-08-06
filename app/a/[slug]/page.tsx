@@ -18,9 +18,12 @@ export async function generateMetadata({ params }: AlbumPageProps): Promise<Meta
         title,
         description,
         type: "website",
-        url: `/a/${slug}`
+        url: `/a/${slug}`,
+        // Messenger requires an image URL before it reliably renders the OG title.
+        // This transparent placeholder activates the preview without showing an app logo.
+        images: [{ url: "/og-preview.svg", width: 1200, height: 630, alt: "" }]
       },
-      twitter: { card: "summary", title, description }
+      twitter: { card: "summary", title, description, images: ["/og-preview.svg"] }
     };
   } catch {
     return {};
