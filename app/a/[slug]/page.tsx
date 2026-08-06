@@ -11,6 +11,8 @@ export async function generateMetadata({ params }: AlbumPageProps): Promise<Meta
     const album = await getAlbum(albumId);
     const title = `${album.title} — Chọn ảnh`;
     const description = `Không gian chọn ảnh dành cho album ${album.title}.`;
+    const ogImageUrl = new URL("/api/og", process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000");
+    ogImageUrl.searchParams.set("title", album.title);
     return {
       title,
       description,
@@ -19,11 +21,9 @@ export async function generateMetadata({ params }: AlbumPageProps): Promise<Meta
         description,
         type: "website",
         url: `/a/${slug}`,
-        // Messenger requires an image URL before it reliably renders the OG title.
-        // This transparent placeholder activates the preview without showing an app logo.
-        images: [{ url: "/og-preview.svg", width: 1200, height: 630, alt: "" }]
+        images: [{ url: ogImageUrl.toString(), width: 1200, height: 630, alt: album.title }]
       },
-      twitter: { card: "summary", title, description, images: ["/og-preview.svg"] }
+      twitter: { card: "summary", title, description, images: [ogImageUrl.toString()] }
     };
   } catch {
     return {};
