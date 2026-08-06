@@ -10,9 +10,7 @@ export async function generateMetadata({ params }: AlbumPageProps): Promise<Meta
   try {
     const album = await getAlbum(albumId);
     const title = `${album.title} — Chọn ảnh`;
-    const description = `Không gian chọn ảnh dành cho album ${album.title}.`;
-    const ogImageUrl = new URL("/api/og", process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000");
-    ogImageUrl.searchParams.set("title", album.title);
+    const description = "Không gian chọn ảnh dành cho khách hàng ANAN studio";
     return {
       title,
       description,
@@ -20,10 +18,9 @@ export async function generateMetadata({ params }: AlbumPageProps): Promise<Meta
         title,
         description,
         type: "website",
-        url: `/a/${slug}`,
-        images: [{ url: ogImageUrl.toString(), width: 1200, height: 630, alt: album.title }]
+        url: `/a/${slug}`
       },
-      twitter: { card: "summary", title, description, images: [ogImageUrl.toString()] }
+      twitter: { card: "summary", title, description }
     };
   } catch {
     return {};
