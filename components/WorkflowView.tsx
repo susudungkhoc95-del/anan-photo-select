@@ -59,6 +59,8 @@ export default function WorkflowView() {
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [quickCardId, setQuickCardId] = useState<string | null>(null);
+  const [pendingCardIds, setPendingCardIds] = useState<Set<string>>(() => new Set());
+  const pendingCardsRef = useRef(new Map<string, WorkflowCard>());
   const refreshingRef = useRef(false);
   const refreshPendingRef = useRef(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -71,8 +73,15 @@ export default function WorkflowView() {
     refreshingRef.current = true;
     try {
       const nextBoard = await rpc<WorkflowBoard>("getWorkflowBoard");
-      cacheBoard(nextBoard);
-      setBoard(nextBoard);
+      // Keep cards that were added optimistically visible while a background
+      // write is still in flight (a periodic refresh can happen meanwhile).
+      const pendingCards = [...pendingCardsRef.current.values()];
+      const serverCardIds = new Set(nextBoard.cards.map((card) => card.id));
+      const mergedBoard = pendingCards.length
+        ? { ...nextBoard, cards: [...nextBoard.cards, ...pendingCards.filter((card) => !serverCardIds.has(card.id))] }
+        : nextBoard;
+      cacheBoard(mergedBoard);
+      setBoard(mergedBoard);
     }
     catch (error) { if (!silent) setMessage((error as Error).message); }
     finally {
@@ -146,7 +155,30 @@ export default function WorkflowView() {
   }
 
   async function addCard(list: WorkflowList, title: string) {
-    try { await rpc("createWorkflowCard", { listId: list.id, title }); setCreateModal(null); await load(); } catch (error) { setMessage((error as Error).message); }
+    const timestamp = new Date().toISOString();
+    const cardId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`;
+    const optimisticCard: WorkflowCard = {
+      id: cardId, workspaceId: board?.workspaceId || "", listId: list.id, title, note: "", weddingDate: "",
+      position: Math.max(-1, ...(board?.cards.filter((card) => card.listId === list.id).map((card) => card.position) || []) ) + 1,
+      source: "manual", dpSelectAlbumId: "", dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: timestamp,
+      updatedAt: timestamp, completedAt: list.systemKey === "DONE" ? timestamp : "", createdBy: "admin", dpSummary: ""
+    };
+    pendingCardsRef.current.set(cardId, optimisticCard);
+    setPendingCardIds((current) => new Set(current).add(cardId));
+    setBoard((current) => current ? { ...current, cards: [...current.cards, optimisticCard] } : current);
+    setCreateModal(null);
+    try {
+      await rpc("createWorkflowCard", { cardId, listId: list.id, title });
+      pendingCardsRef.current.delete(cardId);
+      setPendingCardIds((current) => { const next = new Set(current); next.delete(cardId); return next; });
+      await load(true);
+    } catch (error) {
+      pendingCardsRef.current.delete(cardId);
+      setPendingCardIds((current) => { const next = new Set(current); next.delete(cardId); return next; });
+      setBoard((current) => current ? { ...current, cards: current.cards.filter((card) => card.id !== cardId) } : current);
+      setMessage(`Không thể lưu thẻ “${title}”: ${(error as Error).message}`);
+      void load(true);
+    }
   }
 
   async function onDragEnd(event: DragEndEvent) {
@@ -202,7 +234,7 @@ export default function WorkflowView() {
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragCancel={() => setActiveDragId(null)} onDragEnd={(event) => { void onDragEnd(event).finally(() => setActiveDragId(null)); }}>
       <SortableContext items={board.lists.map((list) => `list-${list.id}`)} strategy={horizontalListSortingStrategy}>
         <div className="workflow-board">
-          {board.lists.map((list) => <WorkflowColumn key={list.id} list={list} cards={filtered.filter((card) => card.listId === list.id)} labels={board.labels} cardLabelIds={board.cardLabels} searching={Boolean(query)} onAdd={() => setCreateModal({ type: "card", list })} onOpen={(cardId) => setCardModal({ cardId })} onQuickEdit={setQuickCardId} onRename={() => renameList(list)} onDelete={() => setDeleteList(list)} />)}
+          {board.lists.map((list) => <WorkflowColumn key={list.id} list={list} cards={filtered.filter((card) => card.listId === list.id)} labels={board.labels} cardLabelIds={board.cardLabels} pendingCardIds={pendingCardIds} searching={Boolean(query)} onAdd={() => setCreateModal({ type: "card", list })} onOpen={(cardId) => setCardModal({ cardId })} onQuickEdit={setQuickCardId} onRename={() => renameList(list)} onDelete={() => setDeleteList(list)} />)}
           <button type="button" className="workflow-add-list" onClick={() => setCreateModal({ type: "list" })}><Plus size={18} /> Thêm danh sách</button>
         </div>
       </SortableContext>
@@ -217,14 +249,14 @@ export default function WorkflowView() {
   </main>;
 }
 
-function WorkflowColumn({ list, cards, labels, cardLabelIds, searching, onAdd, onOpen, onQuickEdit, onRename, onDelete }: { list: WorkflowList; cards: WorkflowCard[]; labels: WorkflowLabel[]; cardLabelIds: WorkflowBoard["cardLabels"]; searching: boolean; onAdd: () => void; onOpen: (id: string) => void; onQuickEdit: (id: string) => void; onRename: () => void; onDelete: () => void }) {
+function WorkflowColumn({ list, cards, labels, cardLabelIds, pendingCardIds, searching, onAdd, onOpen, onQuickEdit, onRename, onDelete }: { list: WorkflowList; cards: WorkflowCard[]; labels: WorkflowLabel[]; cardLabelIds: WorkflowBoard["cardLabels"]; pendingCardIds: Set<string>; searching: boolean; onAdd: () => void; onOpen: (id: string) => void; onQuickEdit: (id: string) => void; onRename: () => void; onDelete: () => void }) {
   const sortable = useSortable({ id: `list-${list.id}`, data: { type: "list" } });
   const droppable = useDroppable({ id: `column-${list.id}`, data: { type: "column" } });
   const style = { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition };
   return <section ref={(node) => { sortable.setNodeRef(node); droppable.setNodeRef(node); }} style={style} className={`workflow-column ${sortable.isDragging ? "dragging" : ""}`}>
     <header><div><h2 className="workflow-list-title" {...sortable.attributes} {...sortable.listeners} title="Giữ để kéo danh sách">{list.name}</h2><span>{cards.length} thẻ</span></div><details><summary aria-label="Menu danh sách">•••</summary><button onClick={onRename}>Đổi tên</button><button onClick={onDelete}>Xóa danh sách</button></details></header>
     <SortableContext items={cards.map((card) => `card-${card.id}`)} strategy={rectSortingStrategy}>
-      <div className="workflow-cards">{cards.map((card) => <WorkflowCardItem key={card.id} card={card} list={list} labels={labels.filter((label) => cardLabelIds.some((assignment) => assignment.cardId === card.id && assignment.labelId === label.id))} onOpen={() => onOpen(card.id)} onQuickEdit={() => onQuickEdit(card.id)} />)}{!cards.length && <p className="workflow-empty">{searching ? "Không có kết quả" : "Chưa có thẻ"}</p>}</div>
+      <div className="workflow-cards">{cards.map((card) => <WorkflowCardItem key={card.id} card={card} list={list} pending={pendingCardIds.has(card.id)} labels={labels.filter((label) => cardLabelIds.some((assignment) => assignment.cardId === card.id && assignment.labelId === label.id))} onOpen={() => onOpen(card.id)} onQuickEdit={() => onQuickEdit(card.id)} />)}{!cards.length && <p className="workflow-empty">{searching ? "Không có kết quả" : "Chưa có thẻ"}</p>}</div>
     </SortableContext>
     {!searching && <button type="button" className="workflow-add-card" onClick={onAdd}><Plus size={17} /> Thêm thẻ</button>}
   </section>;
@@ -253,13 +285,13 @@ function CreateWorkflowModal({ state, onClose, onCreate }: { state: Exclude<Crea
   </div>;
 }
 
-function WorkflowCardItem({ card, list, labels, onOpen, onQuickEdit }: { card: WorkflowCard; list: WorkflowList; labels: WorkflowLabel[]; onOpen: () => void; onQuickEdit: () => void }) {
+function WorkflowCardItem({ card, list, pending, labels, onOpen, onQuickEdit }: { card: WorkflowCard; list: WorkflowList; pending: boolean; labels: WorkflowLabel[]; onOpen: () => void; onQuickEdit: () => void }) {
   const sortable = useSortable({ id: `card-${card.id}`, data: { type: "card" } });
   const age = workflowAge(card, list);
-  return <article ref={sortable.setNodeRef} style={{ transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition }} className={`workflow-card ${sortable.isDragging ? "dragging" : ""}`} {...sortable.attributes} {...sortable.listeners} onClick={onOpen}>
+  return <article ref={sortable.setNodeRef} style={{ transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition }} className={`workflow-card ${sortable.isDragging ? "dragging" : ""} ${pending ? "saving" : ""}`} {...sortable.attributes} {...sortable.listeners} onClick={onOpen}>
     <button type="button" className="icon-button workflow-card-menu" aria-label={`Cài đặt nhanh ${card.title}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onQuickEdit(); }}><MoreVertical size={17} /></button>
     <h3>{card.title}</h3>{card.note && <p>{card.note}</p>}
-    <footer><span className={`workflow-age ${age.level}`}>{age.label}</span>{labels.length > 0 && <div className="workflow-label-chips">{labels.map((label) => <span key={label.id} style={{ "--label-color": label.color } as React.CSSProperties}>{label.name}</span>)}</div>}{card.weddingDate && <span className="workflow-card-wedding-date">Ngày cưới {formatWeddingDate(card.weddingDate)}</span>}</footer>
+    <footer><span className={`workflow-age ${age.level}`}>{pending ? "Đang lưu…" : age.label}</span>{labels.length > 0 && <div className="workflow-label-chips">{labels.map((label) => <span key={label.id} style={{ "--label-color": label.color } as React.CSSProperties}>{label.name}</span>)}</div>}{card.weddingDate && <span className="workflow-card-wedding-date">Ngày cưới {formatWeddingDate(card.weddingDate)}</span>}</footer>
   </article>;
 }
 

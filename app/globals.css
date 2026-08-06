@@ -747,6 +747,7 @@ body:has(.client-page) button.zoom-select.active {
 .workflow-card-menu { position: absolute; z-index: 2; top: 7px; right: 7px; width: 28px; height: 28px; min-height: 28px; color: var(--muted); background: transparent !important; border-color: transparent !important; }
 .workflow-card-menu:hover { color: var(--ink); background: #123d4b !important; border-color: var(--line) !important; }
 .workflow-card:hover { border-color: rgba(53, 224, 199, .56); }
+.workflow-card.saving { border-color: rgba(53, 224, 199, .7); opacity: .78; }
 .workflow-card:active { cursor: grabbing; }
 .workflow-card.dragging { opacity: .22; }
 .workflow-drag-overlay { width: 300px; cursor: grabbing; transform: rotate(2deg) scale(1.025); border-color: rgba(53,224,199,.8); background: #0d3b49; box-shadow: 0 16px 36px rgba(0,0,0,.42); }

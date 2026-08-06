@@ -340,7 +340,9 @@ export async function createWorkflowCard(payload: Record<string, unknown>) {
     const board = await boardForCurrentWorkspace();
     const list = findList(board, payload.listId || board.lists[0]?.id);
     const timestamp = now();
-    const card: WorkflowCard = { id: randomUUID(), workspaceId, listId: list.id, title: requiredText(payload.title, "Tên thẻ"), note: text(payload.note, 5000), weddingDate: normalizeWeddingDate(payload.weddingDate), position: Math.max(-1, ...board.cards.filter((item) => item.listId === list.id).map((item) => item.position)) + 1, source: "manual", dpSelectAlbumId: "", dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: timestamp, updatedAt: timestamp, completedAt: list.systemKey === "DONE" ? timestamp : "", createdBy: "admin", dpSummary: "" };
+    const requestedId = text(payload.cardId, 100);
+    const cardId = /^[A-Za-z0-9_-]{1,100}$/.test(requestedId) ? requestedId : randomUUID();
+    const card: WorkflowCard = { id: cardId, workspaceId, listId: list.id, title: requiredText(payload.title, "Tên thẻ"), note: text(payload.note, 5000), weddingDate: normalizeWeddingDate(payload.weddingDate), position: Math.max(-1, ...board.cards.filter((item) => item.listId === list.id).map((item) => item.position)) + 1, source: "manual", dpSelectAlbumId: "", dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: timestamp, updatedAt: timestamp, completedAt: list.systemKey === "DONE" ? timestamp : "", createdBy: "admin", dpSummary: "" };
     await writeRow(TABS.cards, card.id, workspaceId, cardValues(card));
     await syncNoteLabel(workspaceId, board, card);
     await appendActivity(workspaceId, card.id, "CARD_CREATED", "Đã tạo thẻ thủ công.", "manual");
