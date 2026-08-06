@@ -18,10 +18,9 @@ export async function generateMetadata({ params }: AlbumPageProps): Promise<Meta
         title,
         description,
         type: "website",
-        url: `/a/${slug}`,
-        images: [{ url: "/dp-logo.png", width: 810, height: 810, alt: "ANAN Studio" }]
+        url: `/a/${slug}`
       },
-      twitter: { card: "summary", title, description, images: ["/dp-logo.png"] }
+      twitter: { card: "summary", title, description }
     };
   } catch {
     return {};
