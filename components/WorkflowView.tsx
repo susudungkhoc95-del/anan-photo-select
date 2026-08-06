@@ -321,7 +321,8 @@ function CardModal({ board, cardId, onClose, onChanged, onDeleted, onError }: { 
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
   const links = board.links.filter((item) => item.cardId === card.id);
-  const activities = board.activities.filter((item) => item.cardId === card.id).slice(0, 3);
+  // Keep the compact history panel, but let its scrollbar expose every activity.
+  const activities = board.activities.filter((item) => item.cardId === card.id);
   const [selectedLabelIds, setSelectedLabelIds] = useState(() => board.cardLabels.filter((item) => item.cardId === card.id).map((item) => item.labelId));
   const age = workflowAge(card, list);
   async function save() { setBusy(true); try { await rpc("updateWorkflowCard", { cardId: card.id, title, note, weddingDate }); await rpc("setWorkflowCardLabels", { cardId: card.id, labelIds: selectedLabelIds }); await onChanged(); onClose(); } finally { setBusy(false); } }

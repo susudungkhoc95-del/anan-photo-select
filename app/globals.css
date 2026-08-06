@@ -809,7 +809,7 @@ body:has(.client-page) button.zoom-select.active {
 .workflow-date-field { display: flex; align-items: flex-end; gap: 8px; margin: 18px 0 14px; }
 .workflow-date-field > label { flex: 1; min-width: 0; margin: 0; }
 .workflow-date-field > button { margin-bottom: 0; white-space: nowrap; }
-.workflow-activity { max-height: 150px; overflow-y: auto; }
+.workflow-activity { max-height: 150px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .workflow-activity p { display: grid; gap: 3px; margin: 0; padding: 9px 0; border-bottom: 1px solid rgba(53,224,199,.1); font-size: 13px; }
 .workflow-activity time { color: var(--muted); font-size: 11px; }
 .workflow-modal > footer { justify-content: flex-end; margin-top: 22px; }
