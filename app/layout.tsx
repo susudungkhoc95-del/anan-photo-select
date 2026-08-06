@@ -6,6 +6,7 @@ const sans = Be_Vietnam_Pro({ subsets: ["vietnamese", "latin"], weight: ["400", 
 const serif = Cormorant_Garamond({ subsets: ["vietnamese", "latin"], weight: ["500", "600", "700"], variable: "--font-serif" });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
   title: "ANAN Studio — Chọn ảnh",
   description: "Không gian chọn ảnh riêng dành cho khách hàng ANAN Studio.",
   icons: {

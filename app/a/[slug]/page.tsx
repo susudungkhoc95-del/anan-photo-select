@@ -14,8 +14,14 @@ export async function generateMetadata({ params }: AlbumPageProps): Promise<Meta
     return {
       title,
       description,
-      openGraph: { title, description, type: "website" },
-      twitter: { card: "summary", title, description }
+      openGraph: {
+        title,
+        description,
+        type: "website",
+        url: `/a/${slug}`,
+        images: [{ url: "/dp-logo.png", width: 810, height: 810, alt: "ANAN Studio" }]
+      },
+      twitter: { card: "summary", title, description, images: ["/dp-logo.png"] }
     };
   } catch {
     return {};
