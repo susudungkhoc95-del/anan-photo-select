@@ -167,6 +167,28 @@ async function syncWaitingSelectionCards(workspaceId: string, board: WorkflowBoa
   const waiting = board.lists.find((list) => list.systemKey === "WAITING_SELECTION");
   if (!waiting) return board;
   const albums = await activeAlbums();
+  const activeAlbumIds = new Set(albums.map((album) => album.id));
+  const orphanCards = board.cards.filter((card) =>
+    card.source === "dp_select" &&
+    card.listId === waiting.id &&
+    card.dpSelectAlbumId &&
+    !activeAlbumIds.has(card.dpSelectAlbumId)
+  );
+  if (orphanCards.length) {
+    // Deleting/archiving an album removes it from the active album feed, but
+    // its automatically-created Workflow card is stored separately. Remove
+    // that waiting card and its related records during the next sync.
+    await Promise.all(orphanCards.flatMap((card) => [
+      clearRecord(TABS.cards, card.id, workspaceId),
+      ...board.links.filter((link) => link.cardId === card.id).map((link) => clearRecord(TABS.links, link.id, workspaceId)),
+      ...board.cardLabels.filter((assignment) => assignment.cardId === card.id).map((assignment) => clearRecord(TABS.cardLabels, assignment.id, workspaceId)),
+      ...board.activities.filter((activity) => activity.cardId === card.id).map((activity) => clearRecord(TABS.activities, activity.id, workspaceId))
+    ]));
+    board.cards = board.cards.filter((card) => !orphanCards.some((orphan) => orphan.id === card.id));
+    board.links = board.links.filter((link) => !orphanCards.some((orphan) => orphan.id === link.cardId));
+    board.cardLabels = board.cardLabels.filter((assignment) => !orphanCards.some((orphan) => orphan.id === assignment.cardId));
+    board.activities = board.activities.filter((activity) => !orphanCards.some((orphan) => orphan.id === activity.cardId));
+  }
   const existingByAlbumId = new Map(board.cards.filter((card) => card.dpSelectAlbumId).map((card) => [card.dpSelectAlbumId, card]));
   let nextPosition = Math.max(-1, ...board.cards.filter((card) => card.listId === waiting.id).map((card) => card.position)) + 1;
   let changed = false;
