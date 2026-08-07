@@ -102,6 +102,14 @@ label {
 .spinner.small { width: 16px; height: 16px; border-width: 2px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .page-loader { min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted); font-weight: 700; }
+.client-page-loader {
+  color: #526b8d;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(255, 255, 255, .92), transparent 28%),
+    radial-gradient(circle at 88% 12%, rgba(116, 166, 255, .48), transparent 34%),
+    linear-gradient(135deg, #edf6ff 0%, #dcecff 48%, #f8fbff 100%);
+}
+.client-page-loader .spinner { border-color: rgba(82, 126, 188, .24); border-top-color: #347cff; }
 
 /* Admin — khớp giao diện Apps Script cũ */
 body.admin-mode {
@@ -439,6 +447,13 @@ body:has(.client-page) button.zoom-select.active {
   background-image: none !important;
   color: #111318 !important;
   border-color: #fff;
+}
+body:has(.client-page) .toast {
+  background: rgba(52, 124, 255, .94);
+  box-shadow: 0 10px 24px rgba(42, 89, 150, .2);
+}
+body:has(.client-page) .send-flight-overlay {
+  background: rgba(106, 167, 255, .22);
 }
 .client-page { min-height: 100vh; }
 .studio-banner {

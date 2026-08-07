@@ -27,6 +27,6 @@ export default function App({ initialAlbumId = "" }: { initialAlbumId?: string }
   useEffect(() => {
     setAlbumId(initialAlbumId || new URLSearchParams(window.location.search).get("album") || "");
   }, [initialAlbumId]);
-  if (albumId === null) return <div className="page-loader"><span className="spinner" /> Đang mở không gian ảnh…</div>;
+  if (albumId === null) return <div className={`page-loader ${initialAlbumId ? "client-page-loader" : ""}`}><span className="spinner" /> Đang mở không gian ảnh…</div>;
   return albumId ? <ClientView albumId={albumId} /> : <AdminView />;
 }

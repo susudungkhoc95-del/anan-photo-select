@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Archive, CheckCircle2, ChevronDown, Copy, ExternalLink, FolderSync, Images, KeyRound,
@@ -75,6 +75,7 @@ export default function AdminView() {
   const [guideTemplates, setGuideTemplates] = useState<GuideTemplate[]>(() => settingsCache?.guideTemplates || []);
   const [selectedGuideTemplateId, setSelectedGuideTemplateId] = useState(() => settingsCache?.defaultGuideTemplateId || "");
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>(() => settingsCache?.quickLinks || []);
+  const messageTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     document.body.classList.add("admin-mode");
@@ -154,12 +155,16 @@ export default function AdminView() {
   }
 
   async function action(name: string, albumId: string, payload: Record<string, unknown> = {}) {
+    if (messageTimerRef.current !== null) window.clearTimeout(messageTimerRef.current);
     setMessage("");
     try {
       const result = await rpc<Record<string, unknown>>(name, { albumId, ...payload });
-      if (name === "createRawSelectionFolder") {
+      if (name === "deleteAlbum") {
+        setMessage("Đã xóa album.");
+        messageTimerRef.current = window.setTimeout(() => setMessage(""), 3000);
+      } else if (name === "createRawSelectionFolder") {
         setMessage(`Đã chọn xong ${result.copied || 0} ảnh RAW.`);
-        window.setTimeout(() => setMessage(""), 4000);
+        messageTimerRef.current = window.setTimeout(() => setMessage(""), 4000);
       } else setMessage("Đã cập nhật.");
       setAlbums((current) => {
         if (name === "deleteAlbum") {

@@ -270,8 +270,8 @@ export default function ClientView({ albumId }: { albumId: string }) {
     notify("Đây là ảnh cuối cùng.");
   }
 
-  if (error) return <main className="client-error"><ImageOff size={36} /><h1>Không mở được album</h1><p>{error}</p></main>;
-  if (!album) return <div className="page-loader"><span className="spinner" /> Đang tải album…</div>;
+  if (error) return <main className="client-page client-error"><ImageOff size={36} /><h1>Không mở được album</h1><p>{error}</p></main>;
+  if (!album) return <div className="page-loader client-page-loader"><span className="spinner" /> Đang tải album…</div>;
   const zoomPhoto = zoom === null ? null : photos[zoom];
   const selectedReviewPhotos = reviewPhotos.filter((photo) => selected.has(photo.id));
   const reviewZoomPhoto = reviewZoom === null ? null : selectedReviewPhotos[reviewZoom];
