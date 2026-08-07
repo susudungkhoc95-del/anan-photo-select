@@ -334,6 +334,10 @@ body.admin-light-mode .settings-modal { background: rgba(247,251,255,.96); }
 .quick-links-settings { margin-top: 0; padding-top: 10px; }
 .quick-links-settings h3 { margin: 0; font-size: 16px; }
 .quick-links-settings p { margin: 3px 0 9px; font-size: 12px; }
+.google-settings { display: grid; gap: 10px; padding-top: 10px; }
+.google-check-result { padding: 10px 12px; border-radius: 12px; font-size: 13px; line-height: 1.45; }
+.google-check-result.ok { color: var(--ok); background: rgba(99, 228, 177, .1); border: 1px solid rgba(99, 228, 177, .28); }
+.google-check-result.error { color: #ffb1b8; background: rgba(255, 59, 79, .1); border: 1px solid rgba(255, 59, 79, .28); }
 .quick-link-edit { display: grid; grid-template-columns: minmax(90px, .7fr) minmax(120px, 1.3fr) auto; gap: 7px; margin: 7px 0; }
 .quick-link-edit .button { padding: 7px 9px; }
 

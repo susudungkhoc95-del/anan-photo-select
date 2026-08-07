@@ -56,6 +56,19 @@ export function getGoogleApi() {
   return clients;
 }
 
+export async function checkGoogleConnection() {
+  const { drive, sheets, spreadsheetId } = getGoogleApi();
+  const [about, spreadsheet] = await Promise.all([
+    drive.about.get({ fields: "user(displayName,emailAddress)" }),
+    sheets.spreadsheets.get({ spreadsheetId, fields: "spreadsheetId,properties(title)" })
+  ]);
+  return {
+    ok: true,
+    account: about.data.user?.emailAddress || about.data.user?.displayName || "Tài khoản Google",
+    spreadsheetTitle: spreadsheet.data.properties?.title || spreadsheetId
+  };
+}
+
 export function quoteSheet(name: string) {
   return `'${name.replace(/'/g, "''")}'`;
 }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Archive, ChevronDown, Copy, ExternalLink, FolderSync, Images, KeyRound,
+  Archive, CheckCircle2, ChevronDown, Copy, ExternalLink, FolderSync, Images, KeyRound,
   Link as LinkIcon, LogOut, Search, Settings, Sheet, X,
   Sparkles, Trash2
 } from "lucide-react";
@@ -374,7 +374,8 @@ function SettingsModal({ templates: initialTemplates, quickLinks: initialQuickLi
   const [defaultTemplateId, setDefaultTemplateId] = useState(initialDefaultTemplateId || initialTemplates[0]?.id || "default");
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>(initialQuickLinks);
   const [busy, setBusy] = useState(false);
-  const [openSection, setOpenSection] = useState<"templates" | "quick-links" | null>(null);
+  const [openSection, setOpenSection] = useState<"templates" | "quick-links" | "google" | null>(null);
+  const [googleCheck, setGoogleCheck] = useState<{ state: "idle" | "checking" | "ok" | "error"; message: string }>({ state: "idle", message: "" });
   const selected = templates.find((template) => template.id === selectedId) || templates[0];
   function updateSelected(patch: Partial<GuideTemplate>) {
     setTemplates((current) => current.map((template) => template.id === selected.id ? { ...template, ...patch } : template));
@@ -397,6 +398,15 @@ function SettingsModal({ templates: initialTemplates, quickLinks: initialQuickLi
     setBusy(true);
     try { const settings = await rpc<StudioSettings>("saveSettings", { guideTemplates: templates, defaultGuideTemplateId: defaultTemplateId, quickLinks }); onSaved(settings); onClose(); }
     finally { setBusy(false); }
+  }
+  async function checkGoogle() {
+    setGoogleCheck({ state: "checking", message: "Đang kiểm tra Drive và Google Sheets…" });
+    try {
+      const result = await rpc<{ account: string; spreadsheetTitle: string }>("checkGoogleConnection");
+      setGoogleCheck({ state: "ok", message: `Đã kết nối bằng ${result.account}. File dữ liệu: ${result.spreadsheetTitle}.` });
+    } catch (error) {
+      setGoogleCheck({ state: "error", message: (error as Error).message });
+    }
   }
   return <div className="modal-backdrop" onMouseDown={onClose}><div className="modal-card settings-modal" onMouseDown={(e) => e.stopPropagation()}>
     <p className="eyebrow settings-title">CÀI ĐẶT</p>
@@ -425,6 +435,13 @@ function SettingsModal({ templates: initialTemplates, quickLinks: initialQuickLi
       {openSection === "quick-links" && <div className="settings-section-content quick-links-settings">
         {quickLinks.map((link) => <div className="quick-link-edit" key={link.id}><input value={link.label} onChange={(e) => updateQuickLink(link.id, { label: e.target.value })} aria-label="Tên nút" /><input value={link.url} onChange={(e) => updateQuickLink(link.id, { url: e.target.value })} placeholder="https://drive.google.com/..." aria-label="Link nút" /><button className="button ghost danger-text" type="button" onClick={() => setQuickLinks((current) => current.filter((item) => item.id !== link.id))}>Xoá</button></div>)}
         <button className="secondary compact" type="button" onClick={addQuickLink}>+ Thêm nút</button>
+      </div>}
+    </section>
+    <section className={`settings-section ${openSection === "google" ? "open" : ""}`}>
+      <button type="button" className="settings-section-trigger" onClick={() => setOpenSection((section) => section === "google" ? null : "google")} aria-expanded={openSection === "google"}><span><b>Kết nối Google</b><small>Kiểm tra quyền truy cập Drive và file dữ liệu.</small></span><ChevronDown size={19} /></button>
+      {openSection === "google" && <div className="settings-section-content google-settings">
+        <button type="button" className="secondary compact" onClick={checkGoogle} disabled={googleCheck.state === "checking"}><CheckCircle2 size={16} />{googleCheck.state === "checking" ? "Đang kiểm tra…" : "Kiểm tra kết nối Google"}</button>
+        {googleCheck.message && <div className={`google-check-result ${googleCheck.state}`} role="status">{googleCheck.message}</div>}
       </div>}
     </section>
     <div className="modal-actions"><button className="button ghost" onClick={onClose}>Huỷ</button><button onClick={save} disabled={busy}>Lưu thay đổi</button></div>

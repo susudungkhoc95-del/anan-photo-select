@@ -3,6 +3,7 @@ import { isAdmin } from "@/lib/auth";
 import {
   AlbumNotFoundError,
   archiveAlbum,
+  checkGoogleConnection,
   createAlbum,
   createRawSelectionFolder,
   deleteAlbum,
@@ -43,6 +44,7 @@ export const maxDuration = 300;
 
 const adminActions = new Set([
   "createAlbum",
+  "checkGoogleConnection",
   "listAlbums",
   "deleteAlbum",
   "archiveAlbum",
@@ -81,6 +83,7 @@ export async function POST(request: Request) {
     let data: unknown;
     switch (action) {
       case "createAlbum": data = await createAlbum(payload); break;
+      case "checkGoogleConnection": data = await checkGoogleConnection(); break;
       case "getAlbum": data = await getAlbum(String(payload.albumId || "")); break;
       case "listAlbums": data = await listAlbums(payload); break;
       case "getPhotoPage": data = await photoPage(payload); break;
