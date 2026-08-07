@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "crypto";
 import type { Album, Draft, GuideTemplate, Photo, QuickLink, Selection, StudioSettings } from "@/lib/types";
 import { DEFAULT_GUIDE, DEFAULT_STUDIO_NAME } from "@/lib/types";
 import { sendSelectionEmail } from "@/lib/email";
+import { sendSelectionTelegram } from "@/lib/telegram";
 import { readAppRecords, removeAppRecord, saveAppRecord } from "@/lib/supabase";
 
 const ALBUMS = "_albums";
@@ -660,6 +661,22 @@ export async function saveSelection(payload: Record<string, unknown>) {
     });
   } catch (error) {
     console.error("Không gửi được email thông báo:", error);
+  }
+  try {
+    await sendSelectionTelegram({
+      album,
+      selectedCount: selection.selectedIds.length,
+      largePrintCount: selection.largePrintIds.length,
+      tablePrintCount: selection.tablePrintIds.length,
+      photoNoteCount: Object.keys(selection.photoNotes).length,
+      albumNote: selection.albumNote,
+      submittedAt: selection.submittedAt,
+      isUpdate: Boolean(previousSelection),
+      spreadsheetUrl,
+      clientUrl: albumUrl(album)
+    });
+  } catch (error) {
+    console.error("Không gửi được Telegram thông báo:", error);
   }
   return {
     ok: true,

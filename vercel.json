@@ -2,5 +2,6 @@
   "framework": "nextjs",
   "functions": {
     "app/api/rpc/route.ts": { "maxDuration": 300 }
-  }
+  },
+  "crons": [{ "path": "/api/cron/workflow-age", "schedule": "0 1 * * *" }]
 }

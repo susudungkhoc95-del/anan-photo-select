@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "crypto";
 import { archiveAlbum, getWorkflowWorkspaceId, listAlbums } from "@/lib/google";
 import type { Album, Selection, WorkflowActivity, WorkflowBoard, WorkflowCard, WorkflowCardLabel, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
 import { readAppRecords, removeAppRecord, saveAppRecord } from "@/lib/supabase";
+import { workflowAge } from "@/lib/workflow-utils";
+import { sendWorkflowAgeTelegram } from "@/lib/telegram";
 
 const TABS = {
   lists: "WorkflowLists",
@@ -75,7 +77,7 @@ function listFrom(values: string[]): WorkflowList {
   return { id: values[0], workspaceId: values[1], name: values[2], position: position(values[3]), systemKey: values[4] as WorkflowList["systemKey"], createdAt: values[5], updatedAt: values[6] };
 }
 function cardFrom(values: string[]): WorkflowCard {
-  return { id: values[0], workspaceId: values[1], listId: values[2], title: values[3], note: values[4], weddingDate: values[15] || "", position: position(values[5]), source: values[6] === "dp_select" ? "dp_select" : "manual", dpSelectAlbumId: values[7], dpSelectSubmissionId: values[8], selectionSubmittedAt: values[9], createdAt: values[10], updatedAt: values[11], completedAt: values[12], createdBy: values[13], dpSummary: values[14] || "" };
+  return { id: values[0], workspaceId: values[1], listId: values[2], title: values[3], note: values[4], weddingDate: values[15] || "", position: position(values[5]), source: values[6] === "dp_select" ? "dp_select" : "manual", dpSelectAlbumId: values[7], dpSelectSubmissionId: values[8], selectionSubmittedAt: values[9], createdAt: values[10], updatedAt: values[11], completedAt: values[12], createdBy: values[13], dpSummary: values[14] || "", dpAlbumNote: values[16] || "", dpPhotoNoteCount: position(values[17]) };
 }
 function linkFrom(values: string[]): WorkflowLink {
   return { id: values[0], workspaceId: values[1], cardId: values[2], label: values[3], url: values[4], position: position(values[5]), createdAt: values[6], updatedAt: values[7] };
@@ -91,7 +93,7 @@ function cardLabelFrom(values: string[]): WorkflowCardLabel {
 }
 
 function listValues(record: WorkflowList) { return [record.id, record.workspaceId, record.name, String(record.position), record.systemKey, record.createdAt, record.updatedAt]; }
-function cardValues(record: WorkflowCard) { return [record.id, record.workspaceId, record.listId, record.title, record.note, String(record.position), record.source, record.dpSelectAlbumId, record.dpSelectSubmissionId, record.selectionSubmittedAt, record.createdAt, record.updatedAt, record.completedAt, record.createdBy, record.dpSummary, record.weddingDate]; }
+function cardValues(record: WorkflowCard) { return [record.id, record.workspaceId, record.listId, record.title, record.note, String(record.position), record.source, record.dpSelectAlbumId, record.dpSelectSubmissionId, record.selectionSubmittedAt, record.createdAt, record.updatedAt, record.completedAt, record.createdBy, record.dpSummary, record.weddingDate, record.dpAlbumNote, String(record.dpPhotoNoteCount)]; }
 function linkValues(record: WorkflowLink) { return [record.id, record.workspaceId, record.cardId, record.label, record.url, String(record.position), record.createdAt, record.updatedAt]; }
 function activityValues(record: WorkflowActivity) { return [record.id, record.workspaceId, record.cardId, record.activityType, record.description, record.oldValue, record.newValue, record.actorId, record.actorName, record.source, record.createdAt]; }
 function labelValues(record: WorkflowLabel) { return [record.id, record.workspaceId, record.name, record.color, String(record.position), record.createdAt, record.updatedAt]; }
@@ -207,7 +209,7 @@ async function syncWaitingSelectionCards(workspaceId: string, board: WorkflowBoa
     const card: WorkflowCard = {
       id: cardId, workspaceId, listId: waiting.id, title: text(album.title, 200) || "Album DP Select", note: "", weddingDate: "", position: nextPosition++,
       source: "dp_select", dpSelectAlbumId: album.id, dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: cardCreatedAt, updatedAt: timestamp,
-      completedAt: "", createdBy: "dp_select", dpSummary: `Chờ khách gửi ảnh chọn · ${album.photoCount} ảnh trong album`
+      completedAt: "", createdBy: "dp_select", dpSummary: `Chờ khách gửi ảnh chọn · ${album.photoCount} ảnh trong album`, dpAlbumNote: "", dpPhotoNoteCount: 0
     };
     await writeRow(TABS.cards, card.id, workspaceId, cardValues(card));
     const link: WorkflowLink = { id: randomUUID(), workspaceId, cardId: card.id, label: "Link chọn ảnh", url: album.clientUrl, position: 0, createdAt: timestamp, updatedAt: timestamp };
@@ -364,7 +366,7 @@ export async function createWorkflowCard(payload: Record<string, unknown>) {
     const timestamp = now();
     const requestedId = text(payload.cardId, 100);
     const cardId = /^[A-Za-z0-9_-]{1,100}$/.test(requestedId) ? requestedId : randomUUID();
-    const card: WorkflowCard = { id: cardId, workspaceId, listId: list.id, title: requiredText(payload.title, "Tên thẻ"), note: text(payload.note, 5000), weddingDate: normalizeWeddingDate(payload.weddingDate), position: Math.max(-1, ...board.cards.filter((item) => item.listId === list.id).map((item) => item.position)) + 1, source: "manual", dpSelectAlbumId: "", dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: timestamp, updatedAt: timestamp, completedAt: list.systemKey === "DONE" ? timestamp : "", createdBy: "admin", dpSummary: "" };
+    const card: WorkflowCard = { id: cardId, workspaceId, listId: list.id, title: requiredText(payload.title, "Tên thẻ"), note: text(payload.note, 5000), weddingDate: normalizeWeddingDate(payload.weddingDate), position: Math.max(-1, ...board.cards.filter((item) => item.listId === list.id).map((item) => item.position)) + 1, source: "manual", dpSelectAlbumId: "", dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: timestamp, updatedAt: timestamp, completedAt: list.systemKey === "DONE" ? timestamp : "", createdBy: "admin", dpSummary: "", dpAlbumNote: "", dpPhotoNoteCount: 0 };
     await writeRow(TABS.cards, card.id, workspaceId, cardValues(card));
     await syncNoteLabel(workspaceId, board, card);
     await appendActivity(workspaceId, card.id, "CARD_CREATED", "Đã tạo thẻ thủ công.", "manual");
@@ -567,6 +569,8 @@ export async function createOrUpdateCardFromSelection(album: Album, selection: S
       // Re-submitting choices updates the result sheet but must not reset “Ngày N”.
       existing.selectionSubmittedAt = existing.selectionSubmittedAt || selection.submittedAt;
       existing.dpSummary = dpSelectionSummary(selection);
+      existing.dpAlbumNote = selection.albumNote;
+      existing.dpPhotoNoteCount = Object.values(selection.photoNotes).filter(Boolean).length;
       if (wasWaiting) {
         existing.listId = todo.id;
         existing.position = Math.max(-1, ...board.cards.filter((card) => card.listId === todo.id && card.id !== existing.id).map((card) => card.position)) + 1;
@@ -586,7 +590,7 @@ export async function createOrUpdateCardFromSelection(album: Album, selection: S
     }
     const timestamp = now();
     const cardId = `dp_${createHash("sha256").update(`${workspaceId}:${album.id}`).digest("hex").slice(0, 24)}`;
-    const card: WorkflowCard = { id: cardId, workspaceId, listId: todo.id, title: text(album.title, 200) || "Album DP Select", note: "", weddingDate: "", position: Math.max(-1, ...board.cards.filter((item) => item.listId === todo.id).map((item) => item.position)) + 1, source: "dp_select", dpSelectAlbumId: album.id, dpSelectSubmissionId: selection.sessionId, selectionSubmittedAt: selection.submittedAt, createdAt: album.createdAt || timestamp, updatedAt: timestamp, completedAt: "", createdBy: "dp_select", dpSummary: dpSelectionSummary(selection) };
+    const card: WorkflowCard = { id: cardId, workspaceId, listId: todo.id, title: text(album.title, 200) || "Album DP Select", note: "", weddingDate: "", position: Math.max(-1, ...board.cards.filter((item) => item.listId === todo.id).map((item) => item.position)) + 1, source: "dp_select", dpSelectAlbumId: album.id, dpSelectSubmissionId: selection.sessionId, selectionSubmittedAt: selection.submittedAt, createdAt: album.createdAt || timestamp, updatedAt: timestamp, completedAt: "", createdBy: "dp_select", dpSummary: dpSelectionSummary(selection), dpAlbumNote: selection.albumNote, dpPhotoNoteCount: Object.values(selection.photoNotes).filter(Boolean).length };
     await writeRow(TABS.cards, card.id, workspaceId, cardValues(card));
     try {
       const link: WorkflowLink = { id: randomUUID(), workspaceId, cardId: card.id, label: "Sheet ảnh chọn", url: spreadsheetUrl, position: 0, createdAt: timestamp, updatedAt: timestamp };
@@ -601,5 +605,27 @@ export async function createOrUpdateCardFromSelection(album: Album, selection: S
       await clearRecord(TABS.cards, card.id, workspaceId);
       throw error;
     }
+  });
+}
+
+export async function notifyWorkflowAgeSeven() {
+  const workspaceId = getWorkflowWorkspaceId();
+  return serialise(workspaceId, async () => {
+    await ensureDefaultLists(workspaceId);
+    const board = await readBoard(workspaceId);
+    let sent = 0;
+    for (const card of board.cards) {
+      const list = board.lists.find((item) => item.id === card.listId);
+      if (!list || list.systemKey === "WAITING_SELECTION" || list.systemKey === "DONE") continue;
+      const age = workflowAge(card, list);
+      if (age.days < 7) continue;
+      if (board.activities.some((item) => item.cardId === card.id && item.activityType === "WORKFLOW_AGE_7_TELEGRAM")) continue;
+      const sheetUrl = board.links.find((link) => link.cardId === card.id && link.label === "Sheet ảnh chọn")?.url;
+      const result = await sendWorkflowAgeTelegram({ title: card.title, days: age.days, listName: list.name, spreadsheetUrl: sheetUrl });
+      if (!result.sent) continue;
+      await appendActivity(workspaceId, card.id, "WORKFLOW_AGE_7_TELEGRAM", `Đã gửi Telegram nhắc thẻ đến Ngày 7 (hiện Ngày ${age.days}).`, "manual");
+      sent += 1;
+    }
+    return { checked: board.cards.length, sent };
   });
 }

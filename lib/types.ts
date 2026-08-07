@@ -106,6 +106,8 @@ export type WorkflowCard = {
   completedAt: string;
   createdBy: string;
   dpSummary: string;
+  dpAlbumNote: string;
+  dpPhotoNoteCount: number;
 };
 
 export type WorkflowLabel = {

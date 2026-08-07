@@ -5,7 +5,7 @@ import Link from "next/link";
 import { DndContext, DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronDown, Copy, ExternalLink, MoreVertical, Plus, Search, Settings, Trash2, X } from "lucide-react";
+import { ChevronDown, Copy, ExternalLink, History, MoreVertical, Plus, Search, Settings, Trash2, X } from "lucide-react";
 import { rpc } from "@/components/App";
 import type { WorkflowBoard, WorkflowCard, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
 import { normalizeWorkflowText, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
@@ -171,7 +171,7 @@ export default function WorkflowView() {
       id: cardId, workspaceId: board?.workspaceId || "", listId: list.id, title, note: "", weddingDate: "",
       position: Math.max(-1, ...(board?.cards.filter((card) => card.listId === list.id).map((card) => card.position) || []) ) + 1,
       source: "manual", dpSelectAlbumId: "", dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: timestamp,
-      updatedAt: timestamp, completedAt: list.systemKey === "DONE" ? timestamp : "", createdBy: "admin", dpSummary: ""
+      updatedAt: timestamp, completedAt: list.systemKey === "DONE" ? timestamp : "", createdBy: "admin", dpSummary: "", dpAlbumNote: "", dpPhotoNoteCount: 0
     };
     pendingCardsRef.current.set(cardId, optimisticCard);
     setPendingCardIds((current) => new Set(current).add(cardId));
@@ -380,6 +380,7 @@ function CardModal({ board, cardId, onClose, onChanged, onLabelsChanged, onDelet
   const [cardError, setCardError] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+  const [activityOpen, setActivityOpen] = useState(false);
   const links = board.links.filter((item) => item.cardId === card.id);
   // Keep the compact history panel, but let its scrollbar expose every activity.
   const activities = board.activities.filter((item) => item.cardId === card.id);
@@ -403,16 +404,25 @@ function CardModal({ board, cardId, onClose, onChanged, onLabelsChanged, onDelet
     setSelectedLabelIds(nextLabelIds);
     void onLabelsChanged(card.id, nextLabelIds).catch((error) => { const nextError = error as Error; setCardError(nextError.message); onError(nextError); void onChanged(); });
   }
-  return <div className="modal-backdrop workflow-modal-backdrop" onMouseDown={onClose}><section className="workflow-modal" onMouseDown={(event) => event.stopPropagation()}>
-    <header><div><h2>Chi tiết thẻ</h2><p className="eyebrow">{card.source === "dp_select" ? "TỪ DP SELECT" : "THẺ THỦ CÔNG"}</p></div><button className="icon-button" onClick={onClose} aria-label="Đóng"><X /></button></header>
-    <label>Tên thẻ<input value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} /></label>
-    <div className="workflow-date-field"><label>Ngày cưới<input type="date" value={weddingDate} onChange={(event) => setWeddingDate(event.target.value)} /></label><button type="button" className="secondary compact" disabled={!weddingDate || busy} onClick={() => setWeddingDate("")}>Xóa ngày</button></div>
-    {cardError && <div className="workflow-message notice">{cardError}</div>}
-    <div className="workflow-time"><span className="workflow-created">Thẻ tạo: <b>{formatTime(card.createdAt)}</b></span><span className="workflow-submitted">Khách gửi ảnh: <b>{formatTime(card.selectionSubmittedAt)}</b></span><span className="workflow-updated">Cập nhật: <b>{formatTime(card.updatedAt)}</b></span>{card.completedAt && <span className="workflow-completed">Hoàn thành: <b>{formatTime(card.completedAt)}</b></span>}<span className={`workflow-status ${age.level}`}>Trạng thái: <b>{age.label}</b></span></div>
-    <section className="workflow-links"><h3>Đường link</h3>{links.map((link) => { const isSheetLink = link.label.toLowerCase().includes("sheet"); return <div key={link.id} className="workflow-link"><span className="workflow-link-main"><a href={link.url} target="_blank" rel="noopener noreferrer">{link.label}<ExternalLink size={13} /></a>{isSheetLink && card.dpSummary && <small className="workflow-link-summary">{card.dpSummary}</small>}</span><span className="workflow-link-actions">{isSheetLink && <button type="button" className="text-button" onClick={() => void copyLink(link)}><Copy size={13} />{copiedLinkId === link.id ? "Đã copy" : "Copy"}</button>}<button type="button" className="text-button" onClick={() => void editLink(link)}>Sửa</button></span></div>; })}</section>
-    <label>Ghi chú<textarea rows={5} value={note} onChange={(event) => setNote(event.target.value)} /></label>
-    <section className="workflow-card-labels"><h3>Nhãn</h3>{board.labels.length ? <div className="workflow-label-picker">{board.labels.map((label) => <label key={label.id} className={selectedLabelIds.includes(label.id) ? "selected" : ""} style={{ "--label-color": label.color } as React.CSSProperties}><input type="checkbox" checked={selectedLabelIds.includes(label.id)} disabled={busy} onChange={() => toggleLabel(label.id)} />{label.name}</label>)}</div> : <p className="muted">Chưa có nhãn. Bấm nút Nhãn ở đầu trang để tạo nhãn.</p>}</section>
-    <section className="workflow-activity"><h3>Lịch sử hoạt động</h3>{activities.length ? activities.map((item) => <p key={item.id}><time>{formatTime(item.createdAt)}</time>{item.description}</p>) : <p className="muted">Chưa có hoạt động.</p>}</section>
+  return <div className="modal-backdrop workflow-modal-backdrop" onMouseDown={onClose}><section className={`workflow-modal ${activityOpen ? "activity-open" : ""}`} onMouseDown={(event) => event.stopPropagation()}>
+    <header><div><h2>Chi tiết thẻ</h2><p className="eyebrow">{card.source === "dp_select" ? "TỪ DP SELECT" : "THẺ THỦ CÔNG"}</p></div><div className="workflow-modal-header-actions"><button type="button" className={`secondary compact workflow-history-toggle ${activityOpen ? "active" : ""}`} onClick={() => setActivityOpen((open) => !open)}><History size={16} />{activityOpen ? "Ẩn lịch sử" : "Lịch sử"}</button><button className="icon-button" onClick={onClose} aria-label="Đóng"><X /></button></div></header>
+    <div className="workflow-modal-columns">
+      <div className="workflow-modal-column workflow-overview-column">
+        <label>Tên thẻ<input value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} /></label>
+        <div className="workflow-date-field"><label>Ngày cưới<input type="date" value={weddingDate} onChange={(event) => setWeddingDate(event.target.value)} /></label><button type="button" className="secondary compact" disabled={!weddingDate || busy} onClick={() => setWeddingDate("")}>Xóa ngày</button></div>
+        {cardError && <div className="workflow-message notice">{cardError}</div>}
+        <div className="workflow-time"><span className="workflow-created">Thẻ tạo: <b>{formatTime(card.createdAt)}</b></span><span className="workflow-submitted">Khách gửi ảnh: <b>{formatTime(card.selectionSubmittedAt)}</b></span><span className="workflow-updated">Cập nhật: <b>{formatTime(card.updatedAt)}</b></span>{card.completedAt && <span className="workflow-completed">Hoàn thành: <b>{formatTime(card.completedAt)}</b></span>}<span className={`workflow-status ${age.level}`}>Trạng thái: <b>{age.label}</b></span></div>
+        {card.dpSummary && <section className="workflow-dp-info"><h3>Tóm tắt Sheet ảnh chọn</h3><p>{card.dpSummary}</p></section>}
+        {card.dpPhotoNoteCount > 0 && <p className="workflow-dp-photo-note">Có ghi chú riêng cho {card.dpPhotoNoteCount} ảnh · Xem chi tiết trong Sheet ảnh chọn.</p>}
+        {card.dpAlbumNote && <section className="workflow-dp-note"><h3>Lưu ý chung từ khách</h3><p>{card.dpAlbumNote}</p></section>}
+      </div>
+      <div className="workflow-modal-column workflow-content-column">
+        <section className="workflow-links"><h3>Đường link</h3>{links.map((link) => { const isSheetLink = link.label.toLowerCase().includes("sheet"); return <div key={link.id} className="workflow-link"><span className="workflow-link-main"><a href={link.url} target="_blank" rel="noopener noreferrer">{link.label}<ExternalLink size={13} /></a></span><span className="workflow-link-actions">{isSheetLink && <button type="button" className="text-button" onClick={() => void copyLink(link)}><Copy size={13} />{copiedLinkId === link.id ? "Đã copy" : "Copy"}</button>}<button type="button" className="text-button" onClick={() => void editLink(link)}>Sửa</button></span></div>; })}</section>
+        <label className="workflow-note-field">Ghi chú<textarea rows={5} value={note} onChange={(event) => setNote(event.target.value)} /></label>
+        <section className="workflow-card-labels"><h3>Nhãn</h3>{board.labels.length ? <div className="workflow-label-picker">{board.labels.map((label) => <label key={label.id} className={selectedLabelIds.includes(label.id) ? "selected" : ""} style={{ "--label-color": label.color } as React.CSSProperties}><input type="checkbox" checked={selectedLabelIds.includes(label.id)} disabled={busy} onChange={() => toggleLabel(label.id)} />{label.name}</label>)}</div> : <p className="muted">Chưa có nhãn. Bấm nút Nhãn ở đầu trang để tạo nhãn.</p>}</section>
+      </div>
+      {activityOpen && <div className="workflow-modal-column workflow-history-column"><section className="workflow-activity"><h3>Lịch sử hoạt động</h3>{activities.length ? activities.map((item) => <p key={item.id}><time>{formatTime(item.createdAt)}</time>{item.description}</p>) : <p className="muted">Chưa có hoạt động.</p>}</section></div>}
+    </div>
     {confirmingDelete && <div className="workflow-delete-confirm"><span>Xóa thẻ này cùng toàn bộ link và lịch sử?</span><button type="button" className="secondary compact" disabled={busy} onClick={() => setConfirmingDelete(false)}>Hủy</button><button type="button" className="danger compact" disabled={busy} onClick={() => void removeCard()}>Xác nhận xóa</button></div>}
     <footer><button type="button" className="danger" disabled={busy} onClick={() => setConfirmingDelete(true)}><Trash2 size={16} /> Xóa thẻ</button><span /><button type="button" className="secondary" disabled={busy} onClick={onClose}>Đóng</button><button type="button" disabled={busy} onClick={() => void save()}>Lưu thay đổi</button></footer>
   </section></div>;
