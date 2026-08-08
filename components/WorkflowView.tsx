@@ -5,7 +5,7 @@ import Link from "next/link";
 import { DndContext, DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronDown, Copy, ExternalLink, History, MoreVertical, Plus, Search, Settings, Trash2, X } from "lucide-react";
+import { ChevronDown, Copy, ExternalLink, FolderSync, History, MoreVertical, Plus, Search, Settings, Trash2, X } from "lucide-react";
 import { rpc } from "@/components/App";
 import type { WorkflowBoard, WorkflowCard, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
 import { normalizeWorkflowText, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
@@ -381,6 +381,7 @@ function CardModal({ board, cardId, onClose, onChanged, onLabelsChanged, onDelet
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [rawBusy, setRawBusy] = useState(false);
   const links = board.links.filter((item) => item.cardId === card.id);
   // Keep the compact history panel, but let its scrollbar expose every activity.
   const activities = board.activities.filter((item) => item.cardId === card.id);
@@ -392,6 +393,26 @@ function CardModal({ board, cardId, onClose, onChanged, onLabelsChanged, onDelet
     await navigator.clipboard.writeText(link.url);
     setCopiedLinkId(link.id);
     window.setTimeout(() => setCopiedLinkId((current) => current === link.id ? null : current), 1600);
+  }
+  async function createRawSelectionFolder() {
+    if (!card.dpSelectAlbumId) return;
+    setRawBusy(true);
+    setCardError("");
+    try {
+      const result = await rpc<{ url: string; copied?: number }>("createRawSelectionFolder", { albumId: card.dpSelectAlbumId });
+      const current = links.find((link) => link.label === "Link RAW chọn");
+      if (current) {
+        await rpc("updateWorkflowLink", { linkId: current.id, label: current.label, url: result.url });
+      } else {
+        await rpc("createWorkflowLink", { cardId: card.id, label: "Link RAW chọn", url: result.url });
+      }
+      await onChanged();
+      setCardError(`Đã tạo thư mục RAW chọn${result.copied === undefined ? "" : ` · ${result.copied} file mới`}.`);
+    } catch (error) {
+      const nextError = error as Error;
+      setCardError(nextError.message);
+      onError(nextError);
+    } finally { setRawBusy(false); }
   }
   async function removeCard() {
     setBusy(true);
@@ -417,7 +438,7 @@ function CardModal({ board, cardId, onClose, onChanged, onLabelsChanged, onDelet
         {card.dpAlbumNote && <section className="workflow-dp-note"><h3>Lưu ý chung từ khách</h3><p>{card.dpAlbumNote}</p></section>}
       </div>
       <div className="workflow-modal-column workflow-content-column">
-        <section className="workflow-links"><h3>Đường link</h3>{links.map((link) => { const isSheetLink = link.label.toLowerCase().includes("sheet"); return <div key={link.id} className="workflow-link"><span className="workflow-link-main"><a href={link.url} target="_blank" rel="noopener noreferrer">{link.label}<ExternalLink size={13} /></a></span><span className="workflow-link-actions">{isSheetLink && <button type="button" className="text-button" onClick={() => void copyLink(link)}><Copy size={13} />{copiedLinkId === link.id ? "Đã copy" : "Copy"}</button>}<button type="button" className="text-button" onClick={() => void editLink(link)}>Sửa</button></span></div>; })}</section>
+        <section className="workflow-links"><h3>Đường link</h3>{links.map((link) => { const isSheetLink = link.label.toLowerCase().includes("sheet"); return <div key={link.id} className="workflow-link"><span className="workflow-link-main"><a href={link.url} target="_blank" rel="noopener noreferrer">{link.label}<ExternalLink size={13} /></a></span><span className="workflow-link-actions">{isSheetLink && <button type="button" className="text-button" onClick={() => void copyLink(link)}><Copy size={13} />{copiedLinkId === link.id ? "Đã copy" : "Copy"}</button>}<button type="button" className="text-button" onClick={() => void editLink(link)}>Sửa</button></span></div>; })}{card.source === "dp_select" && !links.some((link) => link.label === "Link RAW chọn") && <button type="button" className="secondary compact workflow-raw-action" disabled={busy || rawBusy} onClick={() => void createRawSelectionFolder()}>{rawBusy ? <><span className="spinner small" /> Đang nhặt RAW…</> : <><FolderSync size={15} /> Tạo thư mục RAW chọn</>}</button>}</section>
         <label className="workflow-note-field">Ghi chú<textarea rows={5} value={note} onChange={(event) => setNote(event.target.value)} /></label>
         <section className="workflow-card-labels"><h3>Nhãn</h3>{board.labels.length ? <div className="workflow-label-picker">{board.labels.map((label) => <label key={label.id} className={selectedLabelIds.includes(label.id) ? "selected" : ""} style={{ "--label-color": label.color } as React.CSSProperties}><input type="checkbox" checked={selectedLabelIds.includes(label.id)} disabled={busy} onChange={() => toggleLabel(label.id)} />{label.name}</label>)}</div> : <p className="muted">Chưa có nhãn. Bấm nút Nhãn ở đầu trang để tạo nhãn.</p>}</section>
       </div>
