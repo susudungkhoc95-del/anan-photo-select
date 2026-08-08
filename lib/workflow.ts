@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "crypto";
-import { archiveAlbum, getWorkflowWorkspaceId, listAlbums } from "@/lib/google";
+import { albumSpreadsheetUrl, archiveAlbum, getWorkflowWorkspaceId, listAlbums } from "@/lib/google";
 import type { Album, Selection, WorkflowActivity, WorkflowBoard, WorkflowCard, WorkflowCardLabel, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
 import { readAppRecords, removeAppRecord, saveAppRecord } from "@/lib/supabase";
 import { workflowAge } from "@/lib/workflow-utils";
@@ -231,7 +231,7 @@ async function syncResultSheetLinks(workspaceId: string, board: WorkflowBoard, a
   for (const card of board.cards.filter((item) => item.source === "dp_select" && item.dpSelectAlbumId)) {
     const album = albumsById.get(card.dpSelectAlbumId);
     if (!album?.spreadsheetId) continue;
-    const expectedUrl = `https://docs.google.com/spreadsheets/d/${album.spreadsheetId}/edit`;
+    const expectedUrl = albumSpreadsheetUrl(album);
     const sheetLink = board.links.find((link) => link.cardId === card.id && link.label === "Sheet ảnh chọn");
     if (sheetLink) {
       if (sheetLink.url === expectedUrl) continue;

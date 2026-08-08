@@ -147,6 +147,12 @@ function albumUrl(album: Pick<Album, "id" | "title">) {
   return `${appUrl()}/a/${readableTitle}--${encodeURIComponent(album.id)}`;
 }
 
+export function albumSpreadsheetUrl(album: Pick<Album, "spreadsheetId" | "resultSheetId">) {
+  if (!album.spreadsheetId) return "";
+  const base = `https://docs.google.com/spreadsheets/d/${album.spreadsheetId}/edit`;
+  return Number.isInteger(album.resultSheetId) ? `${base}?gid=${album.resultSheetId}#gid=${album.resultSheetId}` : base;
+}
+
 function photoSheetName(id: string) {
   return `photos_${id}`.slice(0, 100);
 }
@@ -262,9 +268,7 @@ export async function createAlbum(payload: Record<string, unknown>) {
   return {
     ...album,
     clientUrl: albumUrl(album),
-    spreadsheetUrl: album.spreadsheetId
-      ? `https://docs.google.com/spreadsheets/d/${album.spreadsheetId}/edit`
-      : ""
+    spreadsheetUrl: albumSpreadsheetUrl(album)
   };
 }
 
@@ -313,9 +317,7 @@ export async function listAlbums(payload: Record<string, unknown>) {
   const items = albums.slice(offset, offset + limit).map((a) => ({
     ...a,
     clientUrl: albumUrl(a),
-    spreadsheetUrl: a.spreadsheetId
-      ? `https://docs.google.com/spreadsheets/d/${a.spreadsheetId}/edit`
-      : ""
+    spreadsheetUrl: albumSpreadsheetUrl(a)
   }));
   return { items, offset, nextOffset: offset + items.length, total: albums.length, hasMore: offset + items.length < albums.length };
 }
@@ -642,7 +644,7 @@ export async function saveSelection(payload: Record<string, unknown>) {
   album.updatedAt = selection.submittedAt;
   await writeResultSheet(album, selection, normalized.photos);
   await upsertJson(ALBUMS, album.id, album);
-  const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${album.spreadsheetId}/edit`;
+  const spreadsheetUrl = albumSpreadsheetUrl(album);
   // Workflow is created only after the selection and its result spreadsheet are durable.
   // Dynamic import keeps the core Google module independent from the Workflow repository.
   const { createOrUpdateCardFromSelection } = await import("@/lib/workflow");
