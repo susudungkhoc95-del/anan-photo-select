@@ -224,10 +224,40 @@ async function syncWaitingSelectionCards(workspaceId: string, board: WorkflowBoa
   return changed ? readBoard(workspaceId) : board;
 }
 
+/** Repair legacy/stale Sheet links from the album's canonical spreadsheet ID. */
+async function syncResultSheetLinks(workspaceId: string, board: WorkflowBoard, albums: Array<Album & { clientUrl: string }>) {
+  const albumsById = new Map(albums.map((album) => [album.id, album]));
+  let changed = false;
+  for (const card of board.cards.filter((item) => item.source === "dp_select" && item.dpSelectAlbumId)) {
+    const album = albumsById.get(card.dpSelectAlbumId);
+    if (!album?.spreadsheetId) continue;
+    const expectedUrl = `https://docs.google.com/spreadsheets/d/${album.spreadsheetId}/edit`;
+    const sheetLink = board.links.find((link) => link.cardId === card.id && link.label === "Sheet ảnh chọn");
+    if (sheetLink) {
+      if (sheetLink.url === expectedUrl) continue;
+      sheetLink.url = expectedUrl;
+      sheetLink.updatedAt = now();
+      await writeRow(TABS.links, sheetLink.id, workspaceId, linkValues(sheetLink));
+    } else {
+      const timestamp = now();
+      const link: WorkflowLink = {
+        id: randomUUID(), workspaceId, cardId: card.id, label: "Sheet ảnh chọn", url: expectedUrl,
+        position: Math.max(-1, ...board.links.filter((item) => item.cardId === card.id).map((item) => item.position)) + 1,
+        createdAt: timestamp, updatedAt: timestamp
+      };
+      await writeRow(TABS.links, link.id, workspaceId, linkValues(link));
+    }
+    changed = true;
+  }
+  return changed;
+}
+
 async function boardForCurrentWorkspace() {
   const workspaceId = getWorkflowWorkspaceId();
   await ensureDefaultLists(workspaceId);
-  return syncWaitingSelectionCards(workspaceId, await readBoard(workspaceId));
+  const board = await syncWaitingSelectionCards(workspaceId, await readBoard(workspaceId));
+  const albums = await activeAlbums();
+  return await syncResultSheetLinks(workspaceId, board, albums) ? readBoard(workspaceId) : board;
 }
 
 function findList(board: WorkflowBoard, id: unknown) {
