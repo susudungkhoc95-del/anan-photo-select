@@ -123,11 +123,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     fileMenu.addItem(withTitle: "Đóng tab", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
     fileMenuItem.submenu = fileMenu
     mainMenu.addItem(fileMenuItem)
+
+    // Keep the standard macOS text-editing commands available to WKWebView.
+    // Without an Edit menu, Cmd+C/V can be swallowed by the wrapper instead
+    // of being dispatched to the focused input/textarea.
+    let editMenuItem = NSMenuItem()
+    let editMenu = NSMenu(title: "Sửa")
+    editMenu.addItem(NSMenuItem(title: "Hoàn tác", action: Selector(("undo:")), keyEquivalent: "z"))
+    editMenu.addItem(NSMenuItem(title: "Làm lại", action: Selector(("redo:")), keyEquivalent: "Z"))
+    editMenu.addItem(.separator())
+    editMenu.addItem(NSMenuItem(title: "Cắt", action: Selector(("cut:")), keyEquivalent: "x"))
+    editMenu.addItem(NSMenuItem(title: "Sao chép", action: Selector(("copy:")), keyEquivalent: "c"))
+    editMenu.addItem(NSMenuItem(title: "Dán", action: Selector(("paste:")), keyEquivalent: "v"))
+    editMenu.addItem(NSMenuItem(title: "Chọn tất cả", action: Selector(("selectAll:")), keyEquivalent: "a"))
+    editMenuItem.submenu = editMenu
+    mainMenu.addItem(editMenuItem)
     NSApp.mainMenu = mainMenu
   }
 
   func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
     guard let url = navigationAction.request.url else { return decisionHandler(.cancel) }
+    // Links opened with target="_blank" (including the admin "Mở" button)
+    // belong in the user's default browser, not in another app tab.
+    if navigationAction.targetFrame == nil {
+      NSWorkspace.shared.open(url)
+      decisionHandler(.cancel)
+      return
+    }
     let host = url.host ?? ""
     if host == "ananstudio.vercel.app" || host.hasSuffix(".vercel.app") || url.scheme == "about" {
       decisionHandler(.allow)

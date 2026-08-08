@@ -589,7 +589,6 @@ async function writeResultSheet(album: Album, selection: Selection, photos: Phot
     const r = i + 1;
     if (row[2]) requests.push({ repeatCell: { range: { sheetId: album.resultSheetId, startRowIndex: r, endRowIndex: r + 1, startColumnIndex: 1, endColumnIndex: 3 }, cell: { userEnteredFormat: { backgroundColor: { red: .957, green: .718, blue: .718 } } }, fields: "userEnteredFormat.backgroundColor" } });
     if (row[3]) requests.push({ repeatCell: { range: { sheetId: album.resultSheetId, startRowIndex: r, endRowIndex: r + 1, startColumnIndex: 1, endColumnIndex: 4 }, cell: { userEnteredFormat: { backgroundColor: { red: 1, green: .878, blue: .541 } } }, fields: "userEnteredFormat.backgroundColor" } });
-    if (row[5]) requests.push({ repeatCell: { range: { sheetId: album.resultSheetId, startRowIndex: r, endRowIndex: r + 1, startColumnIndex: 1, endColumnIndex: 6 }, cell: { userEnteredFormat: { backgroundColor: { red: 0, green: 0, blue: 0 }, textFormat: { foregroundColor: { red: 1, green: 1, blue: 1 }, bold: true } } }, fields: "userEnteredFormat(backgroundColor,textFormat)" } });
   });
   await sheets.spreadsheets.batchUpdate({ spreadsheetId: resultSpreadsheetId, requestBody: { requests } });
   const dimensions = await sheets.spreadsheets.get({
