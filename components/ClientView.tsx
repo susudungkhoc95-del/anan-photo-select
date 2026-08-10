@@ -66,7 +66,6 @@ export default function ClientView({ albumId }: { albumId: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [sendAnimation, setSendAnimation] = useState<"idle" | "sending" | "success">("idle");
   const [toast, setToast] = useState("");
-  const [undoSelection, setUndoSelection] = useState<{ id: string; large: boolean; table: boolean } | null>(null);
   const selectedRef = useRef(selected);
   const draftReady = useRef(false);
   const sessionId = useRef("");
@@ -74,7 +73,6 @@ export default function ClientView({ albumId }: { albumId: string }) {
   const loadingRef = useRef(false);
   const photoRequestIdRef = useRef(0);
   const photoAbortRef = useRef<AbortController | null>(null);
-  const undoTimerRef = useRef<number | null>(null);
   const flightTimerRef = useRef<number | null>(null);
   const loadMoreSentinel = useRef<HTMLDivElement>(null);
   selectedRef.current = selected;
@@ -174,9 +172,6 @@ export default function ClientView({ albumId }: { albumId: string }) {
     setSelected((current) => {
       const next = new Set(current);
       if (next.has(id)) {
-        if (undoTimerRef.current !== null) window.clearTimeout(undoTimerRef.current);
-        setUndoSelection({ id, large: large.has(id), table: table.has(id) });
-        undoTimerRef.current = window.setTimeout(() => setUndoSelection(null), 5000);
         next.delete(id);
         setLarge((v) => { const n = new Set(v); n.delete(id); return n; });
         setTable((v) => { const n = new Set(v); n.delete(id); return n; });
@@ -198,18 +193,6 @@ export default function ClientView({ albumId }: { albumId: string }) {
     loadPage(false, value);
   }
 
-  function undoLastRemoval() {
-    if (!undoSelection || selected.has(undoSelection.id)) return;
-    setSelected((current) => new Set(current).add(undoSelection.id));
-    if (undoSelection.large && (!album?.largePrintLimit || large.size < album.largePrintLimit)) {
-      setLarge((current) => new Set(current).add(undoSelection.id));
-    }
-    if (undoSelection.table && (!album?.tablePrintLimit || table.size < album.tablePrintLimit)) {
-      setTable((current) => new Set(current).add(undoSelection.id));
-    }
-    setUndoSelection(null);
-    if (undoTimerRef.current !== null) window.clearTimeout(undoTimerRef.current);
-  }
   function setPrint(id: string, kind: "large" | "table", checked: boolean) {
     const setter = kind === "large" ? setLarge : setTable;
     const limit = kind === "large" ? album?.largePrintLimit || 0 : album?.tablePrintLimit || 0;
@@ -327,7 +310,6 @@ export default function ClientView({ albumId }: { albumId: string }) {
         onPrev={() => setReviewZoom((index) => index !== null && index > 0 ? index - 1 : (notify("Đây là ảnh đầu tiên."), index))}
         onNext={() => setReviewZoom((index) => index !== null && index < selectedReviewPhotos.length - 1 ? index + 1 : (notify("Đây là ảnh cuối cùng."), index))} />}
       {toast && <div className="toast">{toast}</div>}
-      {undoSelection && <div className="undo-toast"><span>Đã bỏ chọn ảnh</span><button className="secondary compact" onClick={undoLastRemoval}>Hoàn tác</button></div>}
       {sendAnimation !== "idle" && <SendFlightAnimation count={selected.size} state={sendAnimation} />}
     </main>
   );
