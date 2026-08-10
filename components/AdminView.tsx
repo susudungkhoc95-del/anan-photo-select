@@ -68,7 +68,6 @@ export default function AdminView() {
   const [hasMore, setHasMore] = useState(() => Boolean(albumsCache?.hasMore));
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [message, setMessage] = useState("");
   const [toast, setToast] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selectionSettingsOpen, setSelectionSettingsOpen] = useState(false);
@@ -95,7 +94,7 @@ export default function AdminView() {
       if (!append && !query && sort === "newest" && status === "active") writeSessionCache(ADMIN_ALBUMS_CACHE_KEY, data);
     } catch (error) {
       if ((error as { status?: number }).status === 401) setAuth("no");
-      else setMessage((error as Error).message);
+      else notify((error as Error).message);
     } finally { setLoading(false); }
   }, [albums.length, query, sort, status]);
 
@@ -130,7 +129,11 @@ export default function AdminView() {
     event.preventDefault(); setLoginError("");
     const response = await fetch("/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password }) });
     const json = await response.json().catch(() => ({}));
-    if (!response.ok) return setLoginError(json.error || "Không đăng nhập được.");
+    if (!response.ok) {
+      setLoginError(json.error || "Không đăng nhập được.");
+      window.setTimeout(() => setLoginError(""), 3500);
+      return;
+    }
     setAuth("yes");
   }
 
@@ -140,32 +143,30 @@ export default function AdminView() {
   }
 
   async function create(event: React.FormEvent) {
-    event.preventDefault(); setCreating(true); setMessage("");
+    event.preventDefault(); setCreating(true); setToast("");
     try {
       const album = await rpc<ListedAlbum>("createAlbum", form);
-      setMessage(`Đã tạo album ${album.photoCount} ảnh. Link khách: ${album.clientUrl}`);
+      notify(`Đã tạo album ${album.photoCount} ảnh. Link khách: ${album.clientUrl}`, 5000);
       await navigator.clipboard.writeText(album.clientUrl).catch(() => {});
       setForm((f) => ({ ...initialForm, guide: f.guide }));
       const matchesQuery = !query.trim() || album.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
       if (status === "active" && matchesQuery) {
         setAlbums((current) => sort === "oldest" ? [...current, album] : [album, ...current]);
       }
-    } catch (error) { setMessage((error as Error).message); }
+    } catch (error) { notify((error as Error).message); }
     finally { setCreating(false); }
   }
 
   async function action(name: string, albumId: string, payload: Record<string, unknown> = {}) {
     if (messageTimerRef.current !== null) window.clearTimeout(messageTimerRef.current);
-    setMessage("");
+    setToast("");
     try {
       const result = await rpc<Record<string, unknown>>(name, { albumId, ...payload });
       if (name === "deleteAlbum") {
-        setMessage("Đã xóa album.");
-        messageTimerRef.current = window.setTimeout(() => setMessage(""), 3000);
+        notify("Đã xóa album.");
       } else if (name === "createRawSelectionFolder") {
-        setMessage(`Đã chọn xong ${result.copied || 0} ảnh RAW.`);
-        messageTimerRef.current = window.setTimeout(() => setMessage(""), 4000);
-      } else setMessage("Đã cập nhật.");
+        notify(`Đã chọn xong ${result.copied || 0} ảnh RAW.`);
+      } else notify("Đã cập nhật.");
       setAlbums((current) => {
         if (name === "deleteAlbum") {
           return current.filter((album) => album.id !== albumId);
@@ -216,12 +217,13 @@ export default function AdminView() {
           return album;
         });
       });
-    } catch (error) { setMessage((error as Error).message); }
+    } catch (error) { notify((error as Error).message); }
   }
 
-  function notify(message: string) {
+  function notify(message: string, duration = 3500) {
+    if (messageTimerRef.current !== null) window.clearTimeout(messageTimerRef.current);
     setToast(message);
-    window.setTimeout(() => setToast(""), 2500);
+    messageTimerRef.current = window.setTimeout(() => setToast(""), duration);
   }
 
   if (auth === "loading") return <div className="page-loader"><span className="spinner" /> Đang kiểm tra phiên…</div>;
@@ -232,7 +234,7 @@ export default function AdminView() {
         <h1>DP select</h1>
         <p className="muted">Đăng nhập để tạo link chọn ảnh và xem kết quả của khách.</p>
         <label><span>Mật khẩu quản trị</span><div className="input-icon"><KeyRound size={17} /><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus required /></div></label>
-        {loginError && <div className="notice error">{loginError}</div>}
+        {loginError && <div className="toast login-toast" role="alert">{loginError}</div>}
         <button type="submit">Mở trang quản trị</button>
       </form>
     </main>
@@ -284,7 +286,6 @@ export default function AdminView() {
             <select aria-label="Sắp xếp album" value={sort} onChange={(e) => setSort(e.target.value)}><option value="newest">Sắp xếp: Mới nhất</option><option value="oldest">Sắp xếp: Cũ nhất</option></select>
             <select aria-label="Trạng thái album" value={status} onChange={(e) => setStatus(e.target.value)}><option value="active">Trạng thái: Đang dùng</option><option value="archived">Trạng thái: Đã lưu trữ</option></select>
           </div></div>
-          {message && <div className="notice">{message}</div>}
           <div className="album-list">
             {!albums.length && !loading && <div className="empty-state">Chưa có album nào trong mục này.</div>}
             {albums.map((album) => <AlbumCard key={album.id} album={album} onAction={action} onNotify={notify} />)}
@@ -381,6 +382,7 @@ function SettingsModal({ templates: initialTemplates, quickLinks: initialQuickLi
   const [busy, setBusy] = useState(false);
   const [openSection, setOpenSection] = useState<"templates" | "quick-links" | "google" | null>(null);
   const [googleCheck, setGoogleCheck] = useState<{ state: "idle" | "checking" | "ok" | "error"; message: string }>({ state: "idle", message: "" });
+  const googleCheckTimerRef = useRef<number | null>(null);
   const selected = templates.find((template) => template.id === selectedId) || templates[0];
   function updateSelected(patch: Partial<GuideTemplate>) {
     setTemplates((current) => current.map((template) => template.id === selected.id ? { ...template, ...patch } : template));
@@ -405,13 +407,15 @@ function SettingsModal({ templates: initialTemplates, quickLinks: initialQuickLi
     finally { setBusy(false); }
   }
   async function checkGoogle() {
-    setGoogleCheck({ state: "checking", message: "Đang kiểm tra Drive và Google Sheets…" });
+    if (googleCheckTimerRef.current !== null) window.clearTimeout(googleCheckTimerRef.current);
+    setGoogleCheck({ state: "checking", message: "" });
     try {
       const result = await rpc<{ account: string; spreadsheetTitle: string }>("checkGoogleConnection");
       setGoogleCheck({ state: "ok", message: `Đã kết nối bằng ${result.account}. File dữ liệu: ${result.spreadsheetTitle}.` });
     } catch (error) {
       setGoogleCheck({ state: "error", message: (error as Error).message });
     }
+    googleCheckTimerRef.current = window.setTimeout(() => setGoogleCheck((current) => ({ ...current, message: "" })), 4500);
   }
   return <div className="modal-backdrop" onMouseDown={onClose}><div className="modal-card settings-modal" onMouseDown={(e) => e.stopPropagation()}>
     <p className="eyebrow settings-title">CÀI ĐẶT</p>
@@ -446,7 +450,7 @@ function SettingsModal({ templates: initialTemplates, quickLinks: initialQuickLi
       <button type="button" className="settings-section-trigger" onClick={() => setOpenSection((section) => section === "google" ? null : "google")} aria-expanded={openSection === "google"}><span><b>Kết nối Google</b><small>Kiểm tra quyền truy cập Drive và file dữ liệu.</small></span><ChevronDown size={19} /></button>
       {openSection === "google" && <div className="settings-section-content google-settings">
         <button type="button" className="secondary compact" onClick={checkGoogle} disabled={googleCheck.state === "checking"}><CheckCircle2 size={16} />{googleCheck.state === "checking" ? "Đang kiểm tra…" : "Kiểm tra kết nối Google"}</button>
-        {googleCheck.message && <div className={`google-check-result ${googleCheck.state}`} role="status">{googleCheck.message}</div>}
+        {googleCheck.message && <div className={`toast google-check-toast ${googleCheck.state}`} role="status">{googleCheck.message}</div>}
       </div>}
     </section>
     <div className="modal-actions"><button className="button ghost" onClick={onClose}>Huỷ</button><button onClick={save} disabled={busy}>Lưu thay đổi</button></div>
