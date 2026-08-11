@@ -7,7 +7,8 @@ import { SortableContext, arrayMove, horizontalListSortingStrategy, rectSortingS
 import { CSS } from "@dnd-kit/utilities";
 import { ChevronDown, Copy, ExternalLink, FolderSync, History, MoreVertical, Plus, Search, Settings, Trash2, X } from "lucide-react";
 import { rpc } from "@/components/App";
-import type { WorkflowBoard, WorkflowCard, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
+import QuickLinks from "@/components/QuickLinks";
+import type { QuickLink, StudioSettings, WorkflowBoard, WorkflowCard, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
 import { normalizeWorkflowText, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
 
 type ModalState = { cardId: string } | null;
@@ -51,6 +52,7 @@ export default function WorkflowView() {
   // otherwise a saved browser session renders the board before hydration.
   const [auth, setAuth] = useState<"loading" | "yes" | "no">("loading");
   const [board, setBoard] = useState<WorkflowBoard | null>(null);
+  const [quickLinks, setQuickLinks] = useState<QuickLink[]>([]);
   const [query, setQuery] = useState("");
   const [toast, setToast] = useState("");
   const [cardModal, setCardModal] = useState<ModalState>(null);
@@ -146,6 +148,7 @@ export default function WorkflowView() {
         return;
       }
       sessionStorage.setItem(ADMIN_SESSION_KEY, "yes");
+      void rpc<StudioSettings>("getSettings").then((settings) => setQuickLinks(settings.quickLinks || [])).catch(() => {});
       boardRequest.then((nextBoard) => {
         if (!active) return;
         cacheBoard(nextBoard);
@@ -311,6 +314,7 @@ export default function WorkflowView() {
       <div className="workflow-header-left"><div className="workflow-brand"><img src="/dp-logo.png" alt="DP Select" /></div><nav className="app-tabs header-tabs" aria-label="Khu vực quản trị"><Link href="/" prefetch>DP Select</Link><Link className="active" href="/workflow">DP Workflow</Link></nav></div>
       <div className="workflow-header-actions"><div className="workflow-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm kiếm thẻ..." />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div></div>
     </header>
+    <QuickLinks links={quickLinks} />
     {toast && <div className="toast" role="status">{toast}</div>}
     {query && <p className="workflow-search-note">Xóa tìm kiếm để sắp xếp thẻ.</p>}
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragOver={onDragOver} onDragCancel={() => { if (dragOriginRef.current) setBoard(dragOriginRef.current.board); dragOriginRef.current = null; setActiveDragId(null); }} onDragEnd={(event) => { void onDragEnd(event).finally(() => { dragOriginRef.current = null; setActiveDragId(null); }); }}>
