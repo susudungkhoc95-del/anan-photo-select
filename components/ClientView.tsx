@@ -149,7 +149,20 @@ export default function ClientView({ albumId }: { albumId: string }) {
     }, { rootMargin: "700px 0px" });
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, loadPage, photos.length, renderedCount]);
+  // `loading` is important here: the first observer can be attached while the
+  // initial page is still in flight. Recreating it after that request finishes
+  // makes IntersectionObserver check the already-visible sentinel again.
+  }, [hasMore, loadPage, loading, photos.length, renderedCount]);
+
+  useEffect(() => {
+    if (loading || !hasMore || !loadMoreSentinel.current) return;
+    const sentinel = loadMoreSentinel.current;
+    const rect = sentinel.getBoundingClientRect();
+    if (rect.top <= window.innerHeight + 700 && !loadingRef.current) {
+      if (renderedCount < photos.length) setRenderedCount((current) => Math.min(current + 40, photos.length));
+      else void loadPage(true);
+    }
+  }, [hasMore, loadPage, loading, photos.length, renderedCount]);
 
   useEffect(() => {
     if (zoom !== null && zoom >= photos.length - 3 && hasMore && !loadingRef.current) {
