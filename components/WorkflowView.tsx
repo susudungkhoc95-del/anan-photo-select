@@ -13,6 +13,7 @@ import { normalizeWorkflowText, workflowAge, workflowCardMatches } from "@/lib/w
 
 type ModalState = { cardId: string } | null;
 type CreateState = { type: "list" } | { type: "card"; list: WorkflowList } | null;
+type PendingCardEdit = Pick<WorkflowCard, "title" | "note" | "weddingDate" | "updatedAt">;
 const LABEL_COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#a855f7"];
 const WORKFLOW_CACHE_KEY = "anan-workflow-board";
 const ADMIN_SESSION_KEY = "anan-admin-session";
@@ -64,6 +65,7 @@ export default function WorkflowView() {
   const [pendingCardIds, setPendingCardIds] = useState<Set<string>>(() => new Set());
   const pendingCardsRef = useRef(new Map<string, WorkflowCard>());
   const pendingCardLabelsRef = useRef(new Map<string, string[]>());
+  const pendingCardEditsRef = useRef(new Map<string, PendingCardEdit>());
   const dragOriginRef = useRef<{ cardId: string; sourceListId: string; board: WorkflowBoard } | null>(null);
   const refreshingRef = useRef(false);
   const refreshPendingRef = useRef(false);
@@ -90,9 +92,16 @@ export default function WorkflowView() {
       const serverCardIds = new Set(nextBoard.cards.map((card) => card.id));
       const pendingLabels = [...pendingCardLabelsRef.current.entries()];
       const pendingLabelCardIds = new Set(pendingCardLabelsRef.current.keys());
+      const pendingCardEdits = pendingCardEditsRef.current;
       const mergedBoard = pendingCards.length
         ? { ...nextBoard, cards: [...nextBoard.cards, ...pendingCards.filter((card) => !serverCardIds.has(card.id))] }
         : { ...nextBoard };
+      if (pendingCardEdits.size) {
+        mergedBoard.cards = mergedBoard.cards.map((card) => {
+          const edit = pendingCardEdits.get(card.id);
+          return edit ? { ...card, ...edit } : card;
+        });
+      }
       if (pendingLabels.length) {
         mergedBoard.cardLabels = [
           ...nextBoard.cardLabels.filter((assignment) => !pendingLabelCardIds.has(assignment.cardId)),
@@ -303,6 +312,25 @@ export default function WorkflowView() {
     }
   }
 
+  function saveCardOptimistically(cardId: string, changes: Pick<WorkflowCard, "title" | "note" | "weddingDate">) {
+    const edit: PendingCardEdit = { ...changes, updatedAt: new Date().toISOString() };
+    pendingCardEditsRef.current.set(cardId, edit);
+    setBoard((current) => current ? {
+      ...current,
+      cards: current.cards.map((card) => card.id === cardId ? { ...card, ...edit } : card)
+    } : current);
+    notify("Đang lưu thay đổi…", 1800);
+    void rpc("updateWorkflowCard", { cardId, ...changes }).then(async () => {
+      if (pendingCardEditsRef.current.get(cardId) === edit) pendingCardEditsRef.current.delete(cardId);
+      notify("Đã lưu thay đổi.", 1800);
+      await load(true);
+    }).catch((error) => {
+      if (pendingCardEditsRef.current.get(cardId) === edit) pendingCardEditsRef.current.delete(cardId);
+      notify(`Không thể lưu thay đổi: ${(error as Error).message}`, 5000);
+      void load(true);
+    });
+  }
+
   if (auth === "loading" || !board) return <div className="page-loader"><span className="spinner" /> Đang mở DP Workflow…</div>;
   if (auth === "no") {
     if (typeof window !== "undefined") window.location.replace("/");
@@ -326,7 +354,7 @@ export default function WorkflowView() {
       </SortableContext>
       <DragOverlay>{activeDragId?.startsWith("card-") && <WorkflowCardPreview card={board.cards.find((card) => `card-${card.id}` === activeDragId)} />}{activeDragId?.startsWith("list-") && <WorkflowListPreview list={board.lists.find((list) => `list-${list.id}` === activeDragId)} />}</DragOverlay>
     </DndContext>
-    {cardModal && <CardModal board={board} cardId={cardModal.cardId} onClose={() => setCardModal(null)} onChanged={load} onLabelsChanged={setCardLabelsOptimistically} onDeleted={(cardId) => { setBoard((current) => current ? { ...current, cards: current.cards.filter((item) => item.id !== cardId), links: current.links.filter((item) => item.cardId !== cardId), cardLabels: current.cardLabels.filter((item) => item.cardId !== cardId), activities: current.activities.filter((item) => item.cardId !== cardId) } : current); setCardModal(null); void load(true); }} onError={(error) => notify(error.message)} onNotice={notify} />}
+    {cardModal && <CardModal board={board} cardId={cardModal.cardId} onClose={() => setCardModal(null)} onSave={saveCardOptimistically} onChanged={load} onLabelsChanged={setCardLabelsOptimistically} onDeleted={(cardId) => { setBoard((current) => current ? { ...current, cards: current.cards.filter((item) => item.id !== cardId), links: current.links.filter((item) => item.cardId !== cardId), cardLabels: current.cardLabels.filter((item) => item.cardId !== cardId), activities: current.activities.filter((item) => item.cardId !== cardId) } : current); setCardModal(null); void load(true); }} onError={(error) => notify(error.message)} onNotice={notify} />}
     {quickCardId && <QuickCardModal board={board} cardId={quickCardId} onClose={() => setQuickCardId(null)} onChanged={load} onLabelsChanged={setCardLabelsOptimistically} onError={(error) => notify(error.message)} />}
     {labelsOpen && <LabelsModal board={board} onClose={() => setLabelsOpen(false)} onChanged={load} />}
     {createModal && <CreateWorkflowModal state={createModal} onClose={() => setCreateModal(null)} onCreate={(value) => createModal.type === "list" ? addList(value) : addCard(createModal.list, value)} />}
@@ -381,7 +409,7 @@ function WorkflowCardItem({ card, list, pending, labels, onOpen, onQuickEdit }: 
   </article>;
 }
 
-function CardModal({ board, cardId, onClose, onChanged, onLabelsChanged, onDeleted, onError, onNotice }: { board: WorkflowBoard; cardId: string; onClose: () => void; onChanged: () => Promise<void>; onLabelsChanged: (cardId: string, labelIds: string[]) => Promise<void>; onDeleted: (cardId: string) => void; onError: (error: Error) => void; onNotice: (message: string) => void }) {
+function CardModal({ board, cardId, onClose, onSave, onChanged, onLabelsChanged, onDeleted, onError, onNotice }: { board: WorkflowBoard; cardId: string; onClose: () => void; onSave: (cardId: string, changes: Pick<WorkflowCard, "title" | "note" | "weddingDate">) => void; onChanged: () => Promise<void>; onLabelsChanged: (cardId: string, labelIds: string[]) => Promise<void>; onDeleted: (cardId: string) => void; onError: (error: Error) => void; onNotice: (message: string) => void }) {
   const card = board.cards.find((item) => item.id === cardId)!;
   const list = board.lists.find((item) => item.id === card.listId)!;
   const [title, setTitle] = useState(card.title);
@@ -397,7 +425,12 @@ function CardModal({ board, cardId, onClose, onChanged, onLabelsChanged, onDelet
   const activities = board.activities.filter((item) => item.cardId === card.id);
   const [selectedLabelIds, setSelectedLabelIds] = useState(() => board.cardLabels.filter((item) => item.cardId === card.id).map((item) => item.labelId));
   const age = workflowAge(card, list);
-  async function save() { setBusy(true); try { await rpc("updateWorkflowCard", { cardId: card.id, title, note, weddingDate }); await rpc("setWorkflowCardLabels", { cardId: card.id, labelIds: selectedLabelIds }); await onChanged(); onClose(); } finally { setBusy(false); } }
+  function save() {
+    const normalizedTitle = title.trim();
+    if (!normalizedTitle) return;
+    onSave(card.id, { title: normalizedTitle, note, weddingDate });
+    onClose();
+  }
   async function editLink(link: WorkflowLink) { const nextLabel = window.prompt("Tên hiển thị:", link.label); if (nextLabel === null) return; const nextUrl = window.prompt("URL:", link.url); if (nextUrl === null) return; await rpc("updateWorkflowLink", { linkId: link.id, label: nextLabel, url: nextUrl }); await onChanged(); }
   async function copyLink(link: WorkflowLink) {
     await navigator.clipboard.writeText(link.url);
@@ -452,7 +485,7 @@ function CardModal({ board, cardId, onClose, onChanged, onLabelsChanged, onDelet
       {activityOpen && <div className="workflow-modal-column workflow-history-column"><section className="workflow-activity"><h3>Lịch sử hoạt động</h3>{activities.length ? activities.map((item) => <p key={item.id}><time>{formatTime(item.createdAt)}</time>{item.description}</p>) : <p className="muted">Chưa có hoạt động.</p>}</section></div>}
     </div>
     {confirmingDelete && <div className="workflow-delete-confirm"><span>Xóa thẻ này cùng toàn bộ link và lịch sử?</span><button type="button" className="secondary compact" disabled={busy} onClick={() => setConfirmingDelete(false)}>Hủy</button><button type="button" className="danger compact" disabled={busy} onClick={() => void removeCard()}>Xác nhận xóa</button></div>}
-    <footer><button type="button" className="danger" disabled={busy} onClick={() => setConfirmingDelete(true)}><Trash2 size={16} /> Xóa thẻ</button><span /><button type="button" className="secondary" disabled={busy} onClick={onClose}>Đóng</button><button type="button" disabled={busy} onClick={() => void save()}>Lưu thay đổi</button></footer>
+    <footer><button type="button" className="danger" disabled={busy} onClick={() => setConfirmingDelete(true)}><Trash2 size={16} /> Xóa thẻ</button><span /><button type="button" className="secondary" disabled={busy} onClick={onClose}>Đóng</button><button type="button" disabled={busy || !title.trim()} onClick={save}>Lưu thay đổi</button></footer>
   </section></div>;
 }
 
