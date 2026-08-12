@@ -61,7 +61,6 @@ export default function ClientView({ albumId }: { albumId: string }) {
   const [reviewZoom, setReviewZoom] = useState<number | null>(null);
   const [zoom, setZoom] = useState<number | null>(null);
   const zoomIndexRef = useRef<number | null>(null);
-  const [renderedCount, setRenderedCount] = useState(40);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [sendAnimation, setSendAnimation] = useState<"idle" | "sending" | "success">("idle");
@@ -140,29 +139,34 @@ export default function ClientView({ albumId }: { albumId: string }) {
 
   useEffect(() => {
     const sentinel = loadMoreSentinel.current;
-    if (!sentinel) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting) && !loadingRef.current) {
-        if (renderedCount < photos.length) setRenderedCount((current) => Math.min(current + 40, photos.length));
-        else if (hasMore) loadPage(true);
-      }
-    }, { rootMargin: "700px 0px" });
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  // `loading` is important here: the first observer can be attached while the
-  // initial page is still in flight. Recreating it after that request finishes
-  // makes IntersectionObserver check the already-visible sentinel again.
-  }, [hasMore, loadPage, loading, photos.length, renderedCount]);
+    if (!sentinel || !hasMore) return;
 
-  useEffect(() => {
-    if (loading || !hasMore || !loadMoreSentinel.current) return;
-    const sentinel = loadMoreSentinel.current;
-    const rect = sentinel.getBoundingClientRect();
-    if (rect.top <= window.innerHeight + 700 && !loadingRef.current) {
-      if (renderedCount < photos.length) setRenderedCount((current) => Math.min(current + 40, photos.length));
-      else void loadPage(true);
-    }
-  }, [hasMore, loadPage, loading, photos.length, renderedCount]);
+    // Load the next API page before the user reaches the end. Previously each
+    // 80-photo response was rendered in two 40-photo steps. Expanding the
+    // second half moved the sentinel far below the current viewport, so the
+    // same scroll gesture never requested offset 80 and the gallery appeared
+    // to stop there.
+    const requestNextPage = () => {
+      if (!loadingRef.current && sentinel.getBoundingClientRect().top <= window.innerHeight + 1200) {
+        void loadPage(true);
+      }
+    };
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) requestNextPage();
+    }, { rootMargin: "1200px 0px" });
+    observer.observe(sentinel);
+    window.addEventListener("scroll", requestNextPage, { passive: true });
+    window.addEventListener("resize", requestNextPage);
+    const frame = window.requestAnimationFrame(requestNextPage);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("scroll", requestNextPage);
+      window.removeEventListener("resize", requestNextPage);
+    };
+  // Recheck after every completed page because images can change the document
+  // height without producing another scroll event.
+  }, [hasMore, loadPage, loading, photos.length]);
 
   useEffect(() => {
     if (zoom !== null && zoom >= photos.length - 3 && hasMore && !loadingRef.current) {
@@ -204,7 +208,6 @@ export default function ClientView({ albumId }: { albumId: string }) {
     loadingRef.current = false;
     setFolder(value);
     setPhotos([]);
-    setRenderedCount(40);
     setHasMore(false);
     nextOffsetRef.current = 0;
     loadPage(false, value);
@@ -277,8 +280,6 @@ export default function ClientView({ albumId }: { albumId: string }) {
   const zoomPhoto = zoom === null ? null : photos[zoom];
   const selectedReviewPhotos = reviewPhotos.filter((photo) => selected.has(photo.id));
   const reviewZoomPhoto = reviewZoom === null ? null : selectedReviewPhotos[reviewZoom];
-  const visiblePhotos = photos.slice(0, renderedCount);
-
   return (
     <main className="client-page">
       <div className="studio-banner"><span>{album.studioSettings.studioName}</span></div>
@@ -305,7 +306,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
         </div>
         <div className="hint page-status">Đang hiển thị {photos.length} / {total} ảnh</div>
         {album.selectionLocked && <div className="selection-locked-banner" role="status">Album đang trong quá trình hậu kỳ. Ảnh chọn đã được khóa tạm thời.</div>}
-        <JustifiedGallery albumId={albumId} photos={visiblePhotos} selected={selected} locked={Boolean(album.selectionLocked)} onOpen={(index) => { zoomIndexRef.current = index; setZoom(index); }} onToggle={toggle} />
+        <JustifiedGallery albumId={albumId} photos={photos} selected={selected} locked={Boolean(album.selectionLocked)} onOpen={(index) => { zoomIndexRef.current = index; setZoom(index); }} onToggle={toggle} />
         {loading && <div className="grid-loader show"><span className="spinner" /> Đang tải thêm ảnh...</div>}
         {!loading && !photos.length && <div className="empty">Chưa có ảnh để hiển thị.</div>}
         <div ref={loadMoreSentinel} className="load-more-sentinel" aria-hidden="true" />
