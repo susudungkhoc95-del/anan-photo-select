@@ -154,22 +154,22 @@ export default function ClientView({ albumId }: { albumId: string }) {
       const nearSentinel = sentinel.getBoundingClientRect().top <= window.innerHeight + 1200;
       if (nearPageEnd || nearSentinel) void loadPage(true);
     };
-    const observer = new IntersectionObserver((entries) => {
+    const observer = typeof IntersectionObserver === "undefined" ? null : new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) requestNextPage();
     }, { rootMargin: "1200px 0px" });
-    observer.observe(sentinel);
+    observer?.observe(sentinel);
     // Drive image dimensions are resolved progressively. That changes the
     // document height without a scroll event, so observe the gallery itself
     // and re-run the same check whenever rows grow or shrink.
     const gallery = sentinel.parentElement;
-    const resizeObserver = gallery ? new ResizeObserver(requestNextPage) : null;
+    const resizeObserver = gallery && typeof ResizeObserver !== "undefined" ? new ResizeObserver(requestNextPage) : null;
     if (resizeObserver && gallery) resizeObserver.observe(gallery);
     window.addEventListener("scroll", requestNextPage, { passive: true });
     window.addEventListener("resize", requestNextPage);
     const frame = window.requestAnimationFrame(requestNextPage);
     return () => {
       window.cancelAnimationFrame(frame);
-      observer.disconnect();
+      observer?.disconnect();
       resizeObserver?.disconnect();
       window.removeEventListener("scroll", requestNextPage);
       window.removeEventListener("resize", requestNextPage);
