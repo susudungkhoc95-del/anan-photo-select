@@ -8,7 +8,7 @@ import type { Draft, FolderStat, Selection } from "@/lib/types";
 type AlbumPublic = {
   id: string; title: string; guide: string; maxSelect: number; largePrintLimit: number;
   tablePrintLimit: number; photoCount: number; folders: FolderStat[]; pageSize: number;
-  studioSettings: { studioName: string };
+  studioSettings: { studioName: string }; selectionLocked?: boolean;
 };
 type Photo = { id: string; name: string; folder: string; width?: number; height?: number; thumbUrl: string; thumbSrcSet?: string; zoomUrl: string; downloadUrl: string; viewUrl: string };
 type Page = { items: Photo[]; total: number; hasMore: boolean; nextOffset: number };
@@ -111,12 +111,14 @@ export default function ClientView({ albumId }: { albumId: string }) {
     localStorage.setItem(`anan-session-${albumId}`, sessionId.current);
     // Start the album and gallery immediately. Draft/selection restoration is
     // independent and must not block the first photos from appearing.
-    void rpc<AlbumPublic>("getAlbum", { albumId })
+    const refreshAlbum = () => rpc<AlbumPublic>("getAlbum", { albumId })
       .then((a) => {
         setAlbum(a);
         document.title = `${a.title} — ANAN Studio`;
       })
       .catch((e) => setError(e.message));
+    void refreshAlbum();
+    const lockTimer = window.setInterval(refreshAlbum, 15_000);
 
     void loadPage(false, "all");
 
@@ -133,6 +135,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
       // Do not let the autosave effect run before the server state is restored.
       draftReady.current = true;
     }).catch((e) => setError(e.message));
+    return () => window.clearInterval(lockTimer);
   }, [albumId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -168,6 +171,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
 
   function notify(text: string) { setToast(text); setTimeout(() => setToast(""), 2200); }
   function toggle(id: string) {
+    if (album?.selectionLocked) return notify("Album đang trong quá trình hậu kỳ, bạn không thể thay đổi ảnh chọn.");
     setSubmitted(false);
     setSelected((current) => {
       const next = new Set(current);
@@ -194,6 +198,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
   }
 
   function setPrint(id: string, kind: "large" | "table", checked: boolean) {
+    if (album?.selectionLocked) return notify("Album đang trong quá trình hậu kỳ, bạn không thể thay đổi ảnh chọn.");
     const setter = kind === "large" ? setLarge : setTable;
     const limit = kind === "large" ? album?.largePrintLimit || 0 : album?.tablePrintLimit || 0;
     setter((current) => {
@@ -205,6 +210,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
     });
   }
   async function submit() {
+    if (album?.selectionLocked) return notify("Album đang trong quá trình hậu kỳ, bạn không thể gửi lại ảnh chọn.");
     if (!selected.size) return notify("Bạn chưa chọn ảnh nào.");
     const selectedIds = [...selected];
     const selectedCount = selectedIds.length;
@@ -273,24 +279,25 @@ export default function ClientView({ albumId }: { albumId: string }) {
             <div className="counter">Đã chọn <span>{selected.size}</span>{album.maxSelect ? ` / ${album.maxSelect}` : ""} ảnh</div>
             <div className="row">
               <button className="secondary btn-icon" onClick={openReview}><Heart className="review-action-heart" size={17} fill="currentColor" /> Xem ảnh đã chọn</button>
-            <button className="btn-icon" onClick={submit} disabled={!selected.size || submitting}>{submitting ? <span className="spinner small" /> : <Send size={17} />} Gửi {selected.size} ảnh</button>
+            <button className="btn-icon" onClick={submit} disabled={!selected.size || submitting || album.selectionLocked}>{submitting ? <span className="spinner small" /> : <Send size={17} />} Gửi {selected.size} ảnh</button>
             </div>
           </div>
         </div>
       </div>
       <section className="gallery-shell shell">
-        {submitted && sendAnimation === "idle" && <div className="success-banner"><span><b>Đã gửi {selected.size} ảnh.</b> Bạn vẫn có thể thay đổi và gửi lại nếu cần.</span></div>}
+        {submitted && sendAnimation === "idle" && <div className="success-banner"><span><b>Đã gửi {selected.size} ảnh.</b> {album.selectionLocked ? "Album đang trong quá trình hậu kỳ." : "Bạn vẫn có thể thay đổi và gửi lại nếu cần."}</span></div>}
         <div className="client-head">
           <div className="client-title"><h1>{album.title}</h1><p className="hint guide">{album.guide}</p></div>
           <button className="secondary btn-icon" onClick={() => { navigator.clipboard.writeText(location.href); notify("Đã copy link."); }}><Copy size={16} /> Copy link ảnh</button>
         </div>
         <div className="hint page-status">Đang hiển thị {photos.length} / {total} ảnh</div>
-        <JustifiedGallery albumId={albumId} photos={visiblePhotos} selected={selected} onOpen={(index) => { zoomIndexRef.current = index; setZoom(index); }} onToggle={toggle} />
+        {album.selectionLocked && <div className="selection-locked-banner" role="status">Album đang trong quá trình hậu kỳ. Ảnh chọn đã được khóa tạm thời.</div>}
+        <JustifiedGallery albumId={albumId} photos={visiblePhotos} selected={selected} locked={Boolean(album.selectionLocked)} onOpen={(index) => { zoomIndexRef.current = index; setZoom(index); }} onToggle={toggle} />
         {loading && <div className="grid-loader show"><span className="spinner" /> Đang tải thêm ảnh...</div>}
         {!loading && !photos.length && <div className="empty">Chưa có ảnh để hiển thị.</div>}
         <div ref={loadMoreSentinel} className="load-more-sentinel" aria-hidden="true" />
       </section>
-      {review && <Review album={album} photos={selectedReviewPhotos} selected={selected} large={large} table={table} notes={notes} albumNote={albumNote} submitting={submitting}
+      {review && <Review album={album} photos={selectedReviewPhotos} selected={selected} large={large} table={table} notes={notes} albumNote={albumNote} submitting={submitting} locked={Boolean(album.selectionLocked)}
         onClose={() => { setReview(false); setReviewZoom(null); }} onRemove={toggle}
         onOpenPhoto={(id) => setReviewZoom(selectedReviewPhotos.findIndex((photo) => photo.id === id))}
         onPrint={setPrint} onNote={(id, value) => setNotes((n) => ({ ...n, [id]: value }))} onAlbumNote={setAlbumNote} onSubmit={submit} />}
@@ -298,14 +305,14 @@ export default function ClientView({ albumId }: { albumId: string }) {
         nextPhoto={zoom !== null ? photos[zoom + 1] : undefined}
         prefetchPhotos={zoom !== null ? [photos[zoom + 1], photos[zoom + 2], photos[zoom - 1]].filter(Boolean) : []}
         selected={selected.has(zoomPhoto.id)}
-        onToggle={() => toggle(zoomPhoto.id)} onClose={() => { zoomIndexRef.current = null; setZoom(null); }}
+        onToggle={() => toggle(zoomPhoto.id)} locked={Boolean(album.selectionLocked)} onClose={() => { zoomIndexRef.current = null; setZoom(null); }}
         onPrev={() => navigateZoom(-1)} onNext={() => navigateZoom(1)} />}
       {reviewZoomPhoto && <Zoom albumId={albumId} photo={reviewZoomPhoto}
         previousPhoto={reviewZoom !== null ? selectedReviewPhotos[reviewZoom - 1] : undefined}
         nextPhoto={reviewZoom !== null ? selectedReviewPhotos[reviewZoom + 1] : undefined}
         prefetchPhotos={reviewZoom !== null ? [selectedReviewPhotos[reviewZoom + 1], selectedReviewPhotos[reviewZoom + 2], selectedReviewPhotos[reviewZoom - 1]].filter(Boolean) : []}
         selected={selected.has(reviewZoomPhoto.id)}
-        onToggle={() => { toggle(reviewZoomPhoto.id); setReviewZoom(null); }}
+        onToggle={() => { toggle(reviewZoomPhoto.id); setReviewZoom(null); }} locked={Boolean(album.selectionLocked)}
         onClose={() => setReviewZoom(null)}
         onPrev={() => setReviewZoom((index) => index !== null && index > 0 ? index - 1 : (notify("Đây là ảnh đầu tiên."), index))}
         onNext={() => setReviewZoom((index) => index !== null && index < selectedReviewPhotos.length - 1 ? index + 1 : (notify("Đây là ảnh cuối cùng."), index))} />}
@@ -318,8 +325,8 @@ export default function ClientView({ albumId }: { albumId: string }) {
 type GalleryPhoto = { photo: Photo; index: number; ratio: number };
 type GalleryRow = { items: GalleryPhoto[]; height: number };
 
-function JustifiedGallery({ albumId, photos, selected, onOpen, onToggle }: {
-  albumId: string; photos: Photo[]; selected: Set<string>; onOpen: (index: number) => void; onToggle: (id: string) => void;
+function JustifiedGallery({ albumId, photos, selected, locked, onOpen, onToggle }: {
+  albumId: string; photos: Photo[]; selected: Set<string>; locked: boolean; onOpen: (index: number) => void; onToggle: (id: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -389,15 +396,15 @@ function JustifiedGallery({ albumId, photos, selected, onOpen, onToggle }: {
         onClick={() => onOpen(index)}
       >
         <DrivePhoto albumId={albumId} photo={photo} onDimensions={(imageWidth, imageHeight) => rememberRatio(photo.id, imageWidth, imageHeight)} />
-        <button className="heart" aria-label={`Chọn ${photo.name}`} onClick={(event) => { event.stopPropagation(); onToggle(photo.id); }}>{selected.has(photo.id) ? "♥" : "♡"}</button>
+        <button className="heart" disabled={locked} aria-label={`Chọn ${photo.name}`} onClick={(event) => { event.stopPropagation(); onToggle(photo.id); }}>{selected.has(photo.id) ? "♥" : "♡"}</button>
         <div className="caption">{photo.name}</div>
       </article>)}
     </div>)}
   </div>;
 }
 
-function Review({ album, photos, selected, large, table, notes, albumNote, submitting, onClose, onRemove, onOpenPhoto, onPrint, onNote, onAlbumNote, onSubmit }: {
-  album: AlbumPublic; photos: Photo[]; selected: Set<string>; large: Set<string>; table: Set<string>; notes: Record<string, string>; albumNote: string; submitting: boolean;
+function Review({ album, photos, selected, large, table, notes, albumNote, submitting, locked, onClose, onRemove, onOpenPhoto, onPrint, onNote, onAlbumNote, onSubmit }: {
+  album: AlbumPublic; photos: Photo[]; selected: Set<string>; large: Set<string>; table: Set<string>; notes: Record<string, string>; albumNote: string; submitting: boolean; locked: boolean;
   onClose: () => void; onRemove: (id: string) => void; onOpenPhoto: (id: string) => void;
   onPrint: (id: string, kind: "large" | "table", checked: boolean) => void;
   onNote: (id: string, value: string) => void; onAlbumNote: (v: string) => void; onSubmit: () => void;
@@ -415,18 +422,19 @@ function Review({ album, photos, selected, large, table, notes, albumNote, submi
           <DrivePhoto albumId={album.id} photo={p} />
         </button>
         <div className="review-body review-meta"><strong>{stripExt(p.name)}</strong><div className="print-options review-options">
-          <label className={`print-toggle ${large.has(p.id) ? "active" : ""}`}><input type="checkbox" checked={large.has(p.id)} onChange={(e) => onPrint(p.id, "large", e.target.checked)} /><span className="print-toggle-mark" /> Ảnh phóng to 60×90</label>
-          <label className={`print-toggle ${table.has(p.id) ? "active" : ""}`}><input type="checkbox" checked={table.has(p.id)} onChange={(e) => onPrint(p.id, "table", e.target.checked)} /><span className="print-toggle-mark" /> Ảnh để bàn</label>
-        </div><textarea className="review-note" rows={2} value={notes[p.id] || ""} onChange={(e) => onNote(p.id, e.target.value)} placeholder="Ví dụ: sửa da kỹ hơn, bỏ người phía sau..." /><button className="secondary remove-photo" onClick={() => onRemove(p.id)}>Bỏ chọn ảnh</button></div>
+          <label className={`print-toggle ${large.has(p.id) ? "active" : ""}`}><input type="checkbox" disabled={locked} checked={large.has(p.id)} onChange={(e) => onPrint(p.id, "large", e.target.checked)} /><span className="print-toggle-mark" /> Ảnh phóng to 60×90</label>
+          <label className={`print-toggle ${table.has(p.id) ? "active" : ""}`}><input type="checkbox" disabled={locked} checked={table.has(p.id)} onChange={(e) => onPrint(p.id, "table", e.target.checked)} /><span className="print-toggle-mark" /> Ảnh để bàn</label>
+        </div><textarea className="review-note" rows={2} disabled={locked} value={notes[p.id] || ""} onChange={(e) => onNote(p.id, e.target.value)} placeholder="Ví dụ: sửa da kỹ hơn, bỏ người phía sau..." /><button className="secondary remove-photo" disabled={locked} onClick={() => onRemove(p.id)}>Bỏ chọn ảnh</button></div>
       </article>)}
-      <div className="album-note"><label>Lưu ý chung cho toàn bộ album<textarea rows={3} value={albumNote} onChange={(e) => onAlbumNote(e.target.value)} placeholder="Nhập lưu ý chung nếu có" /></label></div>
+      <div className="album-note"><label>Lưu ý chung cho toàn bộ album<textarea rows={3} disabled={locked} value={albumNote} onChange={(e) => onAlbumNote(e.target.value)} placeholder="Nhập lưu ý chung nếu có" /></label></div>
     </div>
-    <footer><span className="submit-summary">Bạn đang gửi <strong>{selected.size} ảnh</strong>.</span><button onClick={onSubmit} disabled={submitting}>{submitting ? <span className="spinner small" /> : <Send size={17} />} Gửi {selected.size} ảnh</button><button className="secondary" onClick={onClose}>Đóng</button></footer>
+    <footer><span className="submit-summary">{locked ? "Album đang trong quá trình hậu kỳ." : <>Bạn đang gửi <strong>{selected.size} ảnh</strong>.</>}</span><button onClick={onSubmit} disabled={locked || submitting}>{submitting ? <span className="spinner small" /> : <Send size={17} />} Gửi {selected.size} ảnh</button><button className="secondary" onClick={onClose}>Đóng</button></footer>
   </div></div>;
 }
 
-function Zoom({ albumId, photo, previousPhoto, nextPhoto, prefetchPhotos, selected, onToggle, onClose, onPrev, onNext }: {
+function Zoom({ albumId, photo, previousPhoto, nextPhoto, prefetchPhotos, selected, locked = false, onToggle, onClose, onPrev, onNext }: {
   albumId: string; photo: Photo; previousPhoto?: Photo; nextPhoto?: Photo; selected: boolean;
+  locked?: boolean;
   prefetchPhotos?: Photo[];
   onToggle: () => void; onClose: () => void; onPrev: () => void; onNext: () => void;
 }) {
@@ -613,7 +621,7 @@ function Zoom({ albumId, photo, previousPhoto, nextPhoto, prefetchPhotos, select
       <DrivePhoto key={photo.id} albumId={albumId} photo={photo} zoom />
       <button className="zoom-nav zoom-next next" onClick={onNext} aria-label="Ảnh tiếp theo"><ChevronRight size={27} /></button>
     </div>
-    <div className="zoom-bottom"><button className={`zoom-select zoom-heart ${selected ? "active" : ""}`} onClick={onToggle}><Heart fill={selected ? "currentColor" : "none"} /> {selected ? "Đã chọn" : "Chọn ảnh này"}</button></div>
+    <div className="zoom-bottom"><button disabled={locked} className={`zoom-select zoom-heart ${selected ? "active" : ""}`} onClick={onToggle}><Heart fill={selected ? "currentColor" : "none"} /> {locked ? "Đã khóa" : selected ? "Đã chọn" : "Chọn ảnh này"}</button></div>
   </div>;
 }
 

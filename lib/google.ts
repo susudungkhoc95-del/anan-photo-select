@@ -278,7 +278,7 @@ export async function loadAlbum(id: string) {
   return album;
 }
 
-function publicAlbum(album: Album) {
+function publicAlbum(album: Album, selectionLocked = false) {
   return {
     id: album.id,
     title: album.title,
@@ -290,12 +290,35 @@ function publicAlbum(album: Album) {
     folders: album.folders,
     pageSize: 80,
     studioSettings: { studioName: DEFAULT_STUDIO_NAME },
-    clientUrl: albumUrl(album)
+    clientUrl: albumUrl(album),
+    selectionLocked
   };
 }
 
+async function isAlbumSelectionLocked(albumId: string) {
+  try {
+    const workspaceId = getWorkflowWorkspaceId();
+    const [cards, lists] = await Promise.all([
+      readAppRecords("WorkflowCards", workspaceId),
+      readAppRecords("WorkflowLists", workspaceId)
+    ]);
+    const inProgressIds = new Set(lists.filter((row) => Array.isArray(row.payload) && row.payload[4] === "IN_PROGRESS").map((row) => Array.isArray(row.payload) ? String(row.payload[0] || row.record_id) : row.record_id));
+    return cards.some((row) => Array.isArray(row.payload) && row.payload[6] === "dp_select" && row.payload[7] === albumId && inProgressIds.has(String(row.payload[2] || "")));
+  } catch (error) {
+    console.error("Không kiểm tra được trạng thái khóa album:", error);
+    return false;
+  }
+}
+
+async function assertAlbumSelectionOpen(albumId: string) {
+  if (await isAlbumSelectionLocked(albumId)) {
+    throw new Error("Album đang trong quá trình hậu kỳ, khách không thể thay đổi hoặc gửi lại ảnh chọn.");
+  }
+}
+
 export async function getAlbum(id: string) {
-  return publicAlbum(await loadAlbum(id));
+  const album = await loadAlbum(id);
+  return publicAlbum(album, await isAlbumSelectionLocked(album.id));
 }
 
 export async function listAlbums(payload: Record<string, unknown>) {
@@ -441,6 +464,7 @@ async function normalizeSelection(album: Album, payload: Record<string, unknown>
 
 export async function saveDraft(payload: Record<string, unknown>) {
   const album = await loadAlbum(clean(payload.albumId, 80));
+  await assertAlbumSelectionOpen(album.id);
   const normalized = await normalizeSelection(album, payload);
   const draft: Draft = {
     albumId: album.id,
@@ -625,6 +649,7 @@ function safeSheetTitle(title: string) {
 
 export async function saveSelection(payload: Record<string, unknown>) {
   const album = await loadAlbum(clean(payload.albumId, 80));
+  await assertAlbumSelectionOpen(album.id);
   const normalized = await normalizeSelection(album, payload);
   const previousSelection = await readJson<Selection>(SELECTIONS, album.id);
   const selection: Selection = {
