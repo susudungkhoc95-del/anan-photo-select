@@ -147,20 +147,30 @@ export default function ClientView({ albumId }: { albumId: string }) {
     // same scroll gesture never requested offset 80 and the gallery appeared
     // to stop there.
     const requestNextPage = () => {
-      if (!loadingRef.current && sentinel.getBoundingClientRect().top <= window.innerHeight + 1200) {
-        void loadPage(true);
-      }
+      if (loadingRef.current) return;
+      const scrollingElement = document.scrollingElement || document.documentElement;
+      const scrollBottom = scrollingElement.scrollTop + window.innerHeight;
+      const nearPageEnd = scrollingElement.scrollHeight - scrollBottom <= 1600;
+      const nearSentinel = sentinel.getBoundingClientRect().top <= window.innerHeight + 1200;
+      if (nearPageEnd || nearSentinel) void loadPage(true);
     };
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) requestNextPage();
     }, { rootMargin: "1200px 0px" });
     observer.observe(sentinel);
+    // Drive image dimensions are resolved progressively. That changes the
+    // document height without a scroll event, so observe the gallery itself
+    // and re-run the same check whenever rows grow or shrink.
+    const gallery = sentinel.parentElement;
+    const resizeObserver = gallery ? new ResizeObserver(requestNextPage) : null;
+    if (resizeObserver && gallery) resizeObserver.observe(gallery);
     window.addEventListener("scroll", requestNextPage, { passive: true });
     window.addEventListener("resize", requestNextPage);
     const frame = window.requestAnimationFrame(requestNextPage);
     return () => {
       window.cancelAnimationFrame(frame);
       observer.disconnect();
+      resizeObserver?.disconnect();
       window.removeEventListener("scroll", requestNextPage);
       window.removeEventListener("resize", requestNextPage);
     };
