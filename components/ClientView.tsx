@@ -408,7 +408,11 @@ function JustifiedGallery({ albumId, photos, selected, locked, onOpen, onToggle 
         style={{ flexGrow: ratio, flexBasis: 0 }}
         onClick={() => onOpen(index)}
       >
-        <DrivePhoto albumId={albumId} photo={photo} onDimensions={(imageWidth, imageHeight) => rememberRatio(photo.id, imageWidth, imageHeight)} />
+        <DrivePhoto
+          albumId={albumId}
+          photo={photo}
+          onDimensions={photo.width && photo.height ? undefined : (imageWidth, imageHeight) => rememberRatio(photo.id, imageWidth, imageHeight)}
+        />
         <button className="heart" disabled={locked} aria-label={`Chọn ${photo.name}`} onClick={(event) => { event.stopPropagation(); onToggle(photo.id); }}>{selected.has(photo.id) ? "♥" : "♡"}</button>
         <div className="caption">{photo.name}</div>
       </article>)}

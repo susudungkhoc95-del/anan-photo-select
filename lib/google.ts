@@ -180,7 +180,7 @@ async function scanFolder(
   do {
     const result = await drive.files.list({
       q: `'${folderId}' in parents and trashed = false`,
-      fields: "nextPageToken,files(id,name,mimeType,imageMediaMetadata(width,height))",
+      fields: "nextPageToken,files(id,name,mimeType,imageMediaMetadata(width,height,rotation))",
       pageSize: 1000,
       pageToken,
       supportsAllDrives: true,
@@ -191,12 +191,16 @@ async function scanFolder(
       if (file.mimeType === "application/vnd.google-apps.folder") {
         await scanFolder(file.id, `${path} / ${file.name || "Thư mục"}`, output, imageOnly, excludeFolderId);
       } else if (!imageOnly || String(file.mimeType || "").startsWith("image/")) {
+        const sourceWidth = Number(file.imageMediaMetadata?.width || 0);
+        const sourceHeight = Number(file.imageMediaMetadata?.height || 0);
+        const rotation = Math.abs(Number(file.imageMediaMetadata?.rotation || 0)) % 4;
+        const quarterTurn = rotation === 1 || rotation === 3;
         output.push({
           id: file.id,
           name: file.name || file.id,
           folder: path,
-          width: Number(file.imageMediaMetadata?.width || 0) || undefined,
-          height: Number(file.imageMediaMetadata?.height || 0) || undefined
+          width: (quarterTurn ? sourceHeight : sourceWidth) || undefined,
+          height: (quarterTurn ? sourceWidth : sourceHeight) || undefined
         });
       }
     }
