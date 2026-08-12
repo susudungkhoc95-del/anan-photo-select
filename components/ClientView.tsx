@@ -148,9 +148,20 @@ export default function ClientView({ albumId }: { albumId: string }) {
     // to stop there.
     const requestNextPage = () => {
       if (loadingRef.current) return;
-      const scrollingElement = document.scrollingElement || document.documentElement;
-      const scrollBottom = scrollingElement.scrollTop + window.innerHeight;
-      const nearPageEnd = scrollingElement.scrollHeight - scrollBottom <= 1600;
+      // Different browsers (and the mobile WebView) may report the active
+      // scroll position on `body`, `documentElement`, or `window`. Read all
+      // of them so pagination does not depend on one scrolling implementation.
+      const scrollTop = Math.max(
+        window.scrollY || 0,
+        document.documentElement?.scrollTop || 0,
+        document.body?.scrollTop || 0,
+      );
+      const scrollHeight = Math.max(
+        document.documentElement?.scrollHeight || 0,
+        document.body?.scrollHeight || 0,
+      );
+      const scrollBottom = scrollTop + window.innerHeight;
+      const nearPageEnd = scrollHeight - scrollBottom <= 1600;
       const nearSentinel = sentinel.getBoundingClientRect().top <= window.innerHeight + 1200;
       if (nearPageEnd || nearSentinel) void loadPage(true);
     };
@@ -166,9 +177,15 @@ export default function ClientView({ albumId }: { albumId: string }) {
     if (resizeObserver && gallery) resizeObserver.observe(gallery);
     window.addEventListener("scroll", requestNextPage, { passive: true });
     window.addEventListener("resize", requestNextPage);
+    // A few embedded/mobile browsers do not dispatch a bubbling scroll event
+    // and do not expose IntersectionObserver. Polling only while more data is
+    // available is cheap, and guarantees the next page is requested once the
+    // sentinel enters view (or the page reaches its end).
+    const fallbackTimer = window.setInterval(requestNextPage, 500);
     const frame = window.requestAnimationFrame(requestNextPage);
     return () => {
       window.cancelAnimationFrame(frame);
+      window.clearInterval(fallbackTimer);
       observer?.disconnect();
       resizeObserver?.disconnect();
       window.removeEventListener("scroll", requestNextPage);
