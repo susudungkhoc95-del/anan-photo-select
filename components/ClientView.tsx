@@ -335,6 +335,11 @@ export default function ClientView({ albumId }: { albumId: string }) {
         {album.selectionLocked && <div className="selection-locked-banner" role="status">Album đang trong quá trình hậu kỳ. Ảnh chọn đã được khóa tạm thời.</div>}
         <JustifiedGallery albumId={albumId} photos={photos} selected={selected} locked={Boolean(album.selectionLocked)} onOpen={(index) => { zoomIndexRef.current = index; setZoom(index); }} onToggle={toggle} />
         {loading && <div className="grid-loader show"><span className="spinner" /> Đang tải thêm ảnh...</div>}
+        {!loading && hasMore && <div className="load-more-action">
+          <button className="secondary btn-icon" type="button" onClick={() => void loadPage(true)}>
+            Tải thêm ảnh
+          </button>
+        </div>}
         {!loading && !photos.length && <div className="empty">Chưa có ảnh để hiển thị.</div>}
         <div ref={loadMoreSentinel} className="load-more-sentinel" aria-hidden="true" />
       </section>
