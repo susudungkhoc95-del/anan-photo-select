@@ -996,10 +996,10 @@ body:has(.client-page) .zoom-top .icon-button:hover {
   .toolbar { padding: 9px 0; margin-bottom: 12px; }
   .toolbar-inner { display: grid; grid-template-columns: 1fr; gap: 8px; }
   .toolbar-concept { width: 100%; }
-  .client-toolbar-actions { width: 100%; margin-left: 0; display: grid; gap: 8px; }
-  .client-toolbar-actions .counter { text-align: center; }
-.client-toolbar-actions .row { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .client-toolbar-actions button { width: 100%; min-width: 0; padding: 10px 7px; font-size: 12px; }
+  .client-toolbar-actions { width: 100%; margin-left: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .client-toolbar-actions .counter { flex: 0 0 auto; text-align: left; font-size: 14px; white-space: nowrap; }
+  .client-toolbar-actions .row { flex: 1 1 auto; width: auto; min-width: 0; display: flex; justify-content: flex-end; }
+  .client-toolbar-actions button { width: auto; max-width: 100%; min-width: 0; padding: 11px 13px; font-size: 14px; white-space: nowrap; }
   .photos { gap: 4px; }
   .justified-row {
     display: grid;
