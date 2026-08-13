@@ -319,8 +319,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
           <div className="client-toolbar-actions">
             <div className="counter">Đã chọn <span>{selected.size}</span>{album.maxSelect ? ` / ${album.maxSelect}` : ""} ảnh</div>
             <div className="row">
-              <button className="secondary btn-icon" onClick={openReview}><Heart className="review-action-heart" size={17} fill="currentColor" /> Xem ảnh đã chọn</button>
-            <button className="btn-icon" onClick={submit} disabled={!selected.size || submitting || album.selectionLocked}>{submitting ? <span className="spinner small" /> : <Send size={17} />} Gửi {selected.size} ảnh</button>
+              <button className="btn-icon review-send-entry" onClick={openReview}>Xem và gửi ảnh chọn</button>
             </div>
           </div>
         </div>
@@ -478,7 +477,7 @@ function Review({ album, photos, selected, large, table, notes, albumNote, submi
       </article>)}
       <div className="album-note"><label>Lưu ý chung cho toàn bộ album<textarea rows={3} disabled={locked} value={albumNote} onChange={(e) => onAlbumNote(e.target.value)} placeholder="Nhập lưu ý chung nếu có" /></label></div>
     </div>
-    <footer><span className="submit-summary">{locked ? "Album đang trong quá trình hậu kỳ." : <>Bạn đang gửi <strong>{selected.size} ảnh</strong>.</>}</span><button onClick={onSubmit} disabled={locked || submitting}>{submitting ? <span className="spinner small" /> : <Send size={17} />} Gửi {selected.size} ảnh</button><button className="secondary" onClick={onClose}>Đóng</button></footer>
+    <footer><button onClick={onSubmit} disabled={locked || submitting}>{submitting ? <span className="spinner small" /> : <Send size={17} />} Gửi {selected.size} ảnh</button><button className="secondary" onClick={onClose}>Đóng</button></footer>
   </div></div>;
 }
 
