@@ -64,6 +64,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
   const zoomIndexRef = useRef<number | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [submittedCount, setSubmittedCount] = useState(0);
+  const [hasPendingChanges, setHasPendingChanges] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [sendAnimation, setSendAnimation] = useState<"idle" | "sending" | "success">("idle");
   const [toast, setToast] = useState("");
@@ -133,8 +134,9 @@ export default function ClientView({ albumId }: { albumId: string }) {
         setSelected(new Set(saved.selectedIds || [])); setLarge(new Set(saved.largePrintIds || []));
         setTable(new Set(saved.tablePrintIds || [])); setNotes(saved.photoNotes || {}); setAlbumNote(saved.albumNote || "");
       }
-      setSubmitted(restored.source === "selection");
+      setSubmitted(Boolean(selection));
       setSubmittedCount(selection?.selectedIds?.length || 0);
+      setHasPendingChanges(Boolean(selection && restored.source === "draft"));
       // Do not let the autosave effect run before the server state is restored.
       draftReady.current = true;
     }).catch((e) => setError(e.message));
@@ -220,7 +222,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
   function notify(text: string) { setToast(text); setTimeout(() => setToast(""), 2200); }
   function toggle(id: string) {
     if (album?.selectionLocked) return notify("Album đang trong quá trình hậu kỳ, bạn không thể thay đổi ảnh chọn.");
-    setSubmitted(false);
+    if (submitted) setHasPendingChanges(true);
     setSelected((current) => {
       const next = new Set(current);
       if (next.has(id)) {
@@ -246,6 +248,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
 
   function setPrint(id: string, kind: "large" | "table", checked: boolean) {
     if (album?.selectionLocked) return notify("Album đang trong quá trình hậu kỳ, bạn không thể thay đổi ảnh chọn.");
+    if (submitted) setHasPendingChanges(true);
     const setter = kind === "large" ? setLarge : setTable;
     const limit = kind === "large" ? album?.largePrintLimit || 0 : album?.tablePrintLimit || 0;
     setter((current) => {
@@ -266,7 +269,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
     try {
       await rpc("saveSelection", { albumId, sessionId: sessionId.current, selectedIds, largePrintIds: [...large], tablePrintIds: [...table], photoNotes: notes, albumNote });
       localStorage.removeItem(`anan-draft-${albumId}`);
-      setSubmitted(true); setSubmittedCount(selectedCount); setReview(false); setReviewZoom(null);
+      setSubmitted(true); setSubmittedCount(selectedCount); setHasPendingChanges(false); setReview(false); setReviewZoom(null);
       setSendAnimation("success");
       if (flightTimerRef.current !== null) window.clearTimeout(flightTimerRef.current);
       flightTimerRef.current = window.setTimeout(() => setSendAnimation("idle"), 4400);
@@ -329,7 +332,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
         </div>
       </div>
       <section className="gallery-shell shell">
-        {submitted && sendAnimation === "idle" && <div className="success-banner"><span><b>Đã gửi {submittedCount} ảnh.</b> {album.selectionLocked ? "Album đang trong quá trình hậu kỳ." : "Bạn vẫn có thể thay đổi và gửi lại nếu cần."}</span></div>}
+        {submitted && sendAnimation === "idle" && <div className="success-banner"><span><b>Đã gửi {submittedCount} ảnh.</b> {album.selectionLocked ? "Album đang trong quá trình hậu kỳ." : hasPendingChanges ? `Bạn đang có thay đổi chưa gửi (${selected.size} ảnh đang chọn).` : "Bạn vẫn có thể thay đổi và gửi lại nếu cần."}</span></div>}
         <div className="client-head">
           <div className="client-title"><h1>{album.title}</h1><p className="hint guide">{album.guide}</p></div>
           <button className="secondary btn-icon" onClick={() => { navigator.clipboard.writeText(location.href); notify("Đã copy link."); }}><Copy size={16} /> Copy link ảnh</button>
@@ -349,7 +352,8 @@ export default function ClientView({ albumId }: { albumId: string }) {
       {review && <Review album={album} photos={selectedReviewPhotos} selected={selected} large={large} table={table} notes={notes} albumNote={albumNote} submitting={submitting} locked={Boolean(album.selectionLocked)}
         onClose={() => { setReview(false); setReviewZoom(null); }} onRemove={toggle}
         onOpenPhoto={(id) => setReviewZoom(selectedReviewPhotos.findIndex((photo) => photo.id === id))}
-        onPrint={setPrint} onNote={(id, value) => setNotes((n) => ({ ...n, [id]: value }))} onAlbumNote={setAlbumNote} onSubmit={submit} />}
+        onPrint={setPrint} onNote={(id, value) => { if (submitted) setHasPendingChanges(true); setNotes((n) => ({ ...n, [id]: value })); }}
+        onAlbumNote={(value) => { if (submitted) setHasPendingChanges(true); setAlbumNote(value); }} onSubmit={submit} />}
       {zoomPhoto && <Zoom albumId={albumId} photo={zoomPhoto} previousPhoto={zoom !== null ? photos[zoom - 1] : undefined}
         nextPhoto={zoom !== null ? photos[zoom + 1] : undefined}
         prefetchPhotos={zoom !== null ? [photos[zoom + 1], photos[zoom + 2], photos[zoom - 1]].filter(Boolean) : []}
