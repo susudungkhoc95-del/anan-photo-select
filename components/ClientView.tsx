@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Copy, Download, Heart, Image as ImageIcon, ImageOff, Send, X } from "lucide-react";
 import { rpc } from "@/components/App";
+import { resolveRestoredSelection } from "@/lib/selection-state";
 import type { Draft, FolderStat, Selection } from "@/lib/types";
 
 type AlbumPublic = {
@@ -62,6 +63,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
   const [zoom, setZoom] = useState<number | null>(null);
   const zoomIndexRef = useRef<number | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [submittedCount, setSubmittedCount] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [sendAnimation, setSendAnimation] = useState<"idle" | "sending" | "success">("idle");
   const [toast, setToast] = useState("");
@@ -125,12 +127,14 @@ export default function ClientView({ albumId }: { albumId: string }) {
       rpc<Draft | null>("getDraft", { albumId }),
       rpc<(Selection & { selectedFiles: Photo[] }) | null>("getSelection", { albumId })
     ]).then(([draft, selection]) => {
-      const saved = draft || selection;
+      const restored = resolveRestoredSelection(draft, selection);
+      const saved = restored.saved;
       if (saved) {
         setSelected(new Set(saved.selectedIds || [])); setLarge(new Set(saved.largePrintIds || []));
         setTable(new Set(saved.tablePrintIds || [])); setNotes(saved.photoNotes || {}); setAlbumNote(saved.albumNote || "");
-        if (selection) setSubmitted(true);
       }
+      setSubmitted(restored.source === "selection");
+      setSubmittedCount(selection?.selectedIds?.length || 0);
       // Do not let the autosave effect run before the server state is restored.
       draftReady.current = true;
     }).catch((e) => setError(e.message));
@@ -262,7 +266,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
     try {
       await rpc("saveSelection", { albumId, sessionId: sessionId.current, selectedIds, largePrintIds: [...large], tablePrintIds: [...table], photoNotes: notes, albumNote });
       localStorage.removeItem(`anan-draft-${albumId}`);
-      setSubmitted(true); setReview(false); setReviewZoom(null);
+      setSubmitted(true); setSubmittedCount(selectedCount); setReview(false); setReviewZoom(null);
       setSendAnimation("success");
       if (flightTimerRef.current !== null) window.clearTimeout(flightTimerRef.current);
       flightTimerRef.current = window.setTimeout(() => setSendAnimation("idle"), 4400);
@@ -325,7 +329,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
         </div>
       </div>
       <section className="gallery-shell shell">
-        {submitted && sendAnimation === "idle" && <div className="success-banner"><span><b>Đã gửi {selected.size} ảnh.</b> {album.selectionLocked ? "Album đang trong quá trình hậu kỳ." : "Bạn vẫn có thể thay đổi và gửi lại nếu cần."}</span></div>}
+        {submitted && sendAnimation === "idle" && <div className="success-banner"><span><b>Đã gửi {submittedCount} ảnh.</b> {album.selectionLocked ? "Album đang trong quá trình hậu kỳ." : "Bạn vẫn có thể thay đổi và gửi lại nếu cần."}</span></div>}
         <div className="client-head">
           <div className="client-title"><h1>{album.title}</h1><p className="hint guide">{album.guide}</p></div>
           <button className="secondary btn-icon" onClick={() => { navigator.clipboard.writeText(location.href); notify("Đã copy link."); }}><Copy size={16} /> Copy link ảnh</button>
