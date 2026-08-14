@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Copy, Download, Heart, Image as ImageIcon, ImageOff, Send, X } from "lucide-react";
 import { rpc } from "@/components/App";
-import { resolveRestoredSelection } from "@/lib/selection-state";
+import { resolveRestoredSelection, selectionMatchesDraft } from "@/lib/selection-state";
 import type { Draft, FolderStat, Selection } from "@/lib/types";
 
 type AlbumPublic = {
@@ -136,7 +136,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
       }
       setSubmitted(Boolean(selection));
       setSubmittedCount(selection?.selectedIds?.length || 0);
-      setHasPendingChanges(Boolean(selection && restored.source === "draft"));
+      setHasPendingChanges(Boolean(selection && restored.source === "draft" && draft && !selectionMatchesDraft(selection, draft)));
       // Do not let the autosave effect run before the server state is restored.
       draftReady.current = true;
     }).catch((e) => setError(e.message));

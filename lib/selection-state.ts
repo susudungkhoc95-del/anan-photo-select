@@ -24,3 +24,23 @@ export function resolveRestoredSelection(draft: Draft | null, selection: Selecti
     ? { source: "draft", saved: draft }
     : { source: "selection", saved: selection };
 }
+
+function sameIds(left: string[], right: string[]) {
+  if (left.length !== right.length) return false;
+  const rightSet = new Set(right);
+  return left.every((id) => rightSet.has(id));
+}
+
+/** Whether a draft represents the same choices and notes as the submission. */
+export function selectionMatchesDraft(selection: Selection, draft: Draft) {
+  if (!sameIds(selection.selectedIds, draft.selectedIds)) return false;
+  if (!sameIds(selection.largePrintIds, draft.largePrintIds)) return false;
+  if (!sameIds(selection.tablePrintIds, draft.tablePrintIds)) return false;
+  if (selection.albumNote !== draft.albumNote) return false;
+  const stableNotes = (notes: Record<string, string>) => Object.fromEntries(
+    Object.entries(notes).filter(([, value]) => value).sort(([left], [right]) => left.localeCompare(right))
+  );
+  const selectionNotes = stableNotes(selection.photoNotes);
+  const draftNotes = stableNotes(draft.photoNotes);
+  return JSON.stringify(selectionNotes) === JSON.stringify(draftNotes);
+}

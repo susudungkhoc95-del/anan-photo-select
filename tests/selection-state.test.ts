@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveRestoredSelection } from "@/lib/selection-state";
+import { resolveRestoredSelection, selectionMatchesDraft } from "@/lib/selection-state";
 import type { Draft, Selection } from "@/lib/types";
 
 const selection: Selection = {
@@ -43,5 +43,14 @@ describe("resolveRestoredSelection", () => {
 
   it("restores a draft when there is no submitted selection", () => {
     expect(resolveRestoredSelection(draft(["photo-3"], "2026-08-14T06:35:55.792Z"), null).source).toBe("draft");
+  });
+
+  it("does not call an identical autosave a pending change", () => {
+    const savedDraft = draft(["photo-2", "photo-1"], "2026-08-14T06:35:55.792Z");
+    expect(selectionMatchesDraft(selection, savedDraft)).toBe(true);
+  });
+
+  it("detects a changed selection in a draft", () => {
+    expect(selectionMatchesDraft(selection, draft(["photo-3"], "2026-08-14T06:35:55.792Z"))).toBe(false);
   });
 });
