@@ -355,7 +355,7 @@ export default function WorkflowView() {
       <DragOverlay>{activeDragId?.startsWith("card-") && <WorkflowCardPreview card={board.cards.find((card) => `card-${card.id}` === activeDragId)} />}{activeDragId?.startsWith("list-") && <WorkflowListPreview list={board.lists.find((list) => `list-${list.id}` === activeDragId)} />}</DragOverlay>
     </DndContext>
     {cardModal && <CardModal board={board} cardId={cardModal.cardId} onClose={() => setCardModal(null)} onSave={saveCardOptimistically} onChanged={load} onLabelsChanged={setCardLabelsOptimistically} onDeleted={(cardId) => { setBoard((current) => current ? { ...current, cards: current.cards.filter((item) => item.id !== cardId), links: current.links.filter((item) => item.cardId !== cardId), cardLabels: current.cardLabels.filter((item) => item.cardId !== cardId), activities: current.activities.filter((item) => item.cardId !== cardId) } : current); setCardModal(null); void load(true); }} onError={(error) => notify(error.message)} onNotice={notify} />}
-    {quickCardId && <QuickCardModal board={board} cardId={quickCardId} onClose={() => setQuickCardId(null)} onChanged={load} onLabelsChanged={setCardLabelsOptimistically} onError={(error) => notify(error.message)} />}
+    {quickCardId && <QuickCardModal board={board} cardId={quickCardId} onClose={() => setQuickCardId(null)} onSave={saveCardOptimistically} onChanged={load} onLabelsChanged={setCardLabelsOptimistically} onError={(error) => notify(error.message)} />}
     {labelsOpen && <LabelsModal board={board} onClose={() => setLabelsOpen(false)} onChanged={load} />}
     {createModal && <CreateWorkflowModal state={createModal} onClose={() => setCreateModal(null)} onCreate={(value) => createModal.type === "list" ? addList(value) : addCard(createModal.list, value)} />}
     {deleteList && <DeleteListModal list={deleteList} lists={board.lists} cardCount={board.cards.filter((card) => card.listId === deleteList.id).length} onClose={() => setDeleteList(null)} onDeleted={async (targetListId) => { try { await rpc("deleteWorkflowList", { listId: deleteList.id, targetListId }); setDeleteList(null); await load(); } catch (error) { notify((error as Error).message); } }} />}
@@ -489,31 +489,30 @@ function CardModal({ board, cardId, onClose, onSave, onChanged, onLabelsChanged,
   </section></div>;
 }
 
-function QuickCardModal({ board, cardId, onClose, onChanged, onLabelsChanged, onError }: { board: WorkflowBoard; cardId: string; onClose: () => void; onChanged: () => Promise<void>; onLabelsChanged: (cardId: string, labelIds: string[]) => Promise<void>; onError: (error: Error) => void }) {
+function QuickCardModal({ board, cardId, onClose, onSave, onChanged, onLabelsChanged, onError }: { board: WorkflowBoard; cardId: string; onClose: () => void; onSave: (cardId: string, changes: Pick<WorkflowCard, "title" | "note" | "weddingDate">) => void; onChanged: () => Promise<void>; onLabelsChanged: (cardId: string, labelIds: string[]) => Promise<void>; onError: (error: Error) => void }) {
   const card = board.cards.find((item) => item.id === cardId)!;
   const [title, setTitle] = useState(card.title);
   const [weddingDate, setWeddingDate] = useState(card.weddingDate);
   const [labelIds, setLabelIds] = useState(board.cardLabels.filter((item) => item.cardId === card.id).map((item) => item.labelId));
-  const [busy, setBusy] = useState(false);
   function toggleLabel(labelId: string) {
     const nextLabelIds = labelIds.includes(labelId) ? labelIds.filter((id) => id !== labelId) : [...labelIds, labelId];
     setLabelIds(nextLabelIds);
     void onLabelsChanged(card.id, nextLabelIds).catch((error) => { const nextError = error as Error; onError(nextError); void onChanged(); });
   }
-  async function save() {
-    setBusy(true);
-    try {
-      if (title.trim() !== card.title || weddingDate !== card.weddingDate) await rpc("updateWorkflowCard", { cardId: card.id, title: title.trim(), note: card.note, weddingDate });
-      await rpc("setWorkflowCardLabels", { cardId: card.id, labelIds });
-      await onChanged(); onClose();
-    } finally { setBusy(false); }
+  function save() {
+    const normalizedTitle = title.trim();
+    if (!normalizedTitle) return;
+    if (normalizedTitle !== card.title || weddingDate !== card.weddingDate) {
+      onSave(card.id, { title: normalizedTitle, note: card.note, weddingDate });
+    }
+    onClose();
   }
   return <div className="modal-backdrop workflow-modal-backdrop" onMouseDown={onClose}><section className="workflow-quick-card-modal" onMouseDown={(event) => event.stopPropagation()}>
     <header><div><p className="eyebrow">CÀI ĐẶT NHANH</p><h2>Thẻ công việc</h2></div><button className="icon-button" onClick={onClose} aria-label="Đóng"><X /></button></header>
     <label>Tên thẻ<input autoFocus value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} /></label>
-    <div className="workflow-date-field"><label>Ngày cưới<input type="date" value={weddingDate} onChange={(event) => setWeddingDate(event.target.value)} /></label><button type="button" className="secondary compact" disabled={!weddingDate || busy} onClick={() => setWeddingDate("")}>Xóa ngày</button></div>
+    <div className="workflow-date-field"><label>Ngày cưới<input type="date" value={weddingDate} onChange={(event) => setWeddingDate(event.target.value)} /></label><button type="button" className="secondary compact" disabled={!weddingDate} onClick={() => setWeddingDate("")}>Xóa ngày</button></div>
     <section className="workflow-card-labels"><h3>Gắn nhãn</h3>{board.labels.length ? <div className="workflow-label-picker">{board.labels.map((label) => <label key={label.id} className={labelIds.includes(label.id) ? "selected" : ""} style={{ "--label-color": label.color } as React.CSSProperties}><input type="checkbox" checked={labelIds.includes(label.id)} onChange={() => toggleLabel(label.id)} />{label.name}</label>)}</div> : <p className="muted">Chưa có nhãn. Dùng nút bánh răng ở góc dưới phải để tạo nhãn.</p>}</section>
-    <footer><button className="secondary" onClick={onClose}>Huỷ</button><button disabled={busy || !title.trim()} onClick={save}>Lưu</button></footer>
+    <footer><button className="secondary" onClick={onClose}>Huỷ</button><button disabled={!title.trim()} onClick={save}>Lưu</button></footer>
   </section></div>;
 }
 
