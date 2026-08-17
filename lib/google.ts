@@ -282,7 +282,9 @@ export async function loadAlbum(id: string) {
   return album;
 }
 
-function publicAlbum(album: Album, selectionLocked = false) {
+type AlbumSelectionLockState = "processing" | "completed" | null;
+
+function publicAlbum(album: Album, selectionLockState: AlbumSelectionLockState = null) {
   return {
     id: album.id,
     title: album.title,
@@ -295,7 +297,8 @@ function publicAlbum(album: Album, selectionLocked = false) {
     pageSize: 80,
     studioSettings: { studioName: DEFAULT_STUDIO_NAME },
     clientUrl: albumUrl(album),
-    selectionLocked
+    selectionLocked: Boolean(selectionLockState),
+    selectionLockState
   };
 }
 
@@ -306,17 +309,19 @@ async function isAlbumSelectionLocked(albumId: string) {
       readAppRecords("WorkflowCards", workspaceId),
       readAppRecords("WorkflowLists", workspaceId)
     ]);
-    const inProgressIds = new Set(lists.filter((row) => Array.isArray(row.payload) && row.payload[4] === "IN_PROGRESS").map((row) => Array.isArray(row.payload) ? String(row.payload[0] || row.record_id) : row.record_id));
-    return cards.some((row) => Array.isArray(row.payload) && row.payload[6] === "dp_select" && row.payload[7] === albumId && inProgressIds.has(String(row.payload[2] || "")));
+    const lockedListStates = new Map(lists.filter((row) => Array.isArray(row.payload) && ((row.payload as unknown[])[4] === "IN_PROGRESS" || (row.payload as unknown[])[4] === "DONE")).map((row) => { const payload = row.payload as unknown[]; return [String(payload[0] || row.record_id), payload[4] === "DONE" ? "completed" as const : "processing" as const]; }));
+    const card = cards.find((row) => Array.isArray(row.payload) && (row.payload as unknown[])[6] === "dp_select" && (row.payload as unknown[])[7] === albumId);
+    return card ? lockedListStates.get(String((card.payload as unknown[])[2] || "")) || null : null;
   } catch (error) {
     console.error("Không kiểm tra được trạng thái khóa album:", error);
-    return false;
+    return null;
   }
 }
 
 async function assertAlbumSelectionOpen(albumId: string) {
-  if (await isAlbumSelectionLocked(albumId)) {
-    throw new Error("Album đang trong quá trình hậu kỳ, khách không thể thay đổi hoặc gửi lại ảnh chọn.");
+  const lockState = await isAlbumSelectionLocked(albumId);
+  if (lockState) {
+    throw new Error(lockState === "completed" ? "Album đã hoàn tất hậu kỳ, khách không thể thay đổi hoặc gửi lại ảnh chọn." : "Album đang trong quá trình hậu kỳ, khách không thể thay đổi hoặc gửi lại ảnh chọn.");
   }
 }
 

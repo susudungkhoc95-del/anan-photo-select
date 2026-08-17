@@ -8,7 +8,7 @@ import type { Draft, FolderStat, Selection } from "@/lib/types";
 
 type AlbumPublic = {
   id: string; title: string; guide: string; maxSelect: number; largePrintLimit: number;
-  tablePrintLimit: number; photoCount: number; folders: FolderStat[]; pageSize: number;
+  tablePrintLimit: number; photoCount: number; folders: FolderStat[]; pageSize: number; selectionLockState?: "processing" | "completed" | null;
   studioSettings: { studioName: string }; selectionLocked?: boolean;
 };
 type Photo = { id: string; name: string; folder: string; width?: number; height?: number; thumbUrl: string; thumbSrcSet?: string; zoomUrl: string; downloadUrl: string; viewUrl: string };
@@ -220,8 +220,13 @@ export default function ClientView({ albumId }: { albumId: string }) {
   }, [album, albumId, selected, large, table, notes, albumNote]);
 
   function notify(text: string) { setToast(text); setTimeout(() => setToast(""), 2200); }
+  function lockedMessage(action: "change" | "resend") {
+    return album?.selectionLockState === "completed"
+      ? `Album đã hoàn tất hậu kỳ, bạn không thể ${action === "change" ? "thay đổi" : "gửi lại"} ảnh chọn.`
+      : `Album đang trong quá trình hậu kỳ, bạn không thể ${action === "change" ? "thay đổi" : "gửi lại"} ảnh chọn.`;
+  }
   function toggle(id: string) {
-    if (album?.selectionLocked) return notify("Album đang trong quá trình hậu kỳ, bạn không thể thay đổi ảnh chọn.");
+    if (album?.selectionLocked) return notify(lockedMessage("change"));
     if (submitted) setHasPendingChanges(true);
     setSelected((current) => {
       const next = new Set(current);
@@ -247,7 +252,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
   }
 
   function setPrint(id: string, kind: "large" | "table", checked: boolean) {
-    if (album?.selectionLocked) return notify("Album đang trong quá trình hậu kỳ, bạn không thể thay đổi ảnh chọn.");
+    if (album?.selectionLocked) return notify(lockedMessage("change"));
     if (submitted) setHasPendingChanges(true);
     const setter = kind === "large" ? setLarge : setTable;
     const limit = kind === "large" ? album?.largePrintLimit || 0 : album?.tablePrintLimit || 0;
@@ -260,7 +265,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
     });
   }
   async function submit() {
-    if (album?.selectionLocked) return notify("Album đang trong quá trình hậu kỳ, bạn không thể gửi lại ảnh chọn.");
+    if (album?.selectionLocked) return notify(lockedMessage("resend"));
     if (!selected.size) return notify("Bạn chưa chọn ảnh nào.");
     const selectedIds = [...selected];
     const selectedCount = selectedIds.length;
@@ -332,13 +337,13 @@ export default function ClientView({ albumId }: { albumId: string }) {
         </div>
       </div>
       <section className="gallery-shell shell">
-        {submitted && sendAnimation === "idle" && <div className="success-banner"><span><b>Đã gửi {submittedCount} ảnh.</b> {album.selectionLocked ? "Album đang trong quá trình hậu kỳ." : hasPendingChanges ? `Bạn đang có thay đổi chưa gửi (${selected.size} ảnh đang chọn).` : "Bạn vẫn có thể thay đổi và gửi lại nếu cần."}</span></div>}
+        {submitted && sendAnimation === "idle" && <div className="success-banner"><span>{album.selectionLockState === "completed" ? `Đã hoàn tất hậu kỳ ${submittedCount} ảnh. Album chọn ảnh này tồn tại khoảng 2 tháng, quý khách có thể lưu ảnh gốc về trong khoảng thời gian này.` : <><b>Đã gửi {submittedCount} ảnh.</b> {album.selectionLocked ? "Album đang trong quá trình hậu kỳ." : hasPendingChanges ? `Bạn đang có thay đổi chưa gửi (${selected.size} ảnh đang chọn).` : "Bạn vẫn có thể thay đổi và gửi lại nếu cần."}</>}</span></div>}
         <div className="client-head">
           <div className="client-title"><h1>{album.title}</h1><p className="hint guide">{album.guide}</p></div>
           <button className="secondary btn-icon" onClick={() => { navigator.clipboard.writeText(location.href); notify("Đã copy link."); }}><Copy size={16} /> Copy link ảnh</button>
         </div>
         <div className="hint page-status">Đang hiển thị {photos.length} / {total} ảnh</div>
-        {album.selectionLocked && <div className="selection-locked-banner" role="status">Album đang trong quá trình hậu kỳ. Ảnh chọn đã được khóa tạm thời.</div>}
+        {album.selectionLocked && <div className="selection-locked-banner" role="status">{album.selectionLockState === "completed" ? "Đã hoàn tất hậu kỳ. Ảnh chọn đã được chốt và khóa." : "Album đang trong quá trình hậu kỳ. Ảnh chọn đã được khóa tạm thời."}</div>}
         <JustifiedGallery albumId={albumId} photos={photos} selected={selected} locked={Boolean(album.selectionLocked)} onOpen={(index) => { zoomIndexRef.current = index; setZoom(index); }} onToggle={toggle} />
         {loading && <div className="grid-loader show"><span className="spinner" /> Đang tải thêm ảnh...</div>}
         {!loading && hasMore && <div className="load-more-action">
