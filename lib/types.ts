@@ -96,6 +96,7 @@ export type WorkflowCard = {
   title: string;
   note: string;
   weddingDate: string;
+  photoReturnDate: string;
   position: number;
   source: "manual" | "dp_select";
   dpSelectAlbumId: string;

@@ -796,13 +796,14 @@ body:has(.client-page) .zoom-top .icon-button:hover {
 .workflow-list-drag-overlay h2 { margin: 0 0 4px; font-size: 15px; }
 .workflow-list-drag-overlay span { color: var(--muted); font-size: 12px; }
 .workflow-card h3 { margin: 0; font-size: 14px; line-height: 1.38; }
-.workflow-card p { margin: 8px 0 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: var(--muted); font-size: 12px; white-space: pre-line; }
+.workflow-card-note-row { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 8px; }
+.workflow-card p { flex: 1 1 auto; min-width: 0; margin: 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: var(--muted); font-size: 12px; white-space: pre-line; }
 .workflow-card .workflow-card-wedding-date { margin: 0 0 0 auto; color: #8de9dd; font-size: 11px; font-weight: 700; white-space: nowrap; }
-.workflow-label-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.workflow-card .workflow-card-return-date { display: inline-flex; align-items: center; gap: 3px; color: #f2c875; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.workflow-label-chips { display: flex; flex: 0 0 auto; flex-wrap: nowrap; gap: 5px; max-width: 48%; margin: 0; overflow: hidden; }
 .workflow-label-chips span { padding: 3px 7px; border: 1px solid color-mix(in srgb, var(--label-color) 72%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--label-color) 18%, transparent); color: #eff7ff; font-size: 11px; font-weight: 800; }
 .workflow-card footer { display: flex; align-items: center; gap: 7px; margin-top: 10px; color: var(--muted); font-size: 12px; min-width: 0; }
-.workflow-card footer > .workflow-label-chips { flex: 1 1 auto; margin: 0; min-width: 0; overflow: hidden; flex-wrap: nowrap; }
-.workflow-card footer > .workflow-label-chips span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; }
+.workflow-card-note-row .workflow-label-chips span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 112px; }
 .workflow-card footer > span:last-child { margin-left: auto; }
 .workflow-card footer > span:last-child { display: inline-flex; align-items: center; gap: 3px; }
 .workflow-card footer > span.workflow-age { margin-left: 0; }

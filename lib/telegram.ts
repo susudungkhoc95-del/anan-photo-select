@@ -64,13 +64,28 @@ export async function sendSelectionTelegram({ album, selectedCount, largePrintCo
   return sendTelegramMessage(message);
 }
 
-export function sendWorkflowAgeTelegram({ title, days, listName, spreadsheetUrl }: { title: string; days: number; listName: string; spreadsheetUrl?: string }) {
+export function sendWorkflowAgeTelegram({ title, days, listName }: { title: string; days: number; listName: string }) {
   const message = [
     "⏰ Thẻ Workflow đã đến ngày 7",
     `Album/thẻ: ${clip(title, 180)}`,
     `Tuổi hiện tại: Ngày ${days}`,
+    `Danh sách: ${clip(listName, 80)}`
+  ].filter(Boolean).join("\n");
+  return sendTelegramMessage(message);
+}
+
+export function sendWorkflowReturnDateTelegram({ title, returnDate, weddingDate, note, listName }: { title: string; returnDate: string; weddingDate?: string; note?: string; listName: string }) {
+  const [year, month, day] = returnDate.split("-");
+  const formattedDate = year && month && day ? `${day}/${month}/${year}` : returnDate;
+  const weddingParts = weddingDate?.split("-") || [];
+  const formattedWeddingDate = weddingParts.length === 3 ? `${weddingParts[2]}/${weddingParts[1]}/${weddingParts[0]}` : weddingDate;
+  const message = [
+    "📦 Hôm nay đến hạn trả ảnh",
+    `Album/thẻ: ${clip(title, 180)}`,
+    `Ngày trả ảnh: ${formattedDate}`,
+    formattedWeddingDate ? `Ngày cưới: ${formattedWeddingDate}` : "",
     `Danh sách: ${clip(listName, 80)}`,
-    spreadsheetUrl ? `Mở Sheet kết quả: ${spreadsheetUrl}` : ""
+    note ? `Ghi chú: ${clip(note, 800)}` : ""
   ].filter(Boolean).join("\n");
   return sendTelegramMessage(message);
 }

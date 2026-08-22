@@ -3,7 +3,7 @@ import { workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
 import type { WorkflowCard, WorkflowLink, WorkflowList } from "@/lib/types";
 
 const list: WorkflowList = { id: "todo", workspaceId: "studio", name: "CẦN LÀM", position: 0, systemKey: "TODO_INBOX", createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z" };
-const card: WorkflowCard = { id: "card", workspaceId: "studio", listId: "todo", title: "Hồng Ngọc & Trần Quang", note: "Ưu tiên chỉnh da", weddingDate: "", position: 0, source: "dp_select", dpSelectAlbumId: "album", dpSelectSubmissionId: "submission", selectionSubmittedAt: "2026-08-01T00:00:00.000Z", createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z", completedAt: "", createdBy: "dp_select", dpSummary: "", dpAlbumNote: "", dpPhotoNoteCount: 0 };
+const card: WorkflowCard = { id: "card", workspaceId: "studio", listId: "todo", title: "Hồng Ngọc & Trần Quang", note: "Ưu tiên chỉnh da", weddingDate: "", photoReturnDate: "", position: 0, source: "dp_select", dpSelectAlbumId: "album", dpSelectSubmissionId: "submission", selectionSubmittedAt: "2026-08-01T00:00:00.000Z", createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z", completedAt: "", createdBy: "dp_select", dpSummary: "", dpAlbumNote: "", dpPhotoNoteCount: 0 };
 const links: WorkflowLink[] = [{ id: "link", workspaceId: "studio", cardId: "card", label: "Sheet ảnh chọn", url: "https://docs.google.com/spreadsheets/d/example", position: 0, createdAt: card.createdAt, updatedAt: card.updatedAt }];
 
 describe("workflow search", () => {
