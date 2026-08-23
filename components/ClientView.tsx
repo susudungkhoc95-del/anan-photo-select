@@ -19,6 +19,23 @@ type ImageCacheEntry = { promise: Promise<boolean>; priority: ImagePriority };
 const imageCache = new Map<string, ImageCacheEntry>();
 const maxCachedImages = 48;
 
+function readLocalDraft(albumId: string): Draft | null {
+  try {
+    const value = JSON.parse(localStorage.getItem(`anan-draft-${albumId}`) || "null") as Partial<Draft> | null;
+    if (!value || !Array.isArray(value.selectedIds)) return null;
+    return {
+      albumId,
+      sessionId: typeof value.sessionId === "string" ? value.sessionId : "",
+      selectedIds: value.selectedIds.map(String),
+      largePrintIds: Array.isArray(value.largePrintIds) ? value.largePrintIds.map(String) : [],
+      tablePrintIds: Array.isArray(value.tablePrintIds) ? value.tablePrintIds.map(String) : [],
+      photoNotes: value.photoNotes && typeof value.photoNotes === "object" ? value.photoNotes as Record<string, string> : {},
+      albumNote: typeof value.albumNote === "string" ? value.albumNote : "",
+      savedAt: typeof value.savedAt === "string" ? value.savedAt : new Date(0).toISOString()
+    };
+  } catch { return null; }
+}
+
 function sizedDriveUrl(id: string, width: number) {
   return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w${width}`;
 }
@@ -124,11 +141,12 @@ export default function ClientView({ albumId }: { albumId: string }) {
 
     void loadPage(false, "all");
 
+    const localDraft = readLocalDraft(albumId);
     void Promise.all([
       rpc<Draft | null>("getDraft", { albumId }),
       rpc<(Selection & { selectedFiles: Photo[] }) | null>("getSelection", { albumId })
     ]).then(([draft, selection]) => {
-      const restored = resolveRestoredSelection(draft, selection);
+      const restored = resolveRestoredSelection(draft || (!selection ? localDraft : null), selection);
       const saved = restored.saved;
       if (saved) {
         setSelected(new Set(saved.selectedIds || [])); setLarge(new Set(saved.largePrintIds || []));
@@ -209,12 +227,18 @@ export default function ClientView({ albumId }: { albumId: string }) {
 
   useEffect(() => {
     if (!draftReady.current || !album) return;
+    const localDraft = {
+      albumId, sessionId: sessionId.current, selectedIds: [...selected], largePrintIds: [...large],
+      tablePrintIds: [...table], photoNotes: notes, albumNote, savedAt: new Date().toISOString()
+    } satisfies Draft;
+    // Keep a synchronous local copy so a quick refresh does not lose a click
+    // while the debounced server draft is still being written.
+    localStorage.setItem(`anan-draft-${albumId}`, JSON.stringify(localDraft));
     const timer = setTimeout(() => {
       rpc("saveDraft", {
         albumId, sessionId: sessionId.current, selectedIds: [...selected], largePrintIds: [...large],
         tablePrintIds: [...table], photoNotes: notes, albumNote
       }).catch(() => {});
-      localStorage.setItem(`anan-draft-${albumId}`, JSON.stringify({ selectedIds: [...selected], largePrintIds: [...large], tablePrintIds: [...table], photoNotes: notes, albumNote }));
     }, 700);
     return () => clearTimeout(timer);
   }, [album, albumId, selected, large, table, notes, albumNote]);
