@@ -157,6 +157,14 @@ function photoSheetName(id: string) {
   return `photos_${id}`.slice(0, 100);
 }
 
+function photoSheetRange(album: Pick<Album, "photoSheet" | "photoCount">) {
+  // Reading an open-ended A2:E range can make Google Sheets scan the entire
+  // grid. Album photo counts are stored when the album is created, so keep the
+  // request bounded to the rows that can contain photos.
+  const endRow = Math.max(2, Math.min(100_001, Math.floor(Number(album.photoCount) || 0) + 1));
+  return `${quoteSheet(album.photoSheet)}!A2:E${endRow}`;
+}
+
 async function createSheet(title: string, hidden = true) {
   const { sheets, spreadsheetId } = getGoogleApi();
   const result = await sheets.spreadsheets.batchUpdate({
@@ -359,7 +367,7 @@ export async function photoPage(payload: Record<string, unknown>) {
   const { sheets, spreadsheetId } = getGoogleApi();
   const result = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `${quoteSheet(album.photoSheet)}!A2:E`
+    range: photoSheetRange(album)
   });
   const folder = clean(payload.folder) || "all";
   const all = (result.data.values || []).map((r) => ({
@@ -432,7 +440,7 @@ async function allPhotos(album: Album) {
   const { sheets, spreadsheetId } = getGoogleApi();
   const result = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `${quoteSheet(album.photoSheet)}!A2:E`
+    range: photoSheetRange(album)
   });
   return (result.data.values || []).map((r) => ({
     id: String(r[0]), name: String(r[1] || ""), folder: String(r[2] || ""),
