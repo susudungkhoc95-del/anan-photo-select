@@ -36,6 +36,14 @@ function readLocalDraft(albumId: string): Draft | null {
   } catch { return null; }
 }
 
+function newestDraft(first: Draft | null, second: Draft | null) {
+  if (!first) return second;
+  if (!second) return first;
+  const firstTime = Date.parse(first.savedAt);
+  const secondTime = Date.parse(second.savedAt);
+  return secondTime > firstTime ? second : first;
+}
+
 function sizedDriveUrl(id: string, width: number) {
   return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w${width}`;
 }
@@ -146,7 +154,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
       rpc<Draft | null>("getDraft", { albumId }),
       rpc<(Selection & { selectedFiles: Photo[] }) | null>("getSelection", { albumId })
     ]).then(([draft, selection]) => {
-      const restored = resolveRestoredSelection(draft || (!selection ? localDraft : null), selection);
+      const restored = resolveRestoredSelection(newestDraft(draft, localDraft), selection);
       const saved = restored.saved;
       if (saved) {
         setSelected(new Set(saved.selectedIds || [])); setLarge(new Set(saved.largePrintIds || []));
