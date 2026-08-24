@@ -101,6 +101,10 @@ export default function WorkflowView() {
       const pendingCards = [...pendingCardsRef.current.values()];
       const serverCardIds = new Set(nextBoard.cards.map((card) => card.id));
       const pendingMoves = pendingCardMovesRef.current;
+      for (const [cardId, pendingCard] of pendingMoves) {
+        const serverCard = nextBoard.cards.find((card) => card.id === cardId);
+        if (serverCard?.listId === pendingCard.listId) pendingMoves.delete(cardId);
+      }
       const pendingLabels = [...pendingCardLabelsRef.current.entries()];
       const pendingLabelCardIds = new Set(pendingCardLabelsRef.current.keys());
       const pendingCardEdits = pendingCardEditsRef.current;
@@ -268,8 +272,10 @@ export default function WorkflowView() {
         if (optimisticCard) pendingCardMovesRef.current.set(cardId, optimisticCard);
         try {
           await rpc("moveWorkflowCard", { cardId, targetListId, orderedIds: targetCards.map((item) => item.id), sourceOrderedIds: sourceCards.map((item) => item.id) });
-          pendingCardMovesRef.current.delete(cardId);
-          await load(true);
+          // Do not immediately reload the whole board here. getWorkflowBoard
+          // also synchronizes albums with Google and can outlive the drag
+          // request, which was the source of the browser tab crash. The
+          // normal background refresh will reconcile this confirmed move.
         } catch (error) {
           pendingCardMovesRef.current.delete(cardId);
           throw error;
