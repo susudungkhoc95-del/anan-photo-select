@@ -64,6 +64,7 @@ export default function WorkflowView() {
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [quickCardId, setQuickCardId] = useState<string | null>(null);
   const [pendingCardIds, setPendingCardIds] = useState<Set<string>>(() => new Set());
+  const boardRef = useRef<WorkflowBoard | null>(null);
   const pendingCardsRef = useRef(new Map<string, WorkflowCard>());
   // A board refresh can finish while a drag mutation is still being written.
   // Keep the optimistic destination until that mutation has been confirmed;
@@ -76,6 +77,10 @@ export default function WorkflowView() {
   const refreshPendingRef = useRef(false);
   const toastTimerRef = useRef<number | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  useEffect(() => {
+    boardRef.current = board;
+  }, [board]);
 
   function notify(message: string, duration = 3500) {
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
@@ -225,36 +230,37 @@ export default function WorkflowView() {
   }
 
   async function onDragEnd(event: DragEndEvent) {
-    if (!board || query.trim() || !event.over) return;
+    const currentBoard = boardRef.current || board;
+    if (!currentBoard || query.trim() || !event.over) return;
     const activeId = String(event.active.id);
     const overId = String(event.over.id);
     try {
       if (activeId.startsWith("list-")) {
         const activeListId = activeId.slice(5);
-        const overCard = board.cards.find((card) => `card-${card.id}` === overId);
+        const overCard = currentBoard.cards.find((card) => `card-${card.id}` === overId);
         const overListId = overCard?.listId || (overId.startsWith("list-") ? overId.slice(5) : overId.startsWith("column-") ? overId.slice(7) : "");
         if (!overListId || activeListId === overListId) return;
-        const oldIndex = board.lists.findIndex((list) => list.id === activeListId);
-        const newIndex = board.lists.findIndex((list) => list.id === overListId);
-        const lists = arrayMove(board.lists, oldIndex, newIndex);
-        setBoard({ ...board, lists });
+        const oldIndex = currentBoard.lists.findIndex((list) => list.id === activeListId);
+        const newIndex = currentBoard.lists.findIndex((list) => list.id === overListId);
+        const lists = arrayMove(currentBoard.lists, oldIndex, newIndex);
+        setBoard({ ...currentBoard, lists });
         await rpc("reorderWorkflowLists", { orderedIds: lists.map((list) => list.id) });
       } else if (activeId.startsWith("card-")) {
         const cardId = activeId.slice(5);
-        const card = board.cards.find((item) => item.id === cardId);
+        const card = currentBoard.cards.find((item) => item.id === cardId);
         if (!card) return;
-        const overCard = board.cards.find((item) => `card-${item.id}` === overId);
+        const overCard = currentBoard.cards.find((item) => `card-${item.id}` === overId);
         const targetListId = overCard?.listId || (overId.startsWith("column-") ? overId.slice(7) : overId.startsWith("list-") ? overId.slice(5) : "");
         if (!targetListId) return;
         const sourceListId = dragOriginRef.current?.cardId === cardId ? dragOriginRef.current.sourceListId : card.listId;
-        let cards = board.cards;
+        let cards = currentBoard.cards;
         if (card.listId !== targetListId) {
-          const sourceCards = board.cards.filter((item) => item.listId === card.listId && item.id !== card.id);
-          const targetCards = board.cards.filter((item) => item.listId === targetListId && item.id !== card.id);
+          const sourceCards = currentBoard.cards.filter((item) => item.listId === card.listId && item.id !== card.id);
+          const targetCards = currentBoard.cards.filter((item) => item.listId === targetListId && item.id !== card.id);
           const insertAt = overCard ? targetCards.findIndex((item) => item.id === overCard.id) : targetCards.length;
           targetCards.splice(insertAt < 0 ? targetCards.length : insertAt, 0, { ...card, listId: targetListId });
-          cards = [...board.cards.filter((item) => item.listId !== card.listId && item.listId !== targetListId), ...sourceCards, ...targetCards];
-          setBoard({ ...board, cards });
+          cards = [...currentBoard.cards.filter((item) => item.listId !== card.listId && item.listId !== targetListId), ...sourceCards, ...targetCards];
+          setBoard({ ...currentBoard, cards });
         }
         const sourceCards = cards.filter((item) => item.listId === sourceListId && item.id !== cardId);
         const targetCards = cards.filter((item) => item.listId === targetListId);

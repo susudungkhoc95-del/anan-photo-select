@@ -311,8 +311,20 @@ function normalizeWeddingDate(value: unknown) {
 
 async function resequenceCards(workspaceId: string, cards: WorkflowCard[], orderedIds: string[]) {
   const idSet = new Set(cards.map((card) => card.id));
-  if (orderedIds.length !== cards.length || orderedIds.some((id) => !idSet.has(id)) || new Set(orderedIds).size !== orderedIds.length) throw new Error("Thứ tự thẻ không hợp lệ.");
-  await Promise.all(orderedIds.map(async (id, index) => {
+  if (orderedIds.some((id) => !idSet.has(id)) || new Set(orderedIds).size !== orderedIds.length) throw new Error("Thứ tự thẻ không hợp lệ.");
+  // The board can change between the initial read and the drag request (for
+  // example, the automatic waiting-selection sync may add a card). Preserve
+  // those server-side cards after the client's known order instead of
+  // rejecting the whole move.
+  const orderedSet = new Set(orderedIds);
+  const completeOrder = [
+    ...orderedIds,
+    ...cards
+      .filter((card) => !orderedSet.has(card.id))
+      .sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt))
+      .map((card) => card.id)
+  ];
+  await Promise.all(completeOrder.map(async (id, index) => {
     const card = cards.find((item) => item.id === id)!;
     if (card.position === index) return;
     card.position = index; card.updatedAt = now();
