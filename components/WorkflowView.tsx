@@ -65,6 +65,10 @@ export default function WorkflowView() {
   const [quickCardId, setQuickCardId] = useState<string | null>(null);
   const [pendingCardIds, setPendingCardIds] = useState<Set<string>>(() => new Set());
   const pendingCardsRef = useRef(new Map<string, WorkflowCard>());
+  // A board refresh can finish while a drag mutation is still being written.
+  // Keep the optimistic destination until that mutation has been confirmed;
+  // otherwise a stale response briefly puts the card back in its old list.
+  const pendingCardMovesRef = useRef(new Map<string, WorkflowCard>());
   const pendingCardLabelsRef = useRef(new Map<string, string[]>());
   const pendingCardEditsRef = useRef(new Map<string, PendingCardEdit>());
   const dragOriginRef = useRef<{ cardId: string; sourceListId: string; board: WorkflowBoard } | null>(null);
@@ -91,12 +95,16 @@ export default function WorkflowView() {
       // write is still in flight (a periodic refresh can happen meanwhile).
       const pendingCards = [...pendingCardsRef.current.values()];
       const serverCardIds = new Set(nextBoard.cards.map((card) => card.id));
+      const pendingMoves = pendingCardMovesRef.current;
       const pendingLabels = [...pendingCardLabelsRef.current.entries()];
       const pendingLabelCardIds = new Set(pendingCardLabelsRef.current.keys());
       const pendingCardEdits = pendingCardEditsRef.current;
       const mergedBoard = pendingCards.length
         ? { ...nextBoard, cards: [...nextBoard.cards, ...pendingCards.filter((card) => !serverCardIds.has(card.id))] }
         : { ...nextBoard };
+      if (pendingMoves.size) {
+        mergedBoard.cards = mergedBoard.cards.map((card) => pendingMoves.get(card.id) || card);
+      }
       if (pendingCardEdits.size) {
         mergedBoard.cards = mergedBoard.cards.map((card) => {
           const edit = pendingCardEdits.get(card.id);
@@ -161,8 +169,13 @@ export default function WorkflowView() {
       void rpc<StudioSettings>("getSettings").then((settings) => setQuickLinks(settings.quickLinks || [])).catch(() => {});
       boardRequest.then((nextBoard) => {
         if (!active) return;
-        cacheBoard(nextBoard);
-        setBoard(nextBoard);
+        // The initial request can race with a drag started from a cached board,
+        // so apply the same pending-mutation merge used by background refreshes.
+        const mergedBoard = pendingCardMovesRef.current.size
+          ? { ...nextBoard, cards: nextBoard.cards.map((card) => pendingCardMovesRef.current.get(card.id) || card) }
+          : nextBoard;
+        cacheBoard(mergedBoard);
+        setBoard(mergedBoard);
       }).catch((error) => { if (active) notify((error as Error).message); });
     }).catch(() => { if (active) setAuth("no"); });
     return () => { active = false; };
@@ -245,7 +258,16 @@ export default function WorkflowView() {
         }
         const sourceCards = cards.filter((item) => item.listId === sourceListId && item.id !== cardId);
         const targetCards = cards.filter((item) => item.listId === targetListId);
-        await rpc("moveWorkflowCard", { cardId, targetListId, orderedIds: targetCards.map((item) => item.id), sourceOrderedIds: sourceCards.map((item) => item.id) });
+        const optimisticCard = cards.find((item) => item.id === cardId);
+        if (optimisticCard) pendingCardMovesRef.current.set(cardId, optimisticCard);
+        try {
+          await rpc("moveWorkflowCard", { cardId, targetListId, orderedIds: targetCards.map((item) => item.id), sourceOrderedIds: sourceCards.map((item) => item.id) });
+          pendingCardMovesRef.current.delete(cardId);
+          await load(true);
+        } catch (error) {
+          pendingCardMovesRef.current.delete(cardId);
+          throw error;
+        }
       }
     } catch (error) { notify((error as Error).message); await load(); }
   }
