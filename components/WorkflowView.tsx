@@ -261,7 +261,10 @@ export default function WorkflowView() {
         if (card.listId !== targetListId) {
           const sourceCards = currentBoard.cards.filter((item) => item.listId === card.listId && item.id !== card.id);
           const targetCards = currentBoard.cards.filter((item) => item.listId === targetListId && item.id !== card.id);
-          const insertAt = overCard ? targetCards.findIndex((item) => item.id === overCard.id) : targetCards.length;
+          // Dropping on the column itself means the user chose the top drop
+          // zone. Dropping on a card keeps the card immediately before that
+          // card instead.
+          const insertAt = overCard ? targetCards.findIndex((item) => item.id === overCard.id) : 0;
           targetCards.splice(insertAt < 0 ? targetCards.length : insertAt, 0, { ...card, listId: targetListId });
           cards = [...currentBoard.cards.filter((item) => item.listId !== card.listId && item.listId !== targetListId), ...sourceCards, ...targetCards];
           setBoard({ ...currentBoard, cards });
@@ -318,7 +321,7 @@ export default function WorkflowView() {
 
       const sourceCards = current.cards.filter((item) => item.listId === card.listId && item.id !== card.id);
       const targetCards = current.cards.filter((item) => item.listId === targetListId && item.id !== card.id);
-      const insertAt = overCard ? Math.max(0, targetCards.findIndex((item) => item.id === overCard.id)) : targetCards.length;
+      const insertAt = overCard ? Math.max(0, targetCards.findIndex((item) => item.id === overCard.id)) : 0;
       const movedCard = { ...card, listId: targetListId };
       targetCards.splice(insertAt < 0 ? targetCards.length : insertAt, 0, movedCard);
       return { ...current, cards: [...current.cards.filter((item) => item.listId !== card.listId && item.listId !== targetListId), ...sourceCards, ...targetCards] };
