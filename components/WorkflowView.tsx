@@ -157,12 +157,12 @@ export default function WorkflowView() {
   }, [auth, load]);
   useEffect(() => {
     let active = true;
-    // Start both requests at once. A cached board paints immediately while the
-    // fresh board keeps the workflow accurate in the background.
+    // A cached board paints immediately, but authentication must be checked
+    // before requesting the protected board. Starting both requests caused an
+    // expired session to leave Workflow spinning forever on a rejected board
+    // request.
     const cached = cachedBoard();
     if (cached) setBoard(cached);
-    const boardRequest = rpc<WorkflowBoard>("getWorkflowBoard");
-    void boardRequest.catch(() => {});
     fetch("/api/auth").then((response) => response.json()).then(({ authenticated }) => {
       if (!active) return;
       setAuth(authenticated ? "yes" : "no");
@@ -172,7 +172,7 @@ export default function WorkflowView() {
       }
       sessionStorage.setItem(ADMIN_SESSION_KEY, "yes");
       void rpc<StudioSettings>("getSettings").then((settings) => setQuickLinks(settings.quickLinks || [])).catch(() => {});
-      boardRequest.then((nextBoard) => {
+      rpc<WorkflowBoard>("getWorkflowBoard").then((nextBoard) => {
         if (!active) return;
         // The initial request can race with a drag started from a cached board,
         // so apply the same pending-mutation merge used by background refreshes.
@@ -360,11 +360,11 @@ export default function WorkflowView() {
     });
   }
 
-  if (auth === "loading" || !board) return <div className="page-loader"><span className="spinner" /> Đang mở DP Workflow…</div>;
   if (auth === "no") {
     if (typeof window !== "undefined") window.location.replace("/");
     return <div className="page-loader">Đang chuyển đến trang đăng nhập…</div>;
   }
+  if (auth === "loading" || !board) return <div className="page-loader"><span className="spinner" /> Đang mở DP Workflow…</div>;
 
   return <main className="workflow-page">
     <header className="workflow-header">
