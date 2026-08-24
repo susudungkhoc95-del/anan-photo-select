@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { DndContext, DragEndEvent, DragOverEvent, DragOverlay, DragStartEvent, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
+import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { CalendarClock, ChevronDown, Copy, ExternalLink, FolderSync, History, MoreVertical, Plus, Search, Settings, Trash2, X } from "lucide-react";
@@ -257,24 +257,36 @@ export default function WorkflowView() {
         const targetListId = overCard?.listId || (overId.startsWith("column-") ? overId.slice(7) : overId.startsWith("list-") ? overId.slice(5) : "");
         if (!targetListId) return;
         const sourceListId = dragOriginRef.current?.cardId === cardId ? dragOriginRef.current.sourceListId : card.listId;
-        let cards = currentBoard.cards;
-        if (card.listId !== targetListId) {
-          const sourceCards = currentBoard.cards.filter((item) => item.listId === card.listId && item.id !== card.id);
-          const targetCards = currentBoard.cards.filter((item) => item.listId === targetListId && item.id !== card.id);
-          // Dropping on the column itself means the user chose the top drop
-          // zone. Dropping on a card keeps the card immediately before that
-          // card instead.
-          const insertAt = overCard ? targetCards.findIndex((item) => item.id === overCard.id) : 0;
-          targetCards.splice(insertAt < 0 ? targetCards.length : insertAt, 0, { ...card, listId: targetListId });
-          cards = [...currentBoard.cards.filter((item) => item.listId !== card.listId && item.listId !== targetListId), ...sourceCards, ...targetCards];
-          setBoard({ ...currentBoard, cards });
+        const sourceCards = currentBoard.cards.filter((item) => item.listId === sourceListId);
+        const targetCards = sourceListId === targetListId
+          ? sourceCards
+          : currentBoard.cards.filter((item) => item.listId === targetListId);
+        const sourceIndex = sourceCards.findIndex((item) => item.id === cardId);
+        if (sourceIndex < 0) return;
+
+        let cards: WorkflowCard[];
+        if (sourceListId === targetListId) {
+          if (!overCard || overCard.id === cardId) return;
+          const targetIndex = sourceCards.findIndex((item) => item.id === overCard.id);
+          if (targetIndex < 0 || targetIndex === sourceIndex) return;
+          const reordered = arrayMove(sourceCards, sourceIndex, targetIndex);
+          cards = [...currentBoard.cards.filter((item) => item.listId !== sourceListId), ...reordered];
+        } else {
+          const nextSourceCards = sourceCards.filter((item) => item.id !== cardId);
+          const nextTargetCards = targetCards.filter((item) => item.id !== cardId);
+          // A column drop is the top drop zone; dropping over a card inserts
+          // immediately before that card.
+          const insertAt = overCard ? nextTargetCards.findIndex((item) => item.id === overCard.id) : 0;
+          nextTargetCards.splice(insertAt < 0 ? nextTargetCards.length : insertAt, 0, { ...card, listId: targetListId });
+          cards = [...currentBoard.cards.filter((item) => item.listId !== sourceListId && item.listId !== targetListId), ...nextSourceCards, ...nextTargetCards];
         }
-        const sourceCards = cards.filter((item) => item.listId === sourceListId && item.id !== cardId);
-        const targetCards = cards.filter((item) => item.listId === targetListId);
+        setBoard({ ...currentBoard, cards });
+        const orderedSourceCards = cards.filter((item) => item.listId === sourceListId && item.id !== cardId);
+        const orderedTargetCards = cards.filter((item) => item.listId === targetListId);
         const optimisticCard = cards.find((item) => item.id === cardId);
         if (optimisticCard) pendingCardMovesRef.current.set(cardId, optimisticCard);
         try {
-          await rpc("moveWorkflowCard", { cardId, targetListId, orderedIds: targetCards.map((item) => item.id), sourceOrderedIds: sourceCards.map((item) => item.id) });
+          await rpc("moveWorkflowCard", { cardId, targetListId, orderedIds: orderedTargetCards.map((item) => item.id), sourceOrderedIds: orderedSourceCards.map((item) => item.id) });
           // Do not immediately reload the whole board here. getWorkflowBoard
           // also synchronizes albums with Google and can outlive the drag
           // request, which was the source of the browser tab crash. The
@@ -295,37 +307,6 @@ export default function WorkflowView() {
       const card = board?.cards.find((item) => item.id === cardId);
       if (card && board) dragOriginRef.current = { cardId, sourceListId: card.listId, board };
     }
-  }
-
-  function onDragOver(event: DragOverEvent) {
-    const activeId = String(event.active.id);
-    if (!activeId.startsWith("card-") || !event.over) return;
-    const cardId = activeId.slice(5);
-    const overId = String(event.over.id);
-    setBoard((current) => {
-      if (!current) return current;
-      const card = current.cards.find((item) => item.id === cardId);
-      const overCard = current.cards.find((item) => `card-${item.id}` === overId);
-      const targetListId = overCard?.listId || (overId.startsWith("column-") ? overId.slice(7) : overId.startsWith("list-") ? overId.slice(5) : "");
-      if (!card || !targetListId) return current;
-
-      if (targetListId === card.listId) {
-        if (!overCard || overCard.id === card.id) return current;
-        const listCards = current.cards.filter((item) => item.listId === card.listId);
-        const oldIndex = listCards.findIndex((item) => item.id === card.id);
-        const overIndex = listCards.findIndex((item) => item.id === overCard.id);
-        if (oldIndex < 0 || overIndex < 0 || oldIndex === overIndex) return current;
-        const reordered = arrayMove(listCards, oldIndex, overIndex);
-        return { ...current, cards: [...current.cards.filter((item) => item.listId !== card.listId), ...reordered] };
-      }
-
-      const sourceCards = current.cards.filter((item) => item.listId === card.listId && item.id !== card.id);
-      const targetCards = current.cards.filter((item) => item.listId === targetListId && item.id !== card.id);
-      const insertAt = overCard ? Math.max(0, targetCards.findIndex((item) => item.id === overCard.id)) : 0;
-      const movedCard = { ...card, listId: targetListId };
-      targetCards.splice(insertAt < 0 ? targetCards.length : insertAt, 0, movedCard);
-      return { ...current, cards: [...current.cards.filter((item) => item.listId !== card.listId && item.listId !== targetListId), ...sourceCards, ...targetCards] };
-    });
   }
 
   async function setCardLabelsOptimistically(cardId: string, labelIds: string[]) {
@@ -383,7 +364,7 @@ export default function WorkflowView() {
     <QuickLinks links={quickLinks} />
     {toast && <div className="toast" role="status">{toast}</div>}
     {query && <p className="workflow-search-note">Xóa tìm kiếm để sắp xếp thẻ.</p>}
-    <DndContext sensors={sensors} onDragStart={onDragStart} onDragOver={onDragOver} onDragCancel={() => { if (dragOriginRef.current) setBoard(dragOriginRef.current.board); dragOriginRef.current = null; setActiveDragId(null); }} onDragEnd={(event) => { void onDragEnd(event).finally(() => { dragOriginRef.current = null; setActiveDragId(null); }); }}>
+    <DndContext sensors={sensors} onDragStart={onDragStart} onDragCancel={() => { if (dragOriginRef.current) setBoard(dragOriginRef.current.board); dragOriginRef.current = null; setActiveDragId(null); }} onDragEnd={(event) => { void onDragEnd(event).finally(() => { dragOriginRef.current = null; setActiveDragId(null); }); }}>
       <SortableContext items={board.lists.map((list) => `list-${list.id}`)} strategy={horizontalListSortingStrategy}>
         <div className="workflow-board">
           {board.lists.map((list) => <WorkflowColumn key={list.id} list={list} cards={filtered.filter((card) => card.listId === list.id)} labels={board.labels} cardLabelIds={board.cardLabels} pendingCardIds={pendingCardIds} searching={Boolean(query)} onAdd={() => setCreateModal({ type: "card", list })} onOpen={(cardId) => setCardModal({ cardId })} onQuickEdit={setQuickCardId} onRename={() => renameList(list)} onDelete={() => setDeleteList(list)} />)}
