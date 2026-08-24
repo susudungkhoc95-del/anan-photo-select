@@ -324,12 +324,14 @@ async function resequenceCards(workspaceId: string, cards: WorkflowCard[], order
       .sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt))
       .map((card) => card.id)
   ];
-  await Promise.all(completeOrder.map(async (id, index) => {
+  // Write positions sequentially. Parallel upserts for the same workflow
+  // board can race in Supabase while a cross-list move is in progress.
+  for (const [index, id] of completeOrder.entries()) {
     const card = cards.find((item) => item.id === id)!;
-    if (card.position === index) return;
+    if (card.position === index) continue;
     card.position = index; card.updatedAt = now();
     await writeRow(TABS.cards, card.id, workspaceId, cardValues(card));
-  }));
+  }
 }
 
 export async function getWorkflowBoard() {
