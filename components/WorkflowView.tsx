@@ -15,6 +15,7 @@ type ModalState = { cardId: string } | null;
 type CreateState = { type: "list" } | { type: "card"; list: WorkflowList } | null;
 type CardChanges = Pick<WorkflowCard, "title" | "note" | "weddingDate" | "photoReturnDate">;
 type PendingCardEdit = CardChanges & Pick<WorkflowCard, "updatedAt">;
+type NativeDropTarget = { listId: string; beforeCardId?: string } | null;
 const LABEL_COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#a855f7"];
 const WORKFLOW_CACHE_KEY = "anan-workflow-board";
 const ADMIN_SESSION_KEY = "anan-admin-session";
@@ -61,6 +62,7 @@ export default function WorkflowView() {
   const [createModal, setCreateModal] = useState<CreateState>(null);
   const [deleteList, setDeleteList] = useState<WorkflowList | null>(null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [nativeDropTarget, setNativeDropTarget] = useState<NativeDropTarget>(null);
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [quickCardId, setQuickCardId] = useState<string | null>(null);
   const [pendingCardIds, setPendingCardIds] = useState<Set<string>>(() => new Set());
@@ -310,10 +312,17 @@ export default function WorkflowView() {
     event.dataTransfer.setData("text/plain", cardId);
   }
 
+  function onNativeCardDragOver(targetListId: string, beforeCardId: string | undefined, event: React.DragEvent<HTMLElement>) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setNativeDropTarget((current) => current?.listId === targetListId && current.beforeCardId === beforeCardId ? current : { listId: targetListId, beforeCardId });
+  }
+
   function onNativeCardDrop(targetListId: string, beforeCardId: string | undefined, event: React.DragEvent<HTMLElement>) {
     event.preventDefault();
     event.stopPropagation();
     const cardId = event.dataTransfer.getData("text/plain");
+    setNativeDropTarget(null);
     if (cardId) void moveCard(cardId, targetListId, beforeCardId);
   }
 
@@ -375,7 +384,7 @@ export default function WorkflowView() {
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragCancel={() => { if (dragOriginRef.current) setBoard(dragOriginRef.current.board); dragOriginRef.current = null; setActiveDragId(null); }} onDragEnd={(event) => { void onDragEnd(event).finally(() => { dragOriginRef.current = null; setActiveDragId(null); }); }}>
       <SortableContext items={board.lists.map((list) => `list-${list.id}`)} strategy={horizontalListSortingStrategy}>
         <div className="workflow-board">
-          {board.lists.map((list) => <WorkflowColumn key={list.id} list={list} cards={filtered.filter((card) => card.listId === list.id)} labels={board.labels} cardLabelIds={board.cardLabels} pendingCardIds={pendingCardIds} searching={Boolean(query)} onAdd={() => setCreateModal({ type: "card", list })} onOpen={(cardId) => setCardModal({ cardId })} onQuickEdit={setQuickCardId} onRename={() => renameList(list)} onDelete={() => setDeleteList(list)} onCardDragStart={onNativeCardDragStart} onCardDrop={onNativeCardDrop} />)}
+          {board.lists.map((list) => <WorkflowColumn key={list.id} list={list} cards={filtered.filter((card) => card.listId === list.id)} labels={board.labels} cardLabelIds={board.cardLabels} pendingCardIds={pendingCardIds} searching={Boolean(query)} dropTarget={nativeDropTarget} onAdd={() => setCreateModal({ type: "card", list })} onOpen={(cardId) => setCardModal({ cardId })} onQuickEdit={setQuickCardId} onRename={() => renameList(list)} onDelete={() => setDeleteList(list)} onCardDragStart={onNativeCardDragStart} onCardDragOver={onNativeCardDragOver} onCardDragEnd={() => setNativeDropTarget(null)} onCardDrop={onNativeCardDrop} />)}
           <button type="button" className="workflow-add-list" onClick={() => setCreateModal({ type: "list" })}><Plus size={18} /> Thêm danh sách</button>
         </div>
       </SortableContext>
@@ -390,13 +399,13 @@ export default function WorkflowView() {
   </main>;
 }
 
-function WorkflowColumn({ list, cards, labels, cardLabelIds, pendingCardIds, searching, onAdd, onOpen, onQuickEdit, onRename, onDelete, onCardDragStart, onCardDrop }: { list: WorkflowList; cards: WorkflowCard[]; labels: WorkflowLabel[]; cardLabelIds: WorkflowBoard["cardLabels"]; pendingCardIds: Set<string>; searching: boolean; onAdd: () => void; onOpen: (id: string) => void; onQuickEdit: (id: string) => void; onRename: () => void; onDelete: () => void; onCardDragStart: (cardId: string, event: React.DragEvent<HTMLElement>) => void; onCardDrop: (targetListId: string, beforeCardId: string | undefined, event: React.DragEvent<HTMLElement>) => void }) {
+function WorkflowColumn({ list, cards, labels, cardLabelIds, pendingCardIds, searching, dropTarget, onAdd, onOpen, onQuickEdit, onRename, onDelete, onCardDragStart, onCardDragOver, onCardDragEnd, onCardDrop }: { list: WorkflowList; cards: WorkflowCard[]; labels: WorkflowLabel[]; cardLabelIds: WorkflowBoard["cardLabels"]; pendingCardIds: Set<string>; searching: boolean; dropTarget: NativeDropTarget; onAdd: () => void; onOpen: (id: string) => void; onQuickEdit: (id: string) => void; onRename: () => void; onDelete: () => void; onCardDragStart: (cardId: string, event: React.DragEvent<HTMLElement>) => void; onCardDragOver: (targetListId: string, beforeCardId: string | undefined, event: React.DragEvent<HTMLElement>) => void; onCardDragEnd: () => void; onCardDrop: (targetListId: string, beforeCardId: string | undefined, event: React.DragEvent<HTMLElement>) => void }) {
   const sortable = useSortable({ id: `list-${list.id}`, data: { type: "list" } });
   const droppable = useDroppable({ id: `column-${list.id}`, data: { type: "column" } });
   const style = { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition };
   return <section ref={(node) => { sortable.setNodeRef(node); droppable.setNodeRef(node); }} style={style} className={`workflow-column ${sortable.isDragging ? "dragging" : ""}`}>
     <header><div><h2 className="workflow-list-title" {...sortable.attributes} {...sortable.listeners} title="Giữ để kéo danh sách">{list.name}</h2><span>{cards.length} thẻ</span></div><details><summary aria-label="Menu danh sách">•••</summary><button onClick={onRename}>Đổi tên</button><button onClick={onDelete}>Xóa danh sách</button></details></header>
-    <div className="workflow-cards" onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }} onDrop={(event) => onCardDrop(list.id, undefined, event)}>{cards.map((card) => <WorkflowCardItem key={card.id} card={card} list={list} pending={pendingCardIds.has(card.id)} labels={labels.filter((label) => cardLabelIds.some((assignment) => assignment.cardId === card.id && assignment.labelId === label.id))} onOpen={() => onOpen(card.id)} onQuickEdit={() => onQuickEdit(card.id)} onDragStart={(event) => onCardDragStart(card.id, event)} onDrop={(event) => onCardDrop(list.id, card.id, event)} />)}{!cards.length && <p className="workflow-empty">{searching ? "Không có kết quả" : "Chưa có thẻ"}</p>}</div>
+    <div className={`workflow-cards ${dropTarget?.listId === list.id && !dropTarget.beforeCardId ? "drop-at-top" : ""}`} onDragOver={(event) => onCardDragOver(list.id, undefined, event)} onDrop={(event) => onCardDrop(list.id, undefined, event)}>{cards.map((card) => <WorkflowCardItem key={card.id} card={card} list={list} pending={pendingCardIds.has(card.id)} dropBefore={dropTarget?.listId === list.id && dropTarget.beforeCardId === card.id} labels={labels.filter((label) => cardLabelIds.some((assignment) => assignment.cardId === card.id && assignment.labelId === label.id))} onOpen={() => onOpen(card.id)} onQuickEdit={() => onQuickEdit(card.id)} onDragStart={(event) => onCardDragStart(card.id, event)} onDragOver={(event) => { event.stopPropagation(); onCardDragOver(list.id, card.id, event); }} onDragEnd={onCardDragEnd} onDrop={(event) => onCardDrop(list.id, card.id, event)} />)}{!cards.length && <p className="workflow-empty">{searching ? "Không có kết quả" : "Chưa có thẻ"}</p>}</div>
     {!searching && <button type="button" className="workflow-add-card" onClick={onAdd}><Plus size={17} /> Thêm thẻ</button>}
   </section>;
 }
@@ -424,9 +433,9 @@ function CreateWorkflowModal({ state, onClose, onCreate }: { state: Exclude<Crea
   </div>;
 }
 
-function WorkflowCardItem({ card, list, pending, labels, onOpen, onQuickEdit, onDragStart, onDrop }: { card: WorkflowCard; list: WorkflowList; pending: boolean; labels: WorkflowLabel[]; onOpen: () => void; onQuickEdit: () => void; onDragStart: (event: React.DragEvent<HTMLElement>) => void; onDrop: (event: React.DragEvent<HTMLElement>) => void }) {
+function WorkflowCardItem({ card, list, pending, dropBefore, labels, onOpen, onQuickEdit, onDragStart, onDragOver, onDragEnd, onDrop }: { card: WorkflowCard; list: WorkflowList; pending: boolean; dropBefore: boolean; labels: WorkflowLabel[]; onOpen: () => void; onQuickEdit: () => void; onDragStart: (event: React.DragEvent<HTMLElement>) => void; onDragOver: (event: React.DragEvent<HTMLElement>) => void; onDragEnd: () => void; onDrop: (event: React.DragEvent<HTMLElement>) => void }) {
   const age = workflowAge(card, list);
-  return <article draggable onDragStart={onDragStart} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }} onDrop={onDrop} className={`workflow-card ${pending ? "saving" : ""}`} onClick={onOpen}>
+  return <article draggable onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDrop={onDrop} className={`workflow-card ${pending ? "saving" : ""} ${dropBefore ? "drop-before" : ""}`} onClick={onOpen}>
     <button type="button" className="icon-button workflow-card-menu" aria-label={`Cài đặt nhanh ${card.title}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onQuickEdit(); }}><MoreVertical size={17} /></button>
     <h3>{card.title}</h3>{(card.note || labels.length > 0) && <div className="workflow-card-note-row">{card.note && <p>{card.note}</p>}{labels.length > 0 && <div className="workflow-label-chips">{labels.map((label) => <span key={label.id} style={{ "--label-color": label.color } as React.CSSProperties}>{label.name}</span>)}</div>}</div>}
     <footer><span className={`workflow-age ${age.level}`}>{pending ? "Đang lưu…" : age.label}</span>{card.photoReturnDate && <span className="workflow-card-return-date"><CalendarClock size={13} /> Trả ảnh {formatWeddingDate(card.photoReturnDate)}</span>}{card.weddingDate && <span className="workflow-card-wedding-date">Ngày cưới {formatWeddingDate(card.weddingDate)}</span>}</footer>
