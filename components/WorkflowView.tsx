@@ -275,12 +275,10 @@ export default function WorkflowView() {
     } else {
       const nextSourceCards = sourceCards.filter((item) => item.id !== cardId);
       const nextTargetCards = targetCards.filter((item) => item.id !== cardId);
-      // Manual cards always enter a new list at the top. DP Select cards keep
-      // the normal drop position so automatic album/customer workflow remains
-      // unchanged.
-      const insertAt = card.source === "manual"
-        ? 0
-        : beforeCardId ? nextTargetCards.findIndex((item) => item.id === beforeCardId) : nextTargetCards.length;
+      // Every user drag between lists enters at the top. Automatic album and
+      // customer-selection transitions do not use this client handler and keep
+      // their own server-side ordering logic.
+      const insertAt = 0;
       nextTargetCards.splice(insertAt < 0 ? nextTargetCards.length : insertAt, 0, { ...card, listId: targetListId });
       cards = [...currentBoard.cards.filter((item) => item.listId !== sourceListId && item.listId !== targetListId), ...nextSourceCards, ...nextTargetCards];
     }
@@ -322,7 +320,7 @@ export default function WorkflowView() {
     event.dataTransfer.dropEffect = "move";
     const cardId = event.dataTransfer.getData("text/plain");
     const draggedCard = boardRef.current?.cards.find((card) => card.id === cardId);
-    const resolvedBeforeCardId = draggedCard?.source === "manual" && draggedCard.listId !== targetListId ? undefined : beforeCardId;
+    const resolvedBeforeCardId = draggedCard && draggedCard.listId !== targetListId ? undefined : beforeCardId;
     setNativeDropTarget((current) => current?.listId === targetListId && current.beforeCardId === resolvedBeforeCardId ? current : { listId: targetListId, beforeCardId: resolvedBeforeCardId });
   }
 
@@ -331,7 +329,7 @@ export default function WorkflowView() {
     event.stopPropagation();
     const cardId = event.dataTransfer.getData("text/plain");
     const draggedCard = boardRef.current?.cards.find((card) => card.id === cardId);
-    const resolvedBeforeCardId = draggedCard?.source === "manual" && draggedCard.listId !== targetListId ? undefined : beforeCardId;
+    const resolvedBeforeCardId = draggedCard && draggedCard.listId !== targetListId ? undefined : beforeCardId;
     setNativeDropTarget(null);
     if (cardId) void moveCard(cardId, targetListId, resolvedBeforeCardId);
   }
