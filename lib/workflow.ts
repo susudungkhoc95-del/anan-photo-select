@@ -437,7 +437,11 @@ export async function updateWorkflowCard(payload: Record<string, unknown>) {
 export async function moveWorkflowCard(payload: Record<string, unknown>) {
   const workspaceId = getWorkflowWorkspaceId();
   return serialise(workspaceId, async () => {
-    const board = await boardForCurrentWorkspace();
+    // Moving a card only needs the workflow rows. Do not run the expensive
+    // Google/album synchronization here; doing so made an otherwise simple
+    // drag request intermittently time out and take down the browser tab.
+    await ensureDefaultLists(workspaceId);
+    const board = await readBoard(workspaceId);
     const card = findCard(board, payload.cardId);
     const sourceList = findList(board, card.listId);
     const targetList = findList(board, payload.targetListId);
