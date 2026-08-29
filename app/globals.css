@@ -784,6 +784,10 @@ body:has(.client-page) .zoom-top .icon-button:hover {
 .workflow-column details > button { position: relative; z-index: 4; display: block; width: 130px; margin-left: -108px; padding: 9px; border-radius: 8px; background: var(--panel-strong); color: var(--ink); text-align: left; box-shadow: 0 8px 18px rgba(0,0,0,.28); }
 .workflow-cards { flex: 1 1 auto; min-height: 72px; overflow-y: auto; padding: 9px; display: grid; align-content: start; gap: 8px; }
 .workflow-cards.drop-at-top::before { content: ""; display: block; height: 8px; margin: 0 2px; border-radius: 999px; background: var(--accent); box-shadow: 0 0 14px rgba(53, 224, 199, .72); }
+.workflow-drop-slot { min-height: 10px; border-radius: 8px; color: var(--accent); font-size: 11px; text-align: center; transition: min-height 120ms ease, background 120ms ease; }
+.workflow-drop-slot-top { min-height: 5px; }
+.workflow-drop-slot-bottom { min-height: 18px; }
+.workflow-drop-slot.active, .workflow-drop-slot-top:has(+ .workflow-card.drop-before) { min-height: 30px; background: rgba(53, 224, 199, .12); }
 .workflow-card { position: relative; cursor: grab; padding: 12px; border: 1px solid var(--line); border-radius: 13px; background: rgba(6, 18, 30, .5); box-shadow: none; user-select: none; touch-action: none; transition: transform 150ms ease, border-color 150ms ease; }
 .workflow-card.drop-before { transform: translateY(8px); border-color: var(--accent); box-shadow: 0 -8px 0 -3px var(--accent), 0 0 14px rgba(53, 224, 199, .35); }
 .workflow-card h3 { padding-right: 30px; }

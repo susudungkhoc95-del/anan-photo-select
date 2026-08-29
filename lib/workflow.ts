@@ -34,6 +34,25 @@ function position(value: unknown) {
   return Number.isFinite(result) ? result : 0;
 }
 
+const ORDER_GAP = 1000000;
+const ORDER_WIDTH = 14;
+
+function legacyOrderKey(value: number) {
+  return String(Math.max(0, Math.round(value)) * ORDER_GAP).padStart(ORDER_WIDTH, "0");
+}
+
+function orderKey(value: unknown, fallbackPosition: number) {
+  const key = text(value, 40);
+  return key || legacyOrderKey(fallbackPosition);
+}
+
+function orderKeyBetween(previous?: string, next?: string) {
+  const left = previous ? BigInt(previous) : BigInt(0);
+  const right = next ? BigInt(next) : left + BigInt(ORDER_GAP * 2);
+  if (right - left <= BigInt(1)) return null;
+  return String((left + right) / BigInt(2)).padStart(ORDER_WIDTH, "0");
+}
+
 function now() { return new Date().toISOString(); }
 
 function isUrl(value: string) {
@@ -77,7 +96,7 @@ function listFrom(values: string[]): WorkflowList {
   return { id: values[0], workspaceId: values[1], name: values[2], position: position(values[3]), systemKey: values[4] as WorkflowList["systemKey"], createdAt: values[5], updatedAt: values[6] };
 }
 function cardFrom(values: string[]): WorkflowCard {
-  return { id: values[0], workspaceId: values[1], listId: values[2], title: values[3], note: values[4], weddingDate: values[15] || "", position: position(values[5]), source: values[6] === "dp_select" ? "dp_select" : "manual", dpSelectAlbumId: values[7], dpSelectSubmissionId: values[8], selectionSubmittedAt: values[9], createdAt: values[10], updatedAt: values[11], completedAt: values[12], createdBy: values[13], dpSummary: values[14] || "", dpAlbumNote: values[16] || "", dpPhotoNoteCount: position(values[17]), photoReturnDate: values[18] || "" };
+  return { id: values[0], workspaceId: values[1], listId: values[2], title: values[3], note: values[4], weddingDate: values[15] || "", position: position(values[5]), orderKey: orderKey(values[19], position(values[5])), source: values[6] === "dp_select" ? "dp_select" : "manual", dpSelectAlbumId: values[7], dpSelectSubmissionId: values[8], selectionSubmittedAt: values[9], createdAt: values[10], updatedAt: values[11], completedAt: values[12], createdBy: values[13], dpSummary: values[14] || "", dpAlbumNote: values[16] || "", dpPhotoNoteCount: position(values[17]), photoReturnDate: values[18] || "" };
 }
 function linkFrom(values: string[]): WorkflowLink {
   return { id: values[0], workspaceId: values[1], cardId: values[2], label: values[3], url: values[4], position: position(values[5]), createdAt: values[6], updatedAt: values[7] };
@@ -93,7 +112,7 @@ function cardLabelFrom(values: string[]): WorkflowCardLabel {
 }
 
 function listValues(record: WorkflowList) { return [record.id, record.workspaceId, record.name, String(record.position), record.systemKey, record.createdAt, record.updatedAt]; }
-function cardValues(record: WorkflowCard) { return [record.id, record.workspaceId, record.listId, record.title, record.note, String(record.position), record.source, record.dpSelectAlbumId, record.dpSelectSubmissionId, record.selectionSubmittedAt, record.createdAt, record.updatedAt, record.completedAt, record.createdBy, record.dpSummary, record.weddingDate, record.dpAlbumNote, String(record.dpPhotoNoteCount), record.photoReturnDate]; }
+function cardValues(record: WorkflowCard) { return [record.id, record.workspaceId, record.listId, record.title, record.note, String(record.position), record.source, record.dpSelectAlbumId, record.dpSelectSubmissionId, record.selectionSubmittedAt, record.createdAt, record.updatedAt, record.completedAt, record.createdBy, record.dpSummary, record.weddingDate, record.dpAlbumNote, String(record.dpPhotoNoteCount), record.photoReturnDate, record.orderKey]; }
 function linkValues(record: WorkflowLink) { return [record.id, record.workspaceId, record.cardId, record.label, record.url, String(record.position), record.createdAt, record.updatedAt]; }
 function activityValues(record: WorkflowActivity) { return [record.id, record.workspaceId, record.cardId, record.activityType, record.description, record.oldValue, record.newValue, record.actorId, record.actorName, record.source, record.createdAt]; }
 function labelValues(record: WorkflowLabel) { return [record.id, record.workspaceId, record.name, record.color, String(record.position), record.createdAt, record.updatedAt]; }
@@ -105,7 +124,7 @@ async function readBoard(workspaceId: string): Promise<WorkflowBoard> {
   return {
     workspaceId,
     lists: scope(0).map(listFrom).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt)),
-    cards: scope(1).map(cardFrom).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt)),
+    cards: scope(1).map(cardFrom).sort((a, b) => a.listId.localeCompare(b.listId) || a.orderKey.localeCompare(b.orderKey) || a.createdAt.localeCompare(b.createdAt)),
     links: scope(2).map(linkFrom).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt)),
     activities: scope(3).map(activityFrom).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     labels: scope(4).map(labelFrom).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt)),
@@ -207,7 +226,7 @@ async function syncWaitingSelectionCards(workspaceId: string, board: WorkflowBoa
     const cardCreatedAt = album.createdAt || timestamp;
     const cardId = `dp_${createHash("sha256").update(`${workspaceId}:${album.id}`).digest("hex").slice(0, 24)}`;
     const card: WorkflowCard = {
-      id: cardId, workspaceId, listId: waiting.id, title: text(album.title, 200) || "Album DP Select", note: "", weddingDate: "", photoReturnDate: "", position: nextPosition++,
+      id: cardId, workspaceId, listId: waiting.id, title: text(album.title, 200) || "Album DP Select", note: "", weddingDate: "", photoReturnDate: "", position: nextPosition, orderKey: legacyOrderKey(nextPosition++),
       source: "dp_select", dpSelectAlbumId: album.id, dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: cardCreatedAt, updatedAt: timestamp,
       completedAt: "", createdBy: "dp_select", dpSummary: `Chờ khách gửi ảnh chọn · ${album.photoCount} ảnh trong album`, dpAlbumNote: "", dpPhotoNoteCount: 0
     };
@@ -309,29 +328,25 @@ function normalizeWeddingDate(value: unknown) {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : "";
 }
 
-async function resequenceCards(workspaceId: string, cards: WorkflowCard[], orderedIds: string[]) {
-  const idSet = new Set(cards.map((card) => card.id));
-  if (orderedIds.some((id) => !idSet.has(id)) || new Set(orderedIds).size !== orderedIds.length) throw new Error("Thứ tự thẻ không hợp lệ.");
-  // The board can change between the initial read and the drag request (for
-  // example, the automatic waiting-selection sync may add a card). Preserve
-  // those server-side cards after the client's known order instead of
-  // rejecting the whole move.
-  const orderedSet = new Set(orderedIds);
-  const completeOrder = [
-    ...orderedIds,
-    ...cards
-      .filter((card) => !orderedSet.has(card.id))
-      .sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt))
-      .map((card) => card.id)
-  ];
-  // Write positions sequentially. Parallel upserts for the same workflow
-  // board can race in Supabase while a cross-list move is in progress.
-  for (const [index, id] of completeOrder.entries()) {
-    const card = cards.find((item) => item.id === id)!;
-    if (card.position === index) continue;
-    card.position = index; card.updatedAt = now();
-    await writeRow(TABS.cards, card.id, workspaceId, cardValues(card));
+async function assignCardOrderKey(workspaceId: string, cards: WorkflowCard[], card: WorkflowCard, beforeCardId: string | undefined, dropPosition: "top" | "before" | "bottom") {
+  const ordered = cards.filter((item) => item.id !== card.id).sort((a, b) => a.orderKey.localeCompare(b.orderKey) || a.createdAt.localeCompare(b.createdAt));
+  let index = dropPosition === "bottom" ? ordered.length : 0;
+  if (dropPosition === "before" && beforeCardId) {
+    const beforeIndex = ordered.findIndex((item) => item.id === beforeCardId);
+    if (beforeIndex >= 0) index = beforeIndex;
   }
+  let key = orderKeyBetween(ordered[index - 1]?.orderKey, ordered[index]?.orderKey);
+  if (!key) {
+    for (const [position, item] of ordered.entries()) {
+      item.position = position;
+      item.orderKey = legacyOrderKey(position);
+      item.updatedAt = now();
+      await writeRow(TABS.cards, item.id, workspaceId, cardValues(item));
+    }
+    key = orderKeyBetween(ordered[index - 1]?.orderKey, ordered[index]?.orderKey)!;
+  }
+  card.orderKey = key;
+  card.position = index;
 }
 
 export async function getWorkflowBoard() {
@@ -410,7 +425,9 @@ export async function createWorkflowCard(payload: Record<string, unknown>) {
     const timestamp = now();
     const requestedId = text(payload.cardId, 100);
     const cardId = /^[A-Za-z0-9_-]{1,100}$/.test(requestedId) ? requestedId : randomUUID();
-    const card: WorkflowCard = { id: cardId, workspaceId, listId: list.id, title: requiredText(payload.title, "Tên thẻ"), note: text(payload.note, 5000), weddingDate: normalizeWeddingDate(payload.weddingDate), photoReturnDate: normalizeWeddingDate(payload.photoReturnDate), position: Math.max(-1, ...board.cards.filter((item) => item.listId === list.id).map((item) => item.position)) + 1, source: "manual", dpSelectAlbumId: "", dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: timestamp, updatedAt: timestamp, completedAt: list.systemKey === "DONE" ? timestamp : "", createdBy: "admin", dpSummary: "", dpAlbumNote: "", dpPhotoNoteCount: 0 };
+    const nextPosition = Math.max(-1, ...board.cards.filter((item) => item.listId === list.id).map((item) => item.position)) + 1;
+    const lastCard = board.cards.filter((item) => item.listId === list.id).sort((a, b) => a.orderKey.localeCompare(b.orderKey)).at(-1);
+    const card: WorkflowCard = { id: cardId, workspaceId, listId: list.id, title: requiredText(payload.title, "Tên thẻ"), note: text(payload.note, 5000), weddingDate: normalizeWeddingDate(payload.weddingDate), photoReturnDate: normalizeWeddingDate(payload.photoReturnDate), position: nextPosition, orderKey: orderKeyBetween(lastCard?.orderKey) || legacyOrderKey(nextPosition), source: "manual", dpSelectAlbumId: "", dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: timestamp, updatedAt: timestamp, completedAt: list.systemKey === "DONE" ? timestamp : "", createdBy: "admin", dpSummary: "", dpAlbumNote: "", dpPhotoNoteCount: 0 };
     await writeRow(TABS.cards, card.id, workspaceId, cardValues(card));
     await syncNoteLabel(workspaceId, board, card);
     await appendActivity(workspaceId, card.id, "CARD_CREATED", "Đã tạo thẻ thủ công.", "manual");
@@ -447,17 +464,14 @@ export async function moveWorkflowCard(payload: Record<string, unknown>) {
     const card = findCard(board, payload.cardId);
     const sourceList = findList(board, card.listId);
     const targetList = findList(board, payload.targetListId);
-    const orderedIds = Array.isArray(payload.orderedIds) ? payload.orderedIds.map((id) => text(id, 100)) : [];
     const targetCards = board.cards.filter((item) => item.listId === targetList.id && item.id !== card.id);
     card.listId = targetList.id;
+    const beforeCardId = text(payload.beforeCardId, 100) || undefined;
+    const dropPosition = payload.dropPosition === "bottom" ? "bottom" : beforeCardId ? "before" : "top";
     if (targetList.systemKey === "DONE" && !card.completedAt) card.completedAt = now();
     card.updatedAt = now();
+    await assignCardOrderKey(workspaceId, targetCards, card, beforeCardId, dropPosition);
     await writeRow(TABS.cards, card.id, workspaceId, cardValues(card));
-    await resequenceCards(workspaceId, [...targetCards, card], orderedIds);
-    if (sourceList.id !== targetList.id) {
-      const sourceOrderedIds = Array.isArray(payload.sourceOrderedIds) ? payload.sourceOrderedIds.map((id) => text(id, 100)) : [];
-      await resequenceCards(workspaceId, board.cards.filter((item) => item.listId === sourceList.id && item.id !== card.id), sourceOrderedIds);
-    }
     if (targetList.systemKey === "DONE" && card.dpSelectAlbumId) {
       await archiveAlbum(card.dpSelectAlbumId);
     } else if (sourceList.systemKey === "DONE" && card.dpSelectAlbumId) {
@@ -639,7 +653,9 @@ export async function createOrUpdateCardFromSelection(album: Album, selection: S
     }
     const timestamp = now();
     const cardId = `dp_${createHash("sha256").update(`${workspaceId}:${album.id}`).digest("hex").slice(0, 24)}`;
-    const card: WorkflowCard = { id: cardId, workspaceId, listId: todo.id, title: text(album.title, 200) || "Album DP Select", note: "", weddingDate: "", photoReturnDate: "", position: Math.max(-1, ...board.cards.filter((item) => item.listId === todo.id).map((item) => item.position)) + 1, source: "dp_select", dpSelectAlbumId: album.id, dpSelectSubmissionId: selection.sessionId, selectionSubmittedAt: selection.submittedAt, createdAt: album.createdAt || timestamp, updatedAt: timestamp, completedAt: "", createdBy: "dp_select", dpSummary: dpSelectionSummary(selection), dpAlbumNote: selection.albumNote, dpPhotoNoteCount: Object.values(selection.photoNotes).filter(Boolean).length };
+    const nextPosition = Math.max(-1, ...board.cards.filter((item) => item.listId === todo.id).map((item) => item.position)) + 1;
+    const lastCard = board.cards.filter((item) => item.listId === todo.id).sort((a, b) => a.orderKey.localeCompare(b.orderKey)).at(-1);
+    const card: WorkflowCard = { id: cardId, workspaceId, listId: todo.id, title: text(album.title, 200) || "Album DP Select", note: "", weddingDate: "", photoReturnDate: "", position: nextPosition, orderKey: orderKeyBetween(lastCard?.orderKey) || legacyOrderKey(nextPosition), source: "dp_select", dpSelectAlbumId: album.id, dpSelectSubmissionId: selection.sessionId, selectionSubmittedAt: selection.submittedAt, createdAt: album.createdAt || timestamp, updatedAt: timestamp, completedAt: "", createdBy: "dp_select", dpSummary: dpSelectionSummary(selection), dpAlbumNote: selection.albumNote, dpPhotoNoteCount: Object.values(selection.photoNotes).filter(Boolean).length };
     await writeRow(TABS.cards, card.id, workspaceId, cardValues(card));
     try {
       const link: WorkflowLink = { id: randomUUID(), workspaceId, cardId: card.id, label: "Sheet ảnh chọn", url: spreadsheetUrl, position: 0, createdAt: timestamp, updatedAt: timestamp };

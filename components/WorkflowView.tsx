@@ -15,7 +15,7 @@ type ModalState = { cardId: string } | null;
 type CreateState = { type: "list" } | { type: "card"; list: WorkflowList } | null;
 type CardChanges = Pick<WorkflowCard, "title" | "note" | "weddingDate" | "photoReturnDate">;
 type PendingCardEdit = CardChanges & Pick<WorkflowCard, "updatedAt">;
-type NativeDropTarget = { listId: string; beforeCardId?: string } | null;
+type NativeDropTarget = { listId: string; beforeCardId?: string; dropPosition: "top" | "before" | "bottom" } | null;
 const LABEL_COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#a855f7"];
 const WORKFLOW_CACHE_KEY = "anan-workflow-board";
 const ADMIN_SESSION_KEY = "anan-admin-session";
@@ -214,6 +214,7 @@ export default function WorkflowView() {
     const optimisticCard: WorkflowCard = {
       id: cardId, workspaceId: board?.workspaceId || "", listId: list.id, title, note: "", weddingDate: "", photoReturnDate: "",
       position: Math.max(-1, ...(board?.cards.filter((card) => card.listId === list.id).map((card) => card.position) || []) ) + 1,
+      orderKey: String(Math.max(0, ...(board?.cards.filter((card) => card.listId === list.id).map((card) => card.position) || []) ) + 1).padStart(14, "0") + "000000",
       source: "manual", dpSelectAlbumId: "", dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: timestamp,
       updatedAt: timestamp, completedAt: list.systemKey === "DONE" ? timestamp : "", createdBy: "admin", dpSummary: "", dpAlbumNote: "", dpPhotoNoteCount: 0
     };
@@ -255,7 +256,7 @@ export default function WorkflowView() {
     } catch (error) { notify((error as Error).message); await load(); }
   }
 
-  async function moveCard(cardId: string, targetListId: string, beforeCardId?: string) {
+  async function moveCard(cardId: string, targetListId: string, beforeCardId?: string, dropPosition: "top" | "before" | "bottom" = "top") {
     const currentBoard = boardRef.current || board;
     if (!currentBoard || query.trim()) return;
     const card = currentBoard.cards.find((item) => item.id === cardId);
@@ -275,10 +276,7 @@ export default function WorkflowView() {
     } else {
       const nextSourceCards = sourceCards.filter((item) => item.id !== cardId);
       const nextTargetCards = targetCards.filter((item) => item.id !== cardId);
-      // Every user drag between lists enters at the top. Automatic album and
-      // customer-selection transitions do not use this client handler and keep
-      // their own server-side ordering logic.
-      const insertAt = 0;
+      const insertAt = dropPosition === "bottom" ? nextTargetCards.length : dropPosition === "before" && beforeCardId ? Math.max(0, nextTargetCards.findIndex((item) => item.id === beforeCardId)) : 0;
       nextTargetCards.splice(insertAt < 0 ? nextTargetCards.length : insertAt, 0, { ...card, listId: targetListId });
       cards = [...currentBoard.cards.filter((item) => item.listId !== sourceListId && item.listId !== targetListId), ...nextSourceCards, ...nextTargetCards];
     }
@@ -290,8 +288,8 @@ export default function WorkflowView() {
       await rpc("moveWorkflowCard", {
         cardId,
         targetListId,
-        orderedIds: cards.filter((item) => item.listId === targetListId).map((item) => item.id),
-        sourceOrderedIds: cards.filter((item) => item.listId === sourceListId && item.id !== cardId).map((item) => item.id)
+        beforeCardId: dropPosition === "before" ? beforeCardId : undefined,
+        dropPosition
       });
     } catch (error) {
       pendingCardMovesRef.current.delete(cardId);
@@ -315,23 +313,23 @@ export default function WorkflowView() {
     event.dataTransfer.setData("text/plain", cardId);
   }
 
-  function onNativeCardDragOver(targetListId: string, beforeCardId: string | undefined, event: React.DragEvent<HTMLElement>) {
+  function onNativeCardDragOver(targetListId: string, beforeCardId: string | undefined, dropPosition: "top" | "before" | "bottom", event: React.DragEvent<HTMLElement>) {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     const cardId = event.dataTransfer.getData("text/plain");
     const draggedCard = boardRef.current?.cards.find((card) => card.id === cardId);
-    const resolvedBeforeCardId = draggedCard && draggedCard.listId !== targetListId ? undefined : beforeCardId;
-    setNativeDropTarget((current) => current?.listId === targetListId && current.beforeCardId === resolvedBeforeCardId ? current : { listId: targetListId, beforeCardId: resolvedBeforeCardId });
+    const resolvedBeforeCardId = dropPosition === "before" ? beforeCardId : undefined;
+    setNativeDropTarget((current) => current?.listId === targetListId && current.beforeCardId === resolvedBeforeCardId && current.dropPosition === dropPosition ? current : { listId: targetListId, beforeCardId: resolvedBeforeCardId, dropPosition });
   }
 
-  function onNativeCardDrop(targetListId: string, beforeCardId: string | undefined, event: React.DragEvent<HTMLElement>) {
+  function onNativeCardDrop(targetListId: string, beforeCardId: string | undefined, dropPosition: "top" | "before" | "bottom", event: React.DragEvent<HTMLElement>) {
     event.preventDefault();
     event.stopPropagation();
     const cardId = event.dataTransfer.getData("text/plain");
     const draggedCard = boardRef.current?.cards.find((card) => card.id === cardId);
-    const resolvedBeforeCardId = draggedCard && draggedCard.listId !== targetListId ? undefined : beforeCardId;
+    const resolvedBeforeCardId = dropPosition === "before" ? beforeCardId : undefined;
     setNativeDropTarget(null);
-    if (cardId) void moveCard(cardId, targetListId, resolvedBeforeCardId);
+    if (cardId) void moveCard(cardId, targetListId, resolvedBeforeCardId, dropPosition);
   }
 
   async function setCardLabelsOptimistically(cardId: string, labelIds: string[]) {
@@ -407,13 +405,13 @@ export default function WorkflowView() {
   </main>;
 }
 
-function WorkflowColumn({ list, cards, labels, cardLabelIds, pendingCardIds, searching, dropTarget, onAdd, onOpen, onQuickEdit, onRename, onDelete, onCardDragStart, onCardDragOver, onCardDragEnd, onCardDrop }: { list: WorkflowList; cards: WorkflowCard[]; labels: WorkflowLabel[]; cardLabelIds: WorkflowBoard["cardLabels"]; pendingCardIds: Set<string>; searching: boolean; dropTarget: NativeDropTarget; onAdd: () => void; onOpen: (id: string) => void; onQuickEdit: (id: string) => void; onRename: () => void; onDelete: () => void; onCardDragStart: (cardId: string, event: React.DragEvent<HTMLElement>) => void; onCardDragOver: (targetListId: string, beforeCardId: string | undefined, event: React.DragEvent<HTMLElement>) => void; onCardDragEnd: () => void; onCardDrop: (targetListId: string, beforeCardId: string | undefined, event: React.DragEvent<HTMLElement>) => void }) {
+function WorkflowColumn({ list, cards, labels, cardLabelIds, pendingCardIds, searching, dropTarget, onAdd, onOpen, onQuickEdit, onRename, onDelete, onCardDragStart, onCardDragOver, onCardDragEnd, onCardDrop }: { list: WorkflowList; cards: WorkflowCard[]; labels: WorkflowLabel[]; cardLabelIds: WorkflowBoard["cardLabels"]; pendingCardIds: Set<string>; searching: boolean; dropTarget: NativeDropTarget; onAdd: () => void; onOpen: (id: string) => void; onQuickEdit: (id: string) => void; onRename: () => void; onDelete: () => void; onCardDragStart: (cardId: string, event: React.DragEvent<HTMLElement>) => void; onCardDragOver: (targetListId: string, beforeCardId: string | undefined, dropPosition: "top" | "before" | "bottom", event: React.DragEvent<HTMLElement>) => void; onCardDragEnd: () => void; onCardDrop: (targetListId: string, beforeCardId: string | undefined, dropPosition: "top" | "before" | "bottom", event: React.DragEvent<HTMLElement>) => void }) {
   const sortable = useSortable({ id: `list-${list.id}`, data: { type: "list" } });
   const droppable = useDroppable({ id: `column-${list.id}`, data: { type: "column" } });
   const style = { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition };
   return <section ref={(node) => { sortable.setNodeRef(node); droppable.setNodeRef(node); }} style={style} className={`workflow-column ${sortable.isDragging ? "dragging" : ""}`}>
     <header><div><h2 className="workflow-list-title" {...sortable.attributes} {...sortable.listeners} title="Giữ để kéo danh sách">{list.name}</h2><span>{cards.length} thẻ</span></div><details><summary aria-label="Menu danh sách">•••</summary><button onClick={onRename}>Đổi tên</button><button onClick={onDelete}>Xóa danh sách</button></details></header>
-    <div className={`workflow-cards ${dropTarget?.listId === list.id && !dropTarget.beforeCardId ? "drop-at-top" : ""}`} onDragOver={(event) => onCardDragOver(list.id, undefined, event)} onDrop={(event) => onCardDrop(list.id, undefined, event)}>{cards.map((card) => <WorkflowCardItem key={card.id} card={card} list={list} pending={pendingCardIds.has(card.id)} dropBefore={dropTarget?.listId === list.id && dropTarget.beforeCardId === card.id} labels={labels.filter((label) => cardLabelIds.some((assignment) => assignment.cardId === card.id && assignment.labelId === label.id))} onOpen={() => onOpen(card.id)} onQuickEdit={() => onQuickEdit(card.id)} onDragStart={(event) => onCardDragStart(card.id, event)} onDragOver={(event) => { event.stopPropagation(); onCardDragOver(list.id, card.id, event); }} onDragEnd={onCardDragEnd} onDrop={(event) => onCardDrop(list.id, card.id, event)} />)}{!cards.length && <p className="workflow-empty">{searching ? "Không có kết quả" : "Chưa có thẻ"}</p>}</div>
+    <div className={`workflow-cards ${dropTarget?.listId === list.id && dropTarget.dropPosition === "top" ? "drop-at-top" : ""}`} onDragOver={(event) => onCardDragOver(list.id, undefined, "top", event)} onDrop={(event) => onCardDrop(list.id, undefined, "top", event)}><div className="workflow-drop-slot workflow-drop-slot-top" onDragOver={(event) => onCardDragOver(list.id, undefined, "top", event)} onDrop={(event) => onCardDrop(list.id, undefined, "top", event)}>{dropTarget?.listId === list.id && dropTarget.dropPosition === "top" ? "Thả vào đầu danh sách" : ""}</div>{cards.map((card) => <WorkflowCardItem key={card.id} card={card} list={list} pending={pendingCardIds.has(card.id)} dropBefore={dropTarget?.listId === list.id && dropTarget.beforeCardId === card.id} labels={labels.filter((label) => cardLabelIds.some((assignment) => assignment.cardId === card.id && assignment.labelId === label.id))} onOpen={() => onOpen(card.id)} onQuickEdit={() => onQuickEdit(card.id)} onDragStart={(event) => onCardDragStart(card.id, event)} onDragOver={(event) => { event.stopPropagation(); onCardDragOver(list.id, card.id, "before", event); }} onDragEnd={onCardDragEnd} onDrop={(event) => onCardDrop(list.id, card.id, "before", event)} />)}<div className={`workflow-drop-slot workflow-drop-slot-bottom ${dropTarget?.listId === list.id && dropTarget.dropPosition === "bottom" ? "active" : ""}`} onDragOver={(event) => onCardDragOver(list.id, undefined, "bottom", event)} onDrop={(event) => onCardDrop(list.id, undefined, "bottom", event)}>{dropTarget?.listId === list.id && dropTarget.dropPosition === "bottom" ? "Thả vào cuối danh sách" : ""}</div>{!cards.length && <p className="workflow-empty">{searching ? "Không có kết quả" : "Chưa có thẻ"}</p>}</div>
     {!searching && <button type="button" className="workflow-add-card" onClick={onAdd}><Plus size={17} /> Thêm thẻ</button>}
   </section>;
 }
