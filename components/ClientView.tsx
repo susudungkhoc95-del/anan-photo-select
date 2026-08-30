@@ -416,7 +416,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
         nextPhoto={reviewZoom !== null ? selectedReviewPhotos[reviewZoom + 1] : undefined}
         prefetchPhotos={reviewZoom !== null ? [selectedReviewPhotos[reviewZoom + 1], selectedReviewPhotos[reviewZoom + 2], selectedReviewPhotos[reviewZoom - 1]].filter(Boolean) : []}
         selected={selected.has(reviewZoomPhoto.id)}
-        onToggle={removeReviewPhotoAndAdvance} reviewMode locked={Boolean(album.selectionLocked)}
+        onToggle={removeReviewPhotoAndAdvance} locked={Boolean(album.selectionLocked)}
         onClose={() => setReviewZoom(null)}
         onPrev={() => setReviewZoom((index) => index !== null && index > 0 ? index - 1 : (notify("Đây là ảnh đầu tiên."), index))}
         onNext={() => setReviewZoom((index) => index !== null && index < selectedReviewPhotos.length - 1 ? index + 1 : (notify("Đây là ảnh cuối cùng."), index))} />}
@@ -504,7 +504,7 @@ function JustifiedGallery({ albumId, photos, selected, locked, onOpen, onToggle 
           photo={photo}
           onDimensions={photo.width && photo.height ? undefined : (imageWidth, imageHeight) => rememberRatio(photo.id, imageWidth, imageHeight)}
         />
-        <button className="heart" disabled={locked} aria-label={`Chọn ${photo.name}`} onClick={(event) => { event.stopPropagation(); onToggle(photo.id); }}>{selected.has(photo.id) ? "♥" : "♡"}</button>
+        <button className="heart" disabled={locked} aria-label={`${selected.has(photo.id) ? "Bỏ chọn" : "Chọn"} ${photo.name}`} onClick={(event) => { event.stopPropagation(); onToggle(photo.id); }}>{selected.has(photo.id) ? "♥" : "♡"}</button>
         <div className="caption">{photo.name}</div>
       </article>)}
     </div>)}
@@ -540,9 +540,8 @@ function Review({ album, photos, selected, large, table, notes, albumNote, submi
   </div></div>;
 }
 
-function Zoom({ albumId, photo, previousPhoto, nextPhoto, prefetchPhotos, selected, reviewMode = false, locked = false, onToggle, onClose, onPrev, onNext }: {
+function Zoom({ albumId, photo, previousPhoto, nextPhoto, prefetchPhotos, selected, locked = false, onToggle, onClose, onPrev, onNext }: {
   albumId: string; photo: Photo; previousPhoto?: Photo; nextPhoto?: Photo; selected: boolean;
-  reviewMode?: boolean;
   locked?: boolean;
   prefetchPhotos?: Photo[];
   onToggle: () => void; onClose: () => void; onPrev: () => void; onNext: () => void;
@@ -730,7 +729,7 @@ function Zoom({ albumId, photo, previousPhoto, nextPhoto, prefetchPhotos, select
       <DrivePhoto key={photo.id} albumId={albumId} photo={photo} zoom />
       <button className="zoom-nav zoom-next next" onClick={onNext} aria-label="Ảnh tiếp theo"><ChevronRight size={27} /></button>
     </div>
-    <div className="zoom-bottom"><button disabled={locked} className={`zoom-select zoom-heart ${selected ? "active" : ""}`} onClick={onToggle}><Heart fill={selected ? "currentColor" : "none"} /> {locked ? "Đã khóa" : selected ? (reviewMode ? "Bỏ chọn" : "Đã chọn") : "Chọn ảnh này"}</button></div>
+    <div className="zoom-bottom"><button disabled={locked} className={`zoom-select zoom-heart ${selected ? "active" : ""}`} onClick={onToggle}><Heart fill={selected ? "currentColor" : "none"} /> {locked ? "Đã khóa" : selected ? "Bỏ chọn" : "Chọn ảnh này"}</button></div>
   </div>;
 }
 
