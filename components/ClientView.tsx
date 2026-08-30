@@ -351,6 +351,20 @@ export default function ClientView({ albumId }: { albumId: string }) {
   const zoomPhoto = zoom === null ? null : photos[zoom];
   const selectedReviewPhotos = reviewPhotos.filter((photo) => selected.has(photo.id));
   const reviewZoomPhoto = reviewZoom === null ? null : selectedReviewPhotos[reviewZoom];
+  function removeReviewPhotoAndAdvance() {
+    if (!reviewZoomPhoto || reviewZoom === null) return;
+    const currentIndex = reviewZoom;
+    const remainingCount = selectedReviewPhotos.length - 1;
+    toggle(reviewZoomPhoto.id);
+    if (remainingCount === 0) {
+      setReviewZoom(null);
+    } else if (currentIndex >= remainingCount) {
+      setReviewZoom(remainingCount - 1);
+    } else {
+      // The next photo shifts into the current index after this photo is removed.
+      setReviewZoom(currentIndex);
+    }
+  }
   return (
     <main className="client-page">
       <div className="studio-banner"><span>{album.studioSettings.studioName}</span></div>
@@ -402,7 +416,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
         nextPhoto={reviewZoom !== null ? selectedReviewPhotos[reviewZoom + 1] : undefined}
         prefetchPhotos={reviewZoom !== null ? [selectedReviewPhotos[reviewZoom + 1], selectedReviewPhotos[reviewZoom + 2], selectedReviewPhotos[reviewZoom - 1]].filter(Boolean) : []}
         selected={selected.has(reviewZoomPhoto.id)}
-        onToggle={() => { toggle(reviewZoomPhoto.id); setReviewZoom(null); }} locked={Boolean(album.selectionLocked)}
+        onToggle={removeReviewPhotoAndAdvance} reviewMode locked={Boolean(album.selectionLocked)}
         onClose={() => setReviewZoom(null)}
         onPrev={() => setReviewZoom((index) => index !== null && index > 0 ? index - 1 : (notify("Đây là ảnh đầu tiên."), index))}
         onNext={() => setReviewZoom((index) => index !== null && index < selectedReviewPhotos.length - 1 ? index + 1 : (notify("Đây là ảnh cuối cùng."), index))} />}
@@ -526,8 +540,9 @@ function Review({ album, photos, selected, large, table, notes, albumNote, submi
   </div></div>;
 }
 
-function Zoom({ albumId, photo, previousPhoto, nextPhoto, prefetchPhotos, selected, locked = false, onToggle, onClose, onPrev, onNext }: {
+function Zoom({ albumId, photo, previousPhoto, nextPhoto, prefetchPhotos, selected, reviewMode = false, locked = false, onToggle, onClose, onPrev, onNext }: {
   albumId: string; photo: Photo; previousPhoto?: Photo; nextPhoto?: Photo; selected: boolean;
+  reviewMode?: boolean;
   locked?: boolean;
   prefetchPhotos?: Photo[];
   onToggle: () => void; onClose: () => void; onPrev: () => void; onNext: () => void;
@@ -715,7 +730,7 @@ function Zoom({ albumId, photo, previousPhoto, nextPhoto, prefetchPhotos, select
       <DrivePhoto key={photo.id} albumId={albumId} photo={photo} zoom />
       <button className="zoom-nav zoom-next next" onClick={onNext} aria-label="Ảnh tiếp theo"><ChevronRight size={27} /></button>
     </div>
-    <div className="zoom-bottom"><button disabled={locked} className={`zoom-select zoom-heart ${selected ? "active" : ""}`} onClick={onToggle}><Heart fill={selected ? "currentColor" : "none"} /> {locked ? "Đã khóa" : selected ? "Đã chọn" : "Chọn ảnh này"}</button></div>
+    <div className="zoom-bottom"><button disabled={locked} className={`zoom-select zoom-heart ${selected ? "active" : ""}`} onClick={onToggle}><Heart fill={selected ? "currentColor" : "none"} /> {locked ? "Đã khóa" : selected ? (reviewMode ? "Bỏ chọn" : "Đã chọn") : "Chọn ảnh này"}</button></div>
   </div>;
 }
 
