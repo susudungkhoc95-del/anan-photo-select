@@ -588,15 +588,6 @@ body:has(.client-page) .send-flight-overlay {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     align-items: start;
   }
-  .review-item {
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-  .review-photo-button,
-  .review-item img {
-    width: 100%;
-    height: clamp(220px, 28vh, 300px);
-  }
   .album-note { grid-column: 1 / -1; }
 }
 
