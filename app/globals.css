@@ -582,6 +582,24 @@ body:has(.client-page) .send-flight-overlay {
 .album-note textarea { min-height: 72px; }
 .review-panel > footer { flex: 0 0 auto; display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
 
+/* Desktop: tận dụng chiều ngang bằng cách xếp các ảnh xem lại thành 3 cột. */
+@media (min-width: 861px) {
+  .review-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+  }
+  .review-item {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .review-photo-button,
+  .review-item img {
+    width: 100%;
+    height: clamp(220px, 28vh, 300px);
+  }
+  .album-note { grid-column: 1 / -1; }
+}
+
 /* Xem lớn */
 .zoom-backdrop {
   position: fixed; inset: 0; z-index: 80; background: #03080d; color: #fff;
