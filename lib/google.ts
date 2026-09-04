@@ -365,6 +365,25 @@ export async function getAlbum(id: string) {
   return publicAlbum(album, await isAlbumSelectionLocked(album.id));
 }
 
+export async function updateAlbum(payload: Record<string, unknown>) {
+  const album = await loadAlbum(clean(payload.albumId, 80));
+  const updatedAt = new Date().toISOString();
+  const updated: Album = {
+    ...album,
+    maxSelect: Math.max(0, Number(payload.maxSelect ?? album.maxSelect) || 0),
+    largePrintLimit: Math.max(0, Number(payload.largePrintLimit ?? album.largePrintLimit) || 0),
+    tablePrintLimit: Math.max(0, Number(payload.tablePrintLimit ?? album.tablePrintLimit) || 0),
+    guide: payload.guide === undefined ? album.guide : clean(payload.guide, 5000),
+    updatedAt
+  };
+  await upsertJson(ALBUMS, updated.id, updated);
+  return {
+    ...updated,
+    clientUrl: albumUrl(updated),
+    spreadsheetUrl: albumSpreadsheetUrl(updated)
+  };
+}
+
 export async function listAlbums(payload: Record<string, unknown>) {
   const rows = await readTable(ALBUMS);
   const keyword = clean(payload.keyword);

@@ -199,6 +199,17 @@ export default function AdminView() {
             return { ...album, customerChatUrl: String(payload.customerChatUrl || ""), updatedAt };
           }
 
+          if (name === "updateAlbum") {
+            return {
+              ...album,
+              maxSelect: Number(payload.maxSelect ?? album.maxSelect) || 0,
+              largePrintLimit: Number(payload.largePrintLimit ?? album.largePrintLimit) || 0,
+              tablePrintLimit: Number(payload.tablePrintLimit ?? album.tablePrintLimit) || 0,
+              guide: String(payload.guide ?? album.guide),
+              updatedAt
+            };
+          }
+
           if (name === "createRawSelectionFolder") {
             return {
               ...album,
@@ -311,6 +322,13 @@ function AlbumCard({ album, onAction, onNotify }: { album: ListedAlbum; onAction
   const [chat, setChat] = useState(album.customerChatUrl || "");
   const [busy, setBusy] = useState("");
   const [linksOpen, setLinksOpen] = useState(false);
+  const [selectionSettingsOpen, setSelectionSettingsOpen] = useState(false);
+  const [selectionSettings, setSelectionSettings] = useState(() => ({
+    maxSelect: String(album.maxSelect),
+    largePrintLimit: String(album.largePrintLimit),
+    tablePrintLimit: String(album.tablePrintLimit),
+    guide: album.guide
+  }));
   const [confirmAction, setConfirmAction] = useState<"deleteAlbum" | "archiveAlbum" | null>(null);
   const run = async (name: string, payload?: Record<string, unknown>) => {
     if ((name === "deleteAlbum" || name === "archiveAlbum") && !confirmAction) {
@@ -345,11 +363,19 @@ function AlbumCard({ album, onAction, onNotify }: { album: ListedAlbum; onAction
         <button className="secondary compact" onClick={() => { navigator.clipboard.writeText(album.clientUrl).then(() => onNotify("Đã copy link gửi khách.")).catch(() => onNotify("Không thể copy link. Hãy thử lại.")); }}><Copy size={15} /> Copy link</button>
         <a className="button secondary compact" href={album.clientUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Mở</a>
         {album.spreadsheetUrl && <a className="button secondary compact" href={album.spreadsheetUrl} target="_blank" rel="noreferrer"><Sheet size={15} /> Trang Tính</a>}
+        <button className="secondary compact" onClick={() => { setSelectionSettingsOpen((open) => !open); setLinksOpen(true); }}><Settings size={15} /> Thông số</button>
         <button className="icon-button" title={album.status === "archived" ? "Khôi phục" : "Lưu trữ"} onClick={() => run(album.status === "archived" ? "restoreAlbum" : "archiveAlbum")}><Archive size={16} /></button>
         <button className="icon-button danger" title="Xoá" onClick={() => run("deleteAlbum")}><Trash2 size={16} /></button>
       </div>
       </div>
       {linksOpen && <div className="album-link-details">
+        {selectionSettingsOpen && <div className="album-selection-editor">
+          <label>Số ảnh tối đa khách được chọn<input type="number" min="0" value={selectionSettings.maxSelect} onChange={(e) => setSelectionSettings({ ...selectionSettings, maxSelect: e.target.value })} /></label>
+          <label>Ảnh phóng to 60×90<input type="number" min="0" value={selectionSettings.largePrintLimit} onChange={(e) => setSelectionSettings({ ...selectionSettings, largePrintLimit: e.target.value })} /></label>
+          <label>Ảnh để bàn<input type="number" min="0" value={selectionSettings.tablePrintLimit} onChange={(e) => setSelectionSettings({ ...selectionSettings, tablePrintLimit: e.target.value })} /></label>
+          <label>Hướng dẫn chọn ảnh<textarea rows={6} value={selectionSettings.guide} onChange={(e) => setSelectionSettings({ ...selectionSettings, guide: e.target.value })} /></label>
+          <button className="secondary compact" disabled={Boolean(busy)} onClick={() => run("updateAlbum", selectionSettings)}>Lưu thông số chọn ảnh</button>
+        </div>}
         <div className="raw-line">
           <input value={raw} onChange={(e) => setRaw(e.target.value)} placeholder="Link thư mục RAW" />
           <button className="secondary compact" onClick={() => run("updateRawFolder", { rawFolderUrl: raw })}>Lưu RAW</button>

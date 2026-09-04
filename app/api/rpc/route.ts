@@ -17,6 +17,7 @@ import {
   saveDraft,
   saveSelection,
   saveSettings,
+  updateAlbum,
   updateCustomerChat,
   updateRawFolder
 } from "@/lib/google";
@@ -50,6 +51,7 @@ const adminActions = new Set([
   "archiveAlbum",
   "restoreAlbum",
   "updateRawFolder",
+  "updateAlbum",
   "updateCustomerChat",
   "createRawSelectionFolder",
   "getSettings",
@@ -96,6 +98,7 @@ export async function POST(request: Request) {
       case "archiveAlbum": data = await archiveAlbum(String(payload.albumId || "")); break;
       case "restoreAlbum": data = await archiveAlbum(String(payload.albumId || ""), true); break;
       case "updateRawFolder": data = await updateRawFolder(payload); break;
+      case "updateAlbum": data = await updateAlbum(payload); break;
       case "updateCustomerChat": data = await updateCustomerChat(payload); break;
       case "createRawSelectionFolder": data = await createRawSelectionFolder(String(payload.albumId || "")); break;
       case "getSettings": data = await getSettings(); break;
