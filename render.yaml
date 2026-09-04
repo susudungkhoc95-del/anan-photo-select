@@ -10,6 +10,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: HOSTNAME
+        value: 0.0.0.0
       - key: ADMIN_PASSWORD
         sync: false
       - key: SESSION_SECRET
