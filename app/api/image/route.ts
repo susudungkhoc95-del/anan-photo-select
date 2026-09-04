@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     return new Response(result.body, {
       headers: {
         "Content-Type": result.contentType,
-        "Cache-Control": "public, max-age=86400, s-maxage=604800"
+        "Cache-Control": "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400"
       }
     });
   } catch (error) {

@@ -11,6 +11,19 @@ const DRAFTS = "_drafts";
 const SELECTIONS = "_selections";
 const SETTINGS = "_settings";
 const HEADER_BG = { red: 0.918, green: 0.851, blue: 0.722 };
+const ALBUM_CACHE_TTL_MS = 30_000;
+const PHOTO_CACHE_TTL_MS = 60_000;
+
+type CacheEntry<T> = { value: T; expiresAt: number };
+
+// Vercel may reuse a warm function instance. Keep hot, read-only metadata in
+// that instance so scrolling or image fallbacks do not repeat the same
+// Supabase/Sheets reads for every request. Mutations below invalidate these
+// entries, and the short TTL keeps separate instances reasonably fresh.
+const albumCache = new Map<string, CacheEntry<Album>>();
+const albumLoads = new Map<string, Promise<Album | null>>();
+const photoCache = new Map<string, CacheEntry<Photo[]>>();
+const photoLoads = new Map<string, Promise<Photo[]>>();
 
 export class AlbumNotFoundError extends Error {}
 
@@ -85,6 +98,7 @@ async function readTable(name: string) {
 }
 
 async function upsertJson(name: string, id: string, value: unknown) {
+  if (name === ALBUMS) albumCache.delete(id);
   await saveAppRecord(name, id, value);
 }
 
@@ -226,6 +240,7 @@ async function writePhotos(album: Album, photos: Photo[]) {
     valueInputOption: "RAW",
     requestBody: { values }
   });
+  photoCache.delete(album.id);
 }
 
 export async function createAlbum(payload: Record<string, unknown>) {
@@ -285,8 +300,20 @@ export async function createAlbum(payload: Record<string, unknown>) {
 }
 
 export async function loadAlbum(id: string) {
-  const album = await readJson<Album>(ALBUMS, clean(id, 80));
+  const albumId = clean(id, 80);
+  const cached = albumCache.get(albumId);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const pending = albumLoads.get(albumId);
+  if (pending) {
+    const album = await pending;
+    if (!album || album.status === "deleted") throw new AlbumNotFoundError("Không tìm thấy album.");
+    return album;
+  }
+  const load = readJson<Album>(ALBUMS, albumId).finally(() => albumLoads.delete(albumId));
+  albumLoads.set(albumId, load);
+  const album = await load;
   if (!album || album.status === "deleted") throw new AlbumNotFoundError("Không tìm thấy album.");
+  albumCache.set(albumId, { value: album, expiresAt: Date.now() + ALBUM_CACHE_TTL_MS });
   return album;
 }
 
@@ -364,16 +391,8 @@ export async function listAlbums(payload: Record<string, unknown>) {
 
 export async function photoPage(payload: Record<string, unknown>) {
   const album = await loadAlbum(clean(payload.albumId, 80));
-  const { sheets, spreadsheetId } = getGoogleApi();
-  const result = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: photoSheetRange(album)
-  });
   const folder = clean(payload.folder) || "all";
-  const all = (result.data.values || []).map((r) => ({
-    id: String(r[0]), name: String(r[1] || ""), folder: String(r[2] || ""),
-    width: Number(r[3] || 0) || undefined, height: Number(r[4] || 0) || undefined
-  }));
+  const all = await allPhotos(album);
   const filtered = folder === "all" ? all : all.filter((p) => p.folder === folder);
   const offset = Math.max(0, Number(payload.offset || 0));
   const limit = Math.min(120, Math.max(1, Number(payload.limit || 80)));
@@ -437,15 +456,26 @@ export async function getPhotoThumbnail(albumId: string, photoId: string) {
 }
 
 async function allPhotos(album: Album) {
+  const cached = photoCache.get(album.id);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const pending = photoLoads.get(album.id);
+  if (pending) return pending;
   const { sheets, spreadsheetId } = getGoogleApi();
-  const result = await sheets.spreadsheets.values.get({
+  const load = sheets.spreadsheets.values.get({
     spreadsheetId,
     range: photoSheetRange(album)
-  });
-  return (result.data.values || []).map((r) => ({
+  }).then((result) => (result.data.values || []).map((r) => ({
     id: String(r[0]), name: String(r[1] || ""), folder: String(r[2] || ""),
     width: Number(r[3] || 0) || undefined, height: Number(r[4] || 0) || undefined
-  }));
+  })));
+  photoLoads.set(album.id, load);
+  try {
+    const photos = await load;
+    photoCache.set(album.id, { value: photos, expiresAt: Date.now() + PHOTO_CACHE_TTL_MS });
+    return photos;
+  } finally {
+    photoLoads.delete(album.id);
+  }
 }
 
 function normalizeIds(values: unknown, valid: Set<string>, limit = 500) {

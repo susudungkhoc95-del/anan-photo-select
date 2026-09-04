@@ -145,7 +145,10 @@ export default function ClientView({ albumId }: { albumId: string }) {
       })
       .catch((e) => setError(e.message));
     void refreshAlbum();
-    const lockTimer = window.setInterval(refreshAlbum, 15_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshAlbum();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
 
     void loadPage(false, "all");
 
@@ -166,7 +169,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
       // Do not let the autosave effect run before the server state is restored.
       draftReady.current = true;
     }).catch((e) => setError(e.message));
-    return () => window.clearInterval(lockTimer);
+    return () => document.removeEventListener("visibilitychange", refreshWhenVisible);
   }, [albumId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -247,7 +250,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
         albumId, sessionId: sessionId.current, selectedIds: [...selected], largePrintIds: [...large],
         tablePrintIds: [...table], photoNotes: notes, albumNote
       }).catch(() => {});
-    }, 700);
+    }, 1200);
     return () => clearTimeout(timer);
   }, [album, albumId, selected, large, table, notes, albumNote]);
 
@@ -751,13 +754,11 @@ function DrivePhoto({ albumId, photo, zoom = false, onDimensions }: { albumId: s
     ? [
         photo.thumbUrl,
         sizedDriveUrl(photo.id, 1800),
-        photo.zoomUrl,
-        albumId ? `/api/image?albumId=${encodeURIComponent(albumId)}&photoId=${encodeURIComponent(photo.id)}` : photo.viewUrl
+        photo.zoomUrl
       ]
     : [
         photo.thumbUrl,
-        `https://lh3.googleusercontent.com/d/${encodeURIComponent(photo.id)}=w900`,
-        albumId ? `/api/image?albumId=${encodeURIComponent(albumId)}&photoId=${encodeURIComponent(photo.id)}` : photo.viewUrl
+        `https://lh3.googleusercontent.com/d/${encodeURIComponent(photo.id)}=w900`
       ];
   const [sourceIndex, setSourceIndex] = useState(0);
   const sharperImageRef = useRef<HTMLImageElement | null>(null);
