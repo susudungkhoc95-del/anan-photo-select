@@ -10,8 +10,12 @@ export const metadata: Metadata = {
   title: "ANAN Studio — Chọn ảnh",
   description: "Không gian chọn ảnh riêng dành cho khách hàng ANAN Studio.",
   icons: {
-    icon: [{ url: "/dp-logo.png", type: "image/png" }],
-    apple: [{ url: "/dp-logo.png", type: "image/png" }]
+    icon: [
+      { url: "/dp-logo.png?v=2", type: "image/png" },
+      { url: "/dp-logo.png?v=2", type: "image/png", sizes: "any" }
+    ],
+    shortcut: ["/dp-logo.png?v=2"],
+    apple: [{ url: "/dp-logo.png?v=2", type: "image/png" }]
   }
 };
 
