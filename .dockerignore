@@ -1,0 +1,12 @@
+.git
+.gitignore
+.next
+node_modules
+*.log
+.env*
+README.md
+docs
+macos
+scripts
+supabase
+tests
