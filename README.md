@@ -100,7 +100,23 @@ Mở `http://localhost:3000`. Không có tham số `album` là trang quản tr�
 
 API tạo album và nhặt RAW được cấu hình thời gian chạy tối đa 300 giây. Với album rất lớn, nên chia ảnh theo thư mục con.
 
-## 5. Quy ước dữ liệu
+## 5. Deploy bản backup trên Render
+
+Render được dùng làm bản backup/test độc lập của cùng ứng dụng Next.js. Không tạo database hoặc kho ảnh mới: bản Render tiếp tục dùng chung Supabase, Google Drive và Google Sheets hiện tại.
+
+1. Đưa repository lên GitHub và mở [Render Dashboard](https://dashboard.render.com/).
+2. Chọn **New → Blueprint**, chọn repository rồi để Render đọc file `render.yaml`.
+3. Chọn gói **Free** và region **Singapore**.
+4. Điền các biến môi trường được đánh dấu `sync: false`, lấy giá trị giống bản Vercel. Đặt `NEXT_PUBLIC_APP_URL` thành URL Render, ví dụ `https://anan-photo-select.onrender.com`.
+5. Deploy và mở URL Render để kiểm tra trang quản trị, link khách, lưu lựa chọn, tạo Sheet và nhặt RAW.
+
+Render Free có thể sleep sau 15 phút không có request và lần truy cập đầu tiên sau đó sẽ chậm hơn. Filesystem của service là tạm thời, vì vậy không lưu ảnh, token hoặc dữ liệu ứng dụng vào ổ đĩa local.
+
+### OAuth cho URL Render
+
+Nếu app dùng OAuth client, thêm callback/origin của URL Render vào Google Cloud Console nếu màn hình OAuth yêu cầu. Giữ nguyên client ID, client secret và refresh token; không tạo OAuth client mới. Sau khi đổi domain, kiểm tra lại đăng nhập quản trị và các API Google.
+
+## 6. Quy ước dữ liệu
 
 App tự tạo các tab trong Google Sheet dữ liệu:
 
