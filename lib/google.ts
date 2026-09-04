@@ -13,6 +13,8 @@ const SETTINGS = "_settings";
 const HEADER_BG = { red: 0.918, green: 0.851, blue: 0.722 };
 const ALBUM_CACHE_TTL_MS = 30_000;
 const PHOTO_CACHE_TTL_MS = 60_000;
+const DRIVE_SCAN_CONCURRENCY = 6;
+const RAW_COPY_CONCURRENCY = 4;
 
 type CacheEntry<T> = { value: T; expiresAt: number };
 
@@ -208,10 +210,11 @@ async function scanFolder(
       supportsAllDrives: true,
       includeItemsFromAllDrives: true
     });
+    const subfolders: Array<{ id: string; path: string }> = [];
     for (const file of result.data.files || []) {
       if (!file.id || file.id === excludeFolderId) continue;
       if (file.mimeType === "application/vnd.google-apps.folder") {
-        await scanFolder(file.id, `${path} / ${file.name || "Thư mục"}`, output, imageOnly, excludeFolderId);
+        subfolders.push({ id: file.id, path: `${path} / ${file.name || "Thư mục"}` });
       } else if (!imageOnly || String(file.mimeType || "").startsWith("image/")) {
         const sourceWidth = Number(file.imageMediaMetadata?.width || 0);
         const sourceHeight = Number(file.imageMediaMetadata?.height || 0);
@@ -225,6 +228,13 @@ async function scanFolder(
           height: (quarterTurn ? sourceWidth : sourceHeight) || undefined
         });
       }
+    }
+    // Scan sibling folders in small batches instead of walking the tree
+    // serially. The limit avoids flooding the Drive API on large albums.
+    for (let index = 0; index < subfolders.length; index += DRIVE_SCAN_CONCURRENCY) {
+      await Promise.all(subfolders.slice(index, index + DRIVE_SCAN_CONCURRENCY).map((folder) =>
+        scanFolder(folder.id, folder.path, output, imageOnly, excludeFolderId)
+      ));
     }
     pageToken = result.data.nextPageToken || undefined;
   } while (pageToken);
@@ -833,6 +843,7 @@ export async function createRawSelectionFolder(id: string) {
   await scanFolder(targetId, "", existing, false);
   const existingNames = new Set(existing.map((p) => p.name));
   const missing: string[] = [], skippedNames: string[] = [];
+  const copies: Photo[] = [];
   let copied = 0, skipped = 0;
   for (const photoId of selection.selectedIds) {
     const photo = byId.get(photoId);
@@ -840,8 +851,17 @@ export async function createRawSelectionFolder(id: string) {
     const raw = rawByKey.get(fileKey(photo.name));
     if (!raw) { missing.push(baseName(photo.name)); continue; }
     if (existingNames.has(raw.name)) { skipped++; skippedNames.push(baseName(photo.name)); continue; }
-    await drive.files.copy({ fileId: raw.id, requestBody: { name: raw.name, parents: [targetId] }, supportsAllDrives: true });
-    existingNames.add(raw.name); copied++;
+    copies.push(raw);
+  }
+  for (let index = 0; index < copies.length; index += RAW_COPY_CONCURRENCY) {
+    const batch = copies.slice(index, index + RAW_COPY_CONCURRENCY);
+    await Promise.all(batch.map((raw) => drive.files.copy({
+      fileId: raw.id,
+      requestBody: { name: raw.name, parents: [targetId] },
+      supportsAllDrives: true
+    })));
+    batch.forEach((raw) => existingNames.add(raw.name));
+    copied += batch.length;
   }
   album.rawSelectionFolderId = targetId;
   album.rawSelectionFolderUrl = `https://drive.google.com/drive/folders/${targetId}`;
