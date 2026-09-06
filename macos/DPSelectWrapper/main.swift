@@ -69,7 +69,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
       backing: .buffered,
       defer: false
     )
-    window.title = "DP Workflow"
+    let environment = url.host == "anan-photo-select.onrender.com" ? "Render" : "Vercel"
+    window.title = "DP Workflow · \(environment)"
     window.titleVisibility = .visible
     window.tabbingIdentifier = "ANAN-STUDIO"
     window.tabbingMode = .preferred
