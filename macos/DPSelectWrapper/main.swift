@@ -1,8 +1,9 @@
 import AppKit
 import WebKit
 
-private let appURL = URL(string: "https://ananstudio.vercel.app/")!
-private let workflowURL = URL(string: "https://ananstudio.vercel.app/workflow")!
+private let appURL = URL(string: "https://anan-photo-select.onrender.com/")!
+private let workflowURL = URL(string: "https://anan-photo-select.onrender.com/workflow")!
+private let showURL = URL(string: "https://anan-photo-select.onrender.com/show")!
 
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
   private var window: NSWindow?
@@ -45,7 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
       webView.topAnchor.constraint(equalTo: content.topAnchor),
       webView.bottomAnchor.constraint(equalTo: content.bottomAnchor)
     ])
-    let statusLabel = NSTextField(labelWithString: "Đang mở ANAN STUDIO…")
+    let statusLabel = NSTextField(labelWithString: "Đang mở DP WORKFLOW…")
     statusLabel.translatesAutoresizingMaskIntoConstraints = false
     statusLabel.font = NSFont.systemFont(ofSize: 16, weight: .semibold)
     statusLabel.textColor = NSColor(calibratedRed: 0.08, green: 0.2, blue: 0.34, alpha: 1)
@@ -65,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
       backing: .buffered,
       defer: false
     )
-    window.title = "ANAN STUDIO by DPlab"
+    window.title = "DP Workflow"
     window.titleVisibility = .visible
     window.tabbingIdentifier = "ANAN-STUDIO"
     window.tabbingMode = .preferred
@@ -95,13 +96,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     label.isHidden = false
   }
 
-  @objc private func openSelectTab(_ sender: Any?) { openTab(url: appURL) }
-  @objc private func openWorkflowTab(_ sender: Any?) { openTab(url: workflowURL) }
+  @objc private func openSelectTab(_ sender: Any?) { openTab(url: appURL, from: NSApp.keyWindow ?? window) }
+  @objc private func openWorkflowTab(_ sender: Any?) { openTab(url: workflowURL, from: NSApp.keyWindow ?? window) }
+  @objc private func openShowTab(_ sender: Any?) { openTab(url: showURL, from: NSApp.keyWindow ?? window) }
 
-  private func openTab(url: URL) {
+  private func openTab(url: URL, from sourceWindow: NSWindow? = nil) {
     let newWindow = makeWindow(url: url)
-    let current = NSApp.keyWindow ?? window
+    let current = sourceWindow ?? NSApp.keyWindow ?? window
     if let current {
+      // Attach the new web view as a native macOS tab in the same window,
+      // like a browser tab, instead of leaving it as a separate window.
       current.addTabbedWindow(newWindow, ordered: .above)
     }
     newWindow.makeKeyAndOrderFront(nil)
@@ -110,8 +114,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
   private func installMenu() {
     let mainMenu = NSMenu()
     let appMenuItem = NSMenuItem()
-    let appMenu = NSMenu(title: "ANAN STUDIO by DPlab")
-    appMenu.addItem(withTitle: "Thoát ANAN STUDIO by DPlab", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+    let appMenu = NSMenu(title: "DP Workflow")
+    appMenu.addItem(withTitle: "Thoát DP Workflow", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
     appMenuItem.submenu = appMenu
     mainMenu.addItem(appMenuItem)
 
@@ -119,6 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     let fileMenu = NSMenu(title: "Tệp")
     fileMenu.addItem(NSMenuItem(title: "Tab DP Select mới", action: #selector(openSelectTab(_:)), keyEquivalent: "t"))
     fileMenu.addItem(NSMenuItem(title: "Tab DP Workflow mới", action: #selector(openWorkflowTab(_:)), keyEquivalent: "T"))
+    fileMenu.addItem(NSMenuItem(title: "Tab SHOW mới", action: #selector(openShowTab(_:)), keyEquivalent: "s"))
     fileMenu.addItem(.separator())
     fileMenu.addItem(withTitle: "Đóng tab", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
     fileMenuItem.submenu = fileMenu
@@ -143,18 +148,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
   func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
     guard let url = navigationAction.request.url else { return decisionHandler(.cancel) }
-    // Links opened with target="_blank" (including the admin "Mở" button)
-    // belong in the user's default browser, not in another app tab.
+    // Links opened with target="_blank" belong in a new native app tab.
     if navigationAction.targetFrame == nil {
-      NSWorkspace.shared.open(url)
+      openTab(url: url, from: webView.window)
       decisionHandler(.cancel)
       return
     }
     let host = url.host ?? ""
-    if host == "ananstudio.vercel.app" || host.hasSuffix(".vercel.app") || url.scheme == "about" {
+    if host == "anan-photo-select.onrender.com" || host == "ananstudio.vercel.app" || host.hasSuffix(".vercel.app") || url.scheme == "about" {
       decisionHandler(.allow)
     } else {
-      NSWorkspace.shared.open(url)
+      openTab(url: url, from: webView.window)
       decisionHandler(.cancel)
     }
   }
