@@ -15,6 +15,11 @@ const TABS = {
 } as const;
 
 const LABEL_COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#a855f7"] as const;
+type WorkflowScope = "dp" | "show";
+
+function workflowScope(payload?: Record<string, unknown>): WorkflowScope {
+  return payload?.scope === "show" ? "show" : "dp";
+}
 
 type TabName = (typeof TABS)[keyof typeof TABS];
 const workspaceQueues = new Map<string, Promise<void>>();
@@ -271,10 +276,11 @@ async function syncResultSheetLinks(workspaceId: string, board: WorkflowBoard, a
   return changed;
 }
 
-async function boardForCurrentWorkspace() {
-  const workspaceId = getWorkflowWorkspaceId();
+async function boardForCurrentWorkspace(scope: WorkflowScope = "dp") {
+  const workspaceId = getWorkflowWorkspaceId(scope);
   await ensureDefaultLists(workspaceId);
-  const board = await syncWaitingSelectionCards(workspaceId, await readBoard(workspaceId));
+  const board = scope === "show" ? await readBoard(workspaceId) : await syncWaitingSelectionCards(workspaceId, await readBoard(workspaceId));
+  if (scope === "show") return board;
   const albums = await activeAlbums();
   return await syncResultSheetLinks(workspaceId, board, albums) ? readBoard(workspaceId) : board;
 }
@@ -349,15 +355,16 @@ async function assignCardOrderKey(workspaceId: string, cards: WorkflowCard[], ca
   card.position = index;
 }
 
-export async function getWorkflowBoard() {
-  const workspaceId = getWorkflowWorkspaceId();
-  return serialise(workspaceId, boardForCurrentWorkspace);
+export async function getWorkflowBoard(payload: Record<string, unknown> = {}) {
+  const scope = workflowScope(payload);
+  const workspaceId = getWorkflowWorkspaceId(scope);
+  return serialise(workspaceId, () => boardForCurrentWorkspace(scope));
 }
 
 export async function createWorkflowList(payload: Record<string, unknown>) {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId(workflowScope(payload));
   return serialise(workspaceId, async () => {
-    const board = await boardForCurrentWorkspace();
+    const board = await boardForCurrentWorkspace(workflowScope(payload));
     const timestamp = now();
     const record: WorkflowList = { id: randomUUID(), workspaceId, name: requiredText(payload.name, "Tên danh sách"), position: Math.max(-1, ...board.lists.map((list) => list.position)) + 1, systemKey: "", createdAt: timestamp, updatedAt: timestamp };
     await writeRow(TABS.lists, record.id, workspaceId, listValues(record));
@@ -366,9 +373,9 @@ export async function createWorkflowList(payload: Record<string, unknown>) {
 }
 
 export async function updateWorkflowList(payload: Record<string, unknown>) {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId(workflowScope(payload));
   return serialise(workspaceId, async () => {
-    const board = await boardForCurrentWorkspace();
+    const board = await boardForCurrentWorkspace(workflowScope(payload));
     const record = findList(board, payload.listId);
     const name = requiredText(payload.name, "Tên danh sách");
     if (name !== record.name) { record.name = name; record.updatedAt = now(); await writeRow(TABS.lists, record.id, workspaceId, listValues(record)); }
@@ -377,9 +384,9 @@ export async function updateWorkflowList(payload: Record<string, unknown>) {
 }
 
 export async function reorderWorkflowLists(payload: Record<string, unknown>) {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId(workflowScope(payload));
   return serialise(workspaceId, async () => {
-    const board = await boardForCurrentWorkspace();
+    const board = await boardForCurrentWorkspace(workflowScope(payload));
     let orderedIds = Array.isArray(payload.orderedIds) ? payload.orderedIds.map((id) => text(id, 100)) : [];
     const valid = new Set(board.lists.map((list) => list.id));
     if (orderedIds.length !== board.lists.length || orderedIds.some((id) => !valid.has(id)) || new Set(orderedIds).size !== orderedIds.length) throw new Error("Thứ tự danh sách không hợp lệ.");
@@ -396,9 +403,9 @@ export async function reorderWorkflowLists(payload: Record<string, unknown>) {
 }
 
 export async function deleteWorkflowList(payload: Record<string, unknown>) {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId(workflowScope(payload));
   return serialise(workspaceId, async () => {
-    const board = await boardForCurrentWorkspace();
+    const board = await boardForCurrentWorkspace(workflowScope(payload));
     const record = findList(board, payload.listId);
     if (record.systemKey === "WAITING_SELECTION") throw new Error("Danh sách chờ khách chọn ảnh là danh sách hệ thống, không thể xoá.");
     const cards = board.cards.filter((card) => card.listId === record.id);
@@ -418,9 +425,9 @@ export async function deleteWorkflowList(payload: Record<string, unknown>) {
 }
 
 export async function createWorkflowCard(payload: Record<string, unknown>) {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId(workflowScope(payload));
   return serialise(workspaceId, async () => {
-    const board = await boardForCurrentWorkspace();
+    const board = await boardForCurrentWorkspace(workflowScope(payload));
     const list = findList(board, payload.listId || board.lists[0]?.id);
     const timestamp = now();
     const requestedId = text(payload.cardId, 100);
@@ -436,9 +443,9 @@ export async function createWorkflowCard(payload: Record<string, unknown>) {
 }
 
 export async function updateWorkflowCard(payload: Record<string, unknown>) {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId(workflowScope(payload));
   return serialise(workspaceId, async () => {
-    const board = await boardForCurrentWorkspace();
+    const board = await boardForCurrentWorkspace(workflowScope(payload));
     const card = findCard(board, payload.cardId);
     const title = requiredText(payload.title, "Tên thẻ");
     const note = text(payload.note, 5000);
@@ -454,7 +461,7 @@ export async function updateWorkflowCard(payload: Record<string, unknown>) {
 }
 
 export async function moveWorkflowCard(payload: Record<string, unknown>) {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId(workflowScope(payload));
   return serialise(workspaceId, async () => {
     // Moving a card only needs the workflow rows. Do not run the expensive
     // Google/album synchronization here; doing so made an otherwise simple
@@ -483,9 +490,9 @@ export async function moveWorkflowCard(payload: Record<string, unknown>) {
 }
 
 export async function deleteWorkflowCard(payload: Record<string, unknown>) {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId(workflowScope(payload));
   return serialise(workspaceId, async () => {
-    const board = await boardForCurrentWorkspace();
+    const board = await boardForCurrentWorkspace(workflowScope(payload));
     const card = findCard(board, payload.cardId);
     await clearRecord(TABS.cards, card.id, workspaceId);
     await Promise.all(board.links.filter((link) => link.cardId === card.id).map((link) => clearRecord(TABS.links, link.id, workspaceId)));
@@ -496,9 +503,9 @@ export async function deleteWorkflowCard(payload: Record<string, unknown>) {
 }
 
 export async function createWorkflowLabel(payload: Record<string, unknown>) {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId(workflowScope(payload));
   return serialise(workspaceId, async () => {
-    const board = await boardForCurrentWorkspace();
+    const board = await boardForCurrentWorkspace(workflowScope(payload));
     const timestamp = now();
     const record: WorkflowLabel = { id: randomUUID(), workspaceId, name: requiredText(payload.name, "Tên nhãn", 60), color: labelColor(payload.color || "#3b82f6"), position: Math.max(-1, ...board.labels.map((label) => label.position)) + 1, createdAt: timestamp, updatedAt: timestamp };
     await writeRow(TABS.labels, record.id, workspaceId, labelValues(record));
@@ -507,9 +514,9 @@ export async function createWorkflowLabel(payload: Record<string, unknown>) {
 }
 
 export async function updateWorkflowLabel(payload: Record<string, unknown>) {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId(workflowScope(payload));
   return serialise(workspaceId, async () => {
-    const board = await boardForCurrentWorkspace();
+    const board = await boardForCurrentWorkspace(workflowScope(payload));
     const record = findLabel(board, payload.labelId);
     record.name = requiredText(payload.name, "Tên nhãn", 60);
     record.color = labelColor(payload.color);
@@ -520,9 +527,9 @@ export async function updateWorkflowLabel(payload: Record<string, unknown>) {
 }
 
 export async function deleteWorkflowLabel(payload: Record<string, unknown>) {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId(workflowScope(payload));
   return serialise(workspaceId, async () => {
-    const board = await boardForCurrentWorkspace();
+    const board = await boardForCurrentWorkspace(workflowScope(payload));
     const record = findLabel(board, payload.labelId);
     const assignments = board.cardLabels.filter((assignment) => assignment.labelId === record.id);
     await clearRecord(TABS.labels, record.id, workspaceId);
@@ -533,9 +540,9 @@ export async function deleteWorkflowLabel(payload: Record<string, unknown>) {
 }
 
 export async function setWorkflowCardLabels(payload: Record<string, unknown>) {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId(workflowScope(payload));
   return serialise(workspaceId, async () => {
-    const board = await boardForCurrentWorkspace();
+    const board = await boardForCurrentWorkspace(workflowScope(payload));
     const card = findCard(board, payload.cardId);
     await syncNoteLabel(workspaceId, board, card);
     const labelIds = Array.isArray(payload.labelIds) ? payload.labelIds.map((id) => text(id, 100)).filter(Boolean) : [];
@@ -562,9 +569,9 @@ export async function setWorkflowCardLabels(payload: Record<string, unknown>) {
 }
 
 export async function createWorkflowLink(payload: Record<string, unknown>) {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId(workflowScope(payload));
   return serialise(workspaceId, async () => {
-    const board = await boardForCurrentWorkspace();
+    const board = await boardForCurrentWorkspace(workflowScope(payload));
     const card = findCard(board, payload.cardId);
     const url = requiredText(payload.url, "URL", 2000);
     if (!isUrl(url)) throw new Error("Link phải bắt đầu bằng http:// hoặc https://.");
@@ -577,9 +584,9 @@ export async function createWorkflowLink(payload: Record<string, unknown>) {
 }
 
 export async function updateWorkflowLink(payload: Record<string, unknown>) {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId(workflowScope(payload));
   return serialise(workspaceId, async () => {
-    const board = await boardForCurrentWorkspace();
+    const board = await boardForCurrentWorkspace(workflowScope(payload));
     const record = board.links.find((link) => link.id === text(payload.linkId, 100));
     if (!record) throw new Error("Không tìm thấy link.");
     const url = requiredText(payload.url, "URL", 2000);
@@ -592,9 +599,9 @@ export async function updateWorkflowLink(payload: Record<string, unknown>) {
 }
 
 export async function deleteWorkflowLink(payload: Record<string, unknown>) {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId(workflowScope(payload));
   return serialise(workspaceId, async () => {
-    const board = await boardForCurrentWorkspace();
+    const board = await boardForCurrentWorkspace(workflowScope(payload));
     const record = board.links.find((link) => link.id === text(payload.linkId, 100));
     if (!record) throw new Error("Không tìm thấy link.");
     await clearRecord(TABS.links, record.id, workspaceId);
@@ -617,9 +624,9 @@ function dpSelectionSummary(selection: Selection) {
  * an interrupted write rather than creating a second logical card.
  */
 export async function createOrUpdateCardFromSelection(album: Album, selection: Selection, spreadsheetUrl: string) {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId("dp");
   return serialise(workspaceId, async () => {
-    const board = await boardForCurrentWorkspace();
+    const board = await boardForCurrentWorkspace("dp");
     const todo = board.lists.find((list) => list.systemKey === "TODO_INBOX");
     const waiting = board.lists.find((list) => list.systemKey === "WAITING_SELECTION");
     if (!todo) throw new Error("Workflow chưa có danh sách nhận thẻ tự động.");
@@ -674,7 +681,7 @@ export async function createOrUpdateCardFromSelection(album: Album, selection: S
 }
 
 export async function notifyWorkflowAgeSeven() {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId("dp");
   return serialise(workspaceId, async () => {
     await ensureDefaultLists(workspaceId);
     const board = await readBoard(workspaceId);
@@ -701,7 +708,7 @@ function vietnamDate(value = new Date()) {
 }
 
 export async function notifyWorkflowReturnDates() {
-  const workspaceId = getWorkflowWorkspaceId();
+  const workspaceId = getWorkflowWorkspaceId("dp");
   return serialise(workspaceId, async () => {
     await ensureDefaultLists(workspaceId);
     const board = await readBoard(workspaceId);

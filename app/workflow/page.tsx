@@ -1,5 +1,5 @@
 import WorkflowView from "@/components/WorkflowView";
 
 export default function WorkflowPage() {
-  return <WorkflowView />;
+  return <WorkflowView scope="dp" />;
 }

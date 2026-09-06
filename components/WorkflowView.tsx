@@ -20,13 +20,19 @@ const LABEL_COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#a
 const WORKFLOW_CACHE_KEY = "anan-workflow-board";
 const ADMIN_SESSION_KEY = "anan-admin-session";
 const WORKFLOW_CACHE_TTL = 60 * 1000;
+type WorkflowScope = "dp" | "show";
+let activeWorkflowScope: WorkflowScope = "dp";
 
-function cachedBoard(): WorkflowBoard | null {
+function scopedRpc<T = unknown>(action: string, payload: Record<string, unknown> = {}) {
+  return rpc<T>(action, { ...payload, scope: activeWorkflowScope });
+}
+
+function cachedBoard(scope: WorkflowScope): WorkflowBoard | null {
   if (typeof window === "undefined") return null;
   try {
-    const cached = JSON.parse(sessionStorage.getItem(WORKFLOW_CACHE_KEY) || "null") as { data?: WorkflowBoard; savedAt?: number } | null;
+    const cached = JSON.parse(sessionStorage.getItem(`${WORKFLOW_CACHE_KEY}-${scope}`) || "null") as { data?: WorkflowBoard; savedAt?: number } | null;
     if (!cached || typeof cached.savedAt !== "number" || Date.now() - cached.savedAt >= WORKFLOW_CACHE_TTL) {
-      sessionStorage.removeItem(WORKFLOW_CACHE_KEY);
+      sessionStorage.removeItem(`${WORKFLOW_CACHE_KEY}-${scope}`);
       return null;
     }
     const value = cached.data;
@@ -34,8 +40,8 @@ function cachedBoard(): WorkflowBoard | null {
   } catch { return null; }
 }
 
-function cacheBoard(board: WorkflowBoard) {
-  try { sessionStorage.setItem(WORKFLOW_CACHE_KEY, JSON.stringify({ data: board, savedAt: Date.now() })); } catch {}
+function cacheBoard(board: WorkflowBoard, scope: WorkflowScope) {
+  try { sessionStorage.setItem(`${WORKFLOW_CACHE_KEY}-${scope}`, JSON.stringify({ data: board, savedAt: Date.now() })); } catch {}
 }
 
 function formatTime(value: string) {
@@ -50,7 +56,8 @@ function formatWeddingDate(value: string) {
   return Number(year) === new Date().getFullYear() ? `${day}/${month}` : `${day}/${month}/${year.slice(-2)}`;
 }
 
-export default function WorkflowView() {
+export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }) {
+  activeWorkflowScope = scope;
   // The first client render must match SSR. Read sessionStorage only after mount,
   // otherwise a saved browser session renders the board before hydration.
   const [auth, setAuth] = useState<"loading" | "yes" | "no">("loading");
@@ -128,7 +135,7 @@ export default function WorkflowView() {
           ...pendingLabels.flatMap(([cardId, labelIds]) => labelIds.map((labelId) => ({ id: `local-label-${cardId}-${labelId}`, workspaceId: nextBoard.workspaceId, cardId, labelId, createdAt: new Date().toISOString() })))
         ];
       }
-      cacheBoard(mergedBoard);
+      cacheBoard(mergedBoard, scope);
       setBoard(mergedBoard);
     }
     catch (error) { if (!silent) notify((error as Error).message); }
@@ -139,7 +146,7 @@ export default function WorkflowView() {
         void load(true);
       }
     }
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     document.body.classList.add("admin-mode");
@@ -167,7 +174,7 @@ export default function WorkflowView() {
     // before requesting the protected board. Starting both requests caused an
     // expired session to leave Workflow spinning forever on a rejected board
     // request.
-    const cached = cachedBoard();
+    const cached = cachedBoard(scope);
     if (cached) setBoard(cached);
     fetch("/api/auth").then((response) => response.json()).then(({ authenticated }) => {
       if (!active) return;
@@ -177,20 +184,20 @@ export default function WorkflowView() {
         return;
       }
       sessionStorage.setItem(ADMIN_SESSION_KEY, "yes");
-      void rpc<StudioSettings>("getSettings").then((settings) => setQuickLinks(settings.quickLinks || [])).catch(() => {});
-      rpc<WorkflowBoard>("getWorkflowBoard").then((nextBoard) => {
+      void scopedRpc<StudioSettings>("getSettings").then((settings) => setQuickLinks(settings.quickLinks || [])).catch(() => {});
+      scopedRpc<WorkflowBoard>("getWorkflowBoard").then((nextBoard) => {
         if (!active) return;
         // The initial request can race with a drag started from a cached board,
         // so apply the same pending-mutation merge used by background refreshes.
         const mergedBoard = pendingCardMovesRef.current.size
           ? { ...nextBoard, cards: nextBoard.cards.map((card) => pendingCardMovesRef.current.get(card.id) || card) }
           : nextBoard;
-        cacheBoard(mergedBoard);
+        cacheBoard(mergedBoard, scope);
         setBoard(mergedBoard);
       }).catch((error) => { if (active) notify((error as Error).message); });
     }).catch(() => { if (active) setAuth("no"); });
     return () => { active = false; };
-  }, []);
+  }, [scope]);
 
   const filtered = useMemo(() => {
     if (!board || !query.trim()) return board?.cards || [];
@@ -199,13 +206,13 @@ export default function WorkflowView() {
   }, [board, query]);
 
   async function addList(name: string) {
-    try { await rpc("createWorkflowList", { name }); setCreateModal(null); await load(); } catch (error) { notify((error as Error).message); }
+    try { await scopedRpc("createWorkflowList", { name }); setCreateModal(null); await load(); } catch (error) { notify((error as Error).message); }
   }
 
   async function renameList(list: WorkflowList) {
     const name = window.prompt("Đổi tên danh sách:", list.name);
     if (name === null) return;
-    try { await rpc("updateWorkflowList", { listId: list.id, name }); await load(); } catch (error) { notify((error as Error).message); }
+    try { await scopedRpc("updateWorkflowList", { listId: list.id, name }); await load(); } catch (error) { notify((error as Error).message); }
   }
 
   async function addCard(list: WorkflowList, title: string) {
@@ -223,7 +230,7 @@ export default function WorkflowView() {
     setBoard((current) => current ? { ...current, cards: [...current.cards, optimisticCard] } : current);
     setCreateModal(null);
     try {
-      await rpc("createWorkflowCard", { cardId, listId: list.id, title });
+      await scopedRpc("createWorkflowCard", { cardId, listId: list.id, title });
       pendingCardsRef.current.delete(cardId);
       setPendingCardIds((current) => { const next = new Set(current); next.delete(cardId); return next; });
       await load(true);
@@ -251,7 +258,7 @@ export default function WorkflowView() {
         const newIndex = currentBoard.lists.findIndex((list) => list.id === overListId);
         const lists = arrayMove(currentBoard.lists, oldIndex, newIndex);
         setBoard({ ...currentBoard, lists });
-        await rpc("reorderWorkflowLists", { orderedIds: lists.map((list) => list.id) });
+        await scopedRpc("reorderWorkflowLists", { orderedIds: lists.map((list) => list.id) });
       }
     } catch (error) { notify((error as Error).message); await load(); }
   }
@@ -285,7 +292,7 @@ export default function WorkflowView() {
     const movedCard = cards.find((item) => item.id === cardId);
     if (movedCard) pendingCardMovesRef.current.set(cardId, movedCard);
     try {
-      await rpc("moveWorkflowCard", {
+      await scopedRpc("moveWorkflowCard", {
         cardId,
         targetListId,
         beforeCardId: dropPosition === "before" ? beforeCardId : undefined,
@@ -343,7 +350,7 @@ export default function WorkflowView() {
       ]
     } : current);
     try {
-      await rpc("setWorkflowCardLabels", { cardId, labelIds });
+      await scopedRpc("setWorkflowCardLabels", { cardId, labelIds });
       if (pendingCardLabelsRef.current.get(cardId) === labelIds) {
         pendingCardLabelsRef.current.delete(cardId);
         await load(true);
@@ -362,7 +369,7 @@ export default function WorkflowView() {
       cards: current.cards.map((card) => card.id === cardId ? { ...card, ...edit } : card)
     } : current);
     notify("Đang lưu thay đổi…", 1800);
-    void rpc("updateWorkflowCard", { cardId, ...changes }).then(async () => {
+    void scopedRpc("updateWorkflowCard", { cardId, ...changes }).then(async () => {
       if (pendingCardEditsRef.current.get(cardId) === edit) pendingCardEditsRef.current.delete(cardId);
       notify("Đã lưu thay đổi.", 1800);
       await load(true);
@@ -377,11 +384,11 @@ export default function WorkflowView() {
     if (typeof window !== "undefined") window.location.replace("/");
     return <div className="page-loader">Đang chuyển đến trang đăng nhập…</div>;
   }
-  if (auth === "loading" || !board) return <div className="page-loader"><span className="spinner" /> Đang mở DP Workflow…</div>;
+  if (auth === "loading" || !board) return <div className="page-loader"><span className="spinner" /> Đang mở {scope === "show" ? "SHOW" : "DP Workflow"}…</div>;
 
   return <main className="workflow-page">
     <header className="workflow-header">
-      <div className="workflow-header-left"><div className="workflow-brand"><img src="/dp-logo.png" alt="DP Select" /></div><nav className="app-tabs header-tabs" aria-label="Khu vực quản trị"><Link href="/" prefetch>DP Select</Link><Link className="active" href="/workflow">DP Workflow</Link></nav></div>
+      <div className="workflow-header-left"><div className="workflow-brand"><img src="/dp-logo.png" alt="DP Select" /></div><nav className="app-tabs header-tabs" aria-label="Khu vực quản trị"><Link href="/" prefetch>DP Select</Link><Link className={scope === "dp" ? "active" : ""} href="/workflow">DP Workflow</Link><Link className={scope === "show" ? "active" : ""} href="/show">SHOW</Link></nav></div>
       <div className="workflow-header-actions"><div className="workflow-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm kiếm thẻ..." />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div></div>
     </header>
     <QuickLinks links={quickLinks} />
@@ -400,7 +407,7 @@ export default function WorkflowView() {
     {quickCardId && <QuickCardModal board={board} cardId={quickCardId} onClose={() => setQuickCardId(null)} onSave={saveCardOptimistically} onChanged={load} onLabelsChanged={setCardLabelsOptimistically} onError={(error) => notify(error.message)} />}
     {labelsOpen && <LabelsModal board={board} onClose={() => setLabelsOpen(false)} onChanged={load} />}
     {createModal && <CreateWorkflowModal state={createModal} onClose={() => setCreateModal(null)} onCreate={(value) => createModal.type === "list" ? addList(value) : addCard(createModal.list, value)} />}
-    {deleteList && <DeleteListModal list={deleteList} lists={board.lists} cardCount={board.cards.filter((card) => card.listId === deleteList.id).length} onClose={() => setDeleteList(null)} onDeleted={async (targetListId) => { try { await rpc("deleteWorkflowList", { listId: deleteList.id, targetListId }); setDeleteList(null); await load(); } catch (error) { notify((error as Error).message); } }} />}
+    {deleteList && <DeleteListModal list={deleteList} lists={board.lists} cardCount={board.cards.filter((card) => card.listId === deleteList.id).length} onClose={() => setDeleteList(null)} onDeleted={async (targetListId) => { try { await scopedRpc("deleteWorkflowList", { listId: deleteList.id, targetListId }); setDeleteList(null); await load(); } catch (error) { notify((error as Error).message); } }} />}
     <button type="button" className="secondary settings-fab workflow-settings-fab" onClick={() => setLabelsOpen((open) => !open)} aria-label={labelsOpen ? "Đóng cài đặt Workflow" : "Cài đặt Workflow"}><Settings size={19} /></button>
   </main>;
 }
@@ -470,7 +477,7 @@ function CardModal({ board, cardId, onClose, onSave, onChanged, onLabelsChanged,
     onSave(card.id, { title: normalizedTitle, note, weddingDate, photoReturnDate });
     onClose();
   }
-  async function editLink(link: WorkflowLink) { const nextLabel = window.prompt("Tên hiển thị:", link.label); if (nextLabel === null) return; const nextUrl = window.prompt("URL:", link.url); if (nextUrl === null) return; await rpc("updateWorkflowLink", { linkId: link.id, label: nextLabel, url: nextUrl }); await onChanged(); }
+  async function editLink(link: WorkflowLink) { const nextLabel = window.prompt("Tên hiển thị:", link.label); if (nextLabel === null) return; const nextUrl = window.prompt("URL:", link.url); if (nextUrl === null) return; await scopedRpc("updateWorkflowLink", { linkId: link.id, label: nextLabel, url: nextUrl }); await onChanged(); }
   async function copyLink(link: WorkflowLink) {
     await navigator.clipboard.writeText(link.url);
     setCopiedLinkId(link.id);
@@ -483,9 +490,9 @@ function CardModal({ board, cardId, onClose, onSave, onChanged, onLabelsChanged,
       const result = await rpc<{ url: string; copied?: number }>("createRawSelectionFolder", { albumId: card.dpSelectAlbumId });
       const current = links.find((link) => link.label === "Link RAW chọn");
       if (current) {
-        await rpc("updateWorkflowLink", { linkId: current.id, label: current.label, url: result.url });
+        await scopedRpc("updateWorkflowLink", { linkId: current.id, label: current.label, url: result.url });
       } else {
-        await rpc("createWorkflowLink", { cardId: card.id, label: "Link RAW chọn", url: result.url });
+        await scopedRpc("createWorkflowLink", { cardId: card.id, label: "Link RAW chọn", url: result.url });
       }
       await onChanged();
       onNotice(`Đã tạo thư mục RAW chọn${result.copied === undefined ? "" : ` · ${result.copied} file mới`}.`);
@@ -496,7 +503,7 @@ function CardModal({ board, cardId, onClose, onSave, onChanged, onLabelsChanged,
   }
   async function removeCard() {
     setBusy(true);
-    try { await rpc("deleteWorkflowCard", { cardId: card.id }); onDeleted(card.id); }
+    try { await scopedRpc("deleteWorkflowCard", { cardId: card.id }); onDeleted(card.id); }
     catch (error) { const nextError = error as Error; onError(nextError); }
     finally { setBusy(false); }
   }
@@ -567,11 +574,11 @@ function LabelsModal({ board, onClose, onChanged }: { board: WorkflowBoard; onCl
   async function create() {
     if (!name.trim()) return;
     setBusy(true);
-    try { await rpc("createWorkflowLabel", { name, color }); setName(""); await onChanged(); } finally { setBusy(false); }
+    try { await scopedRpc("createWorkflowLabel", { name, color }); setName(""); await onChanged(); } finally { setBusy(false); }
   }
   async function update(label: WorkflowLabel, changes: Partial<Pick<WorkflowLabel, "name" | "color">>) {
     setBusy(true);
-    try { await rpc("updateWorkflowLabel", { labelId: label.id, name: changes.name ?? label.name, color: changes.color ?? label.color }); await onChanged(); } finally { setBusy(false); }
+    try { await scopedRpc("updateWorkflowLabel", { labelId: label.id, name: changes.name ?? label.name, color: changes.color ?? label.color }); await onChanged(); } finally { setBusy(false); }
   }
   async function remove(label: WorkflowLabel) {
     setDeleteLabel(label);
@@ -581,7 +588,7 @@ function LabelsModal({ board, onClose, onChanged }: { board: WorkflowBoard; onCl
     const label = deleteLabel;
     setDeleteLabel(null);
     setBusy(true);
-    try { await rpc("deleteWorkflowLabel", { labelId: label.id }); await onChanged(); } finally { setBusy(false); }
+    try { await scopedRpc("deleteWorkflowLabel", { labelId: label.id }); await onChanged(); } finally { setBusy(false); }
   }
   return <div className="modal-backdrop workflow-modal-backdrop" onMouseDown={onClose}><section className="workflow-labels-modal" onMouseDown={(event) => event.stopPropagation()}>
     <header><p className="eyebrow settings-title">CÀI ĐẶT</p><button className="icon-button" onClick={onClose} aria-label="Đóng"><X /></button></header>

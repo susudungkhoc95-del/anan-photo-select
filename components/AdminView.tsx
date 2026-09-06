@@ -256,7 +256,7 @@ export default function AdminView() {
       <header className="admin-header topbar">
         <div className="admin-header-left">
           <div className="admin-logo-mark"><img src="/dp-logo.png" alt="DP Select" /></div>
-          <nav className="app-tabs header-tabs" aria-label="Khu vực quản trị"><Link className="active" href="/">DP Select</Link><Link href="/workflow" prefetch>DP Workflow</Link></nav>
+          <nav className="app-tabs header-tabs" aria-label="Khu vực quản trị"><Link className="active" href="/">DP Select</Link><Link href="/workflow" prefetch>DP Workflow</Link><Link href="/show" prefetch>SHOW</Link></nav>
         </div>
         <div className="topbar-actions">
           <div className="workflow-search admin-header-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm kiếm album..." />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div>

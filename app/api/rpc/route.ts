@@ -103,7 +103,7 @@ export async function POST(request: Request) {
       case "createRawSelectionFolder": data = await createRawSelectionFolder(String(payload.albumId || "")); break;
       case "getSettings": data = await getSettings(); break;
       case "saveSettings": data = await saveSettings(payload); break;
-      case "getWorkflowBoard": data = await getWorkflowBoard(); break;
+      case "getWorkflowBoard": data = await getWorkflowBoard(payload); break;
       case "createWorkflowList": data = await createWorkflowList(payload); break;
       case "updateWorkflowList": data = await updateWorkflowList(payload); break;
       case "reorderWorkflowLists": data = await reorderWorkflowLists(payload); break;

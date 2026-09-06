@@ -90,8 +90,9 @@ export function quoteSheet(name: string) {
 }
 
 /** Stable server-owned scope for this deployment's studio. Never supplied by the browser. */
-export function getWorkflowWorkspaceId() {
-  return `studio_${createHash("sha256").update(getGoogleApi().spreadsheetId).digest("hex").slice(0, 20)}`;
+export function getWorkflowWorkspaceId(scope: "dp" | "show" = "dp") {
+  const seed = scope === "dp" ? getGoogleApi().spreadsheetId : `${getGoogleApi().spreadsheetId}:${scope}`;
+  return `studio_${createHash("sha256").update(seed).digest("hex").slice(0, 20)}`;
 }
 
 async function readTable(name: string) {
