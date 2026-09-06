@@ -660,7 +660,7 @@ async function writeResultSheet(album: Album, selection: Selection, photos: Phot
     return [index + 1, baseName(p.name), large.has(id) ? "x" : "", table.has(id) ? "x" : "", selection.photoNotes[id] || "", raw];
   });
   const values: (string | number)[][] = [["STT", "TÊN FILE", "AP", "ĐB", "GHI CHÚ ẢNH", "TRẠNG THÁI RAW"], ...rows];
-  if (selection.albumNote) values.push([], ["LƯU Ý CHUNG", selection.albumNote]);
+  if (selection.albumNote) values.push([], ["", "", "", "", `LƯU Ý CHUNG\n${selection.albumNote}`, ""]);
   await sheets.spreadsheets.values.clear({ spreadsheetId: resultSpreadsheetId, range: `${quoteSheet(title)}!A:Z` });
   await sheets.spreadsheets.batchUpdate({
     spreadsheetId: resultSpreadsheetId,
@@ -684,7 +684,7 @@ async function writeResultSheet(album: Album, selection: Selection, photos: Phot
     { repeatCell: { range: { sheetId: album.resultSheetId, startRowIndex: 1, endRowIndex: rows.length + 1, startColumnIndex: 5, endColumnIndex: 6 }, cell: { userEnteredFormat: { horizontalAlignment: "CENTER", verticalAlignment: "MIDDLE", wrapStrategy: "WRAP" } }, fields: "userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy)" } }
   ];
   if (selection.albumNote) {
-    requests.push({ mergeCells: { range: { sheetId: album.resultSheetId, startRowIndex: rows.length + 2, endRowIndex: rows.length + 3, startColumnIndex: 1, endColumnIndex: 6 }, mergeType: "MERGE_ALL" } });
+    requests.push({ repeatCell: { range: { sheetId: album.resultSheetId, startRowIndex: rows.length + 2, endRowIndex: rows.length + 3, startColumnIndex: 4, endColumnIndex: 5 }, cell: { userEnteredFormat: { horizontalAlignment: "LEFT", verticalAlignment: "MIDDLE", wrapStrategy: "WRAP", textFormat: { bold: true } } }, fields: "userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy,textFormat.bold)" } });
   }
   rows.forEach((row, i) => {
     const r = i + 1;
