@@ -163,15 +163,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
   func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
     guard let url = navigationAction.request.url else { return decisionHandler(.cancel) }
-    // Keep external links in the user's default browser. This avoids WebKit
-    // recursively treating popup/redirect navigation as new native tabs.
+    let host = url.host ?? ""
+    let isAppHost = host == "anan-photo-select.onrender.com" || host == "ananstudio.vercel.app" || host.hasSuffix(".vercel.app")
+    // App links (Render/Vercel) open in a native tab. Other links stay in the
+    // default browser, avoiding recursive WebKit tabs for external redirects.
     if navigationAction.targetFrame == nil {
-      NSWorkspace.shared.open(url)
+      if isAppHost {
+        openTab(url: url, from: webView.window)
+      } else {
+        NSWorkspace.shared.open(url)
+      }
       decisionHandler(.cancel)
       return
     }
-    let host = url.host ?? ""
-    if host == "anan-photo-select.onrender.com" || host == "ananstudio.vercel.app" || host.hasSuffix(".vercel.app") || url.scheme == "about" {
+    if isAppHost || url.scheme == "about" {
       decisionHandler(.allow)
     } else {
       NSWorkspace.shared.open(url)
