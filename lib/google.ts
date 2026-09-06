@@ -91,7 +91,9 @@ export function quoteSheet(name: string) {
 
 /** Stable server-owned scope for this deployment's studio. Never supplied by the browser. */
 export function getWorkflowWorkspaceId(scope: "dp" | "show" = "dp") {
-  const seed = scope === "dp" ? getGoogleApi().spreadsheetId : `${getGoogleApi().spreadsheetId}:${scope}:v1`;
+  // SHOW is intentionally versioned separately from every earlier test
+  // namespace so it always starts with a clean manual-only board.
+  const seed = scope === "dp" ? getGoogleApi().spreadsheetId : `${getGoogleApi().spreadsheetId}:${scope}:v2`;
   return `studio_${createHash("sha256").update(seed).digest("hex").slice(0, 20)}`;
 }
 
