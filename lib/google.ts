@@ -659,7 +659,7 @@ async function writeResultSheet(album: Album, selection: Selection, photos: Phot
     const raw = missing.has(key) ? "KHÔNG NHẶT ĐƯỢC RAW" : skipped.has(key) ? "ĐÃ CÓ / TRÙNG" : "";
     return [index + 1, baseName(p.name), large.has(id) ? "x" : "", table.has(id) ? "x" : "", selection.photoNotes[id] || "", raw];
   });
-  const values: (string | number)[][] = [["SỐ THỨ TỰ", "TÊN FILE", "ẢNH PHÓNG TO 60X90", "ẢNH ĐỂ BÀN", "GHI CHÚ ẢNH", "TRẠNG THÁI RAW"], ...rows];
+  const values: (string | number)[][] = [["STT", "TÊN FILE", "AP", "ĐB", "GHI CHÚ ẢNH", "TRẠNG THÁI RAW"], ...rows];
   if (selection.albumNote) values.push([], ["LƯU Ý CHUNG", selection.albumNote]);
   await sheets.spreadsheets.values.clear({ spreadsheetId: resultSpreadsheetId, range: `${quoteSheet(title)}!A:Z` });
   await sheets.spreadsheets.batchUpdate({
@@ -678,7 +678,6 @@ async function writeResultSheet(album: Album, selection: Selection, photos: Phot
     { repeatCell: { range: { sheetId: album.resultSheetId }, cell: { userEnteredFormat: { backgroundColor: { red: 1, green: 1, blue: 1 }, textFormat: { foregroundColor: { red: 0, green: 0, blue: 0 }, bold: false } } }, fields: "userEnteredFormat" } },
     { repeatCell: { range: { sheetId: album.resultSheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 6 }, cell: { userEnteredFormat: { backgroundColor: HEADER_BG, textFormat: { bold: true }, horizontalAlignment: "CENTER", verticalAlignment: "MIDDLE", wrapStrategy: "WRAP" } }, fields: "userEnteredFormat" } },
     { updateSheetProperties: { properties: { sheetId: album.resultSheetId, gridProperties: { frozenRowCount: 1 } }, fields: "gridProperties.frozenRowCount" } },
-    { autoResizeDimensions: { dimensions: { sheetId: album.resultSheetId, dimension: "COLUMNS", startIndex: 0, endIndex: 6 } } },
     { autoResizeDimensions: { dimensions: { sheetId: album.resultSheetId, dimension: "ROWS", startIndex: 0, endIndex: values.length } } },
     { repeatCell: { range: { sheetId: album.resultSheetId, startRowIndex: 1, endRowIndex: rows.length + 1, startColumnIndex: 0, endColumnIndex: 4 }, cell: { userEnteredFormat: { horizontalAlignment: "CENTER", verticalAlignment: "MIDDLE" } }, fields: "userEnteredFormat(horizontalAlignment,verticalAlignment)" } },
     { repeatCell: { range: { sheetId: album.resultSheetId, startRowIndex: 1, endRowIndex: rows.length + 1, startColumnIndex: 4, endColumnIndex: 5 }, cell: { userEnteredFormat: { horizontalAlignment: "LEFT", verticalAlignment: "MIDDLE", wrapStrategy: "WRAP" } }, fields: "userEnteredFormat(horizontalAlignment,verticalAlignment,wrapStrategy)" } },
@@ -700,11 +699,11 @@ async function writeResultSheet(album: Album, selection: Selection, photos: Phot
     fields: "sheets(properties(sheetId),data(columnMetadata(pixelSize),rowMetadata(pixelSize)))"
   });
   const grid = dimensions.data.sheets?.find((sheet) => sheet.properties?.sheetId === album.resultSheetId)?.data?.[0];
-  const minimumWidths = [110, 170, 210, 150, 300, 180];
-  const layoutRequests: sheets_v4.Schema$Request[] = minimumWidths.map((minimum, index) => ({
+  const columnWidths = [64, 140, 76, 76, 520, 180];
+  const layoutRequests: sheets_v4.Schema$Request[] = columnWidths.map((pixelSize, index) => ({
     updateDimensionProperties: {
       range: { sheetId: album.resultSheetId, dimension: "COLUMNS", startIndex: index, endIndex: index + 1 },
-      properties: { pixelSize: Math.max(minimum, Number(grid?.columnMetadata?.[index]?.pixelSize || 0)) },
+      properties: { pixelSize },
       fields: "pixelSize"
     }
   }));
