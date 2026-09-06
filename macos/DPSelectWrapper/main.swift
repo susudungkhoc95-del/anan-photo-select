@@ -163,10 +163,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
   func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
     guard let url = navigationAction.request.url else { return decisionHandler(.cancel) }
-    // Links opened with target="_blank" belong in a new native app tab.
-    if navigationAction.targetFrame == nil {
+    // Only a user-activated link should create a tab. WebKit also reports
+    // redirects, scripts, and popup-like navigation with targetFrame == nil;
+    // opening those recursively is what can produce an endless tab storm.
+    if navigationAction.targetFrame == nil && navigationAction.navigationType == .linkActivated {
       openTab(url: url, from: webView.window)
       decisionHandler(.cancel)
+      return
+    }
+    if navigationAction.targetFrame == nil {
+      decisionHandler(.allow)
       return
     }
     let host = url.host ?? ""
