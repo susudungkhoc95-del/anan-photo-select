@@ -56,6 +56,10 @@ function formatWeddingDate(value: string) {
   return Number(year) === new Date().getFullYear() ? `${day}/${month}` : `${day}/${month}/${year.slice(-2)}`;
 }
 
+function workflowLabelName(label: WorkflowLabel) {
+  return label.name.trim().toLocaleLowerCase() === "có ghi chú" ? "note" : label.name;
+}
+
 export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }) {
   activeWorkflowScope = scope;
   // The first client render must match SSR. Read sessionStorage only after mount,
@@ -454,7 +458,7 @@ function WorkflowCardItem({ card, list, pending, dropBefore, labels, onOpen, onQ
   const age = workflowAge(card, list);
   return <article draggable onDragStart={onDragStart} onDragOver={onDragOver} onDragEnd={onDragEnd} onDrop={onDrop} className={`workflow-card ${pending ? "saving" : ""} ${dropBefore ? "drop-before" : ""}`} onClick={onOpen}>
     <button type="button" className="icon-button workflow-card-menu" aria-label={`Cài đặt nhanh ${card.title}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onQuickEdit(); }}><MoreVertical size={17} /></button>
-    <h3>{card.title}</h3>{(card.note || labels.length > 0) && <div className="workflow-card-note-row">{card.note && <p>{card.note}</p>}{labels.length > 0 && <div className="workflow-label-chips">{labels.map((label) => <span key={label.id} style={{ "--label-color": label.color } as React.CSSProperties}>{label.name}</span>)}</div>}</div>}
+    <h3>{card.title}</h3>{(card.note || labels.length > 0) && <div className="workflow-card-note-row">{card.note && <p>{card.note}</p>}{labels.length > 0 && <div className="workflow-label-chips">{labels.map((label) => <span key={label.id} style={{ "--label-color": label.color } as React.CSSProperties}>{workflowLabelName(label)}</span>)}</div>}</div>}
     <footer><span className={`workflow-age ${age.level}`}>{pending ? "Đang lưu…" : age.label}</span>{card.photoReturnDate && <span className="workflow-card-return-date"><CalendarClock size={13} /> Trả ảnh {formatWeddingDate(card.photoReturnDate)}</span>}{card.weddingDate && <span className="workflow-card-wedding-date">Ngày cưới {formatWeddingDate(card.weddingDate)}</span>}</footer>
   </article>;
 }
@@ -532,7 +536,7 @@ function CardModal({ board, cardId, onClose, onSave, onChanged, onLabelsChanged,
       <div className="workflow-modal-column workflow-content-column">
         <section className="workflow-links"><h3>Đường link</h3>{links.map((link) => { const isSheetLink = link.label.toLowerCase().includes("sheet"); return <div key={link.id} className="workflow-link"><span className="workflow-link-main"><a href={link.url} target="_blank" rel="noopener noreferrer">{link.label}<ExternalLink size={13} /></a></span><span className="workflow-link-actions">{isSheetLink && <button type="button" className="text-button" onClick={() => void copyLink(link)}><Copy size={13} />{copiedLinkId === link.id ? "Đã copy" : "Copy"}</button>}<button type="button" className="text-button" onClick={() => void editLink(link)}>Sửa</button></span></div>; })}{card.source === "dp_select" && !links.some((link) => link.label === "Link RAW chọn") && <button type="button" className="secondary compact workflow-raw-action" disabled={busy || rawBusy} onClick={() => void createRawSelectionFolder()}>{rawBusy ? <><span className="spinner small" /> Đang nhặt RAW…</> : <><FolderSync size={15} /> Tạo thư mục RAW chọn</>}</button>}</section>
         <label className="workflow-note-field">Ghi chú<textarea rows={5} value={note} onChange={(event) => setNote(event.target.value)} /></label>
-        <section className="workflow-card-labels"><h3>Nhãn</h3>{board.labels.length ? <div className="workflow-label-picker">{board.labels.map((label) => <label key={label.id} className={selectedLabelIds.includes(label.id) ? "selected" : ""} style={{ "--label-color": label.color } as React.CSSProperties}><input type="checkbox" checked={selectedLabelIds.includes(label.id)} disabled={busy} onChange={() => toggleLabel(label.id)} />{label.name}</label>)}</div> : <p className="muted">Chưa có nhãn. Bấm nút Nhãn ở đầu trang để tạo nhãn.</p>}</section>
+        <section className="workflow-card-labels"><h3>Nhãn</h3>{board.labels.length ? <div className="workflow-label-picker">{board.labels.map((label) => <label key={label.id} className={selectedLabelIds.includes(label.id) ? "selected" : ""} style={{ "--label-color": label.color } as React.CSSProperties}><input type="checkbox" checked={selectedLabelIds.includes(label.id)} disabled={busy} onChange={() => toggleLabel(label.id)} />{workflowLabelName(label)}</label>)}</div> : <p className="muted">Chưa có nhãn. Bấm nút Nhãn ở đầu trang để tạo nhãn.</p>}</section>
       </div>
       {activityOpen && <div className="workflow-modal-column workflow-history-column"><section className="workflow-activity"><h3>Lịch sử hoạt động</h3>{activities.length ? activities.map((item) => <p key={item.id}><time>{formatTime(item.createdAt)}</time>{item.description}</p>) : <p className="muted">Chưa có hoạt động.</p>}</section></div>}
     </div>

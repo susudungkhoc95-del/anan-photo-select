@@ -304,8 +304,13 @@ function findLabel(board: WorkflowBoard, id: unknown) {
 }
 
 async function syncNoteLabel(workspaceId: string, board: WorkflowBoard, card: WorkflowCard) {
-  const labelName = "Có ghi chú";
-  let noteLabel = board.labels.find((label) => label.name.trim().toLocaleLowerCase() === labelName.toLocaleLowerCase());
+  const labelName = "note";
+  let noteLabel = board.labels.find((label) => ["note", "có ghi chú"].includes(label.name.trim().toLocaleLowerCase()));
+  if (noteLabel && noteLabel.name !== labelName) {
+    noteLabel.name = labelName;
+    noteLabel.updatedAt = now();
+    await writeRow(TABS.labels, noteLabel.id, workspaceId, labelValues(noteLabel));
+  }
   if (card.note.trim() && !noteLabel) {
     const timestamp = now();
     noteLabel = { id: randomUUID(), workspaceId, name: labelName, color: "#3b82f6", position: Math.max(-1, ...board.labels.map((label) => label.position)) + 1, createdAt: timestamp, updatedAt: timestamp };
@@ -551,7 +556,7 @@ export async function setWorkflowCardLabels(payload: Record<string, unknown>) {
     const current = board.cardLabels.filter((assignment) => assignment.cardId === card.id);
     const currentIds = new Set(current.map((assignment) => assignment.labelId));
     const targetIds = new Set(labelIds);
-    const noteLabel = board.labels.find((label) => label.name.trim().toLocaleLowerCase() === "có ghi chú");
+    const noteLabel = board.labels.find((label) => ["note", "có ghi chú"].includes(label.name.trim().toLocaleLowerCase()));
     if (card.note.trim() && noteLabel) targetIds.add(noteLabel.id);
     if (!card.note.trim() && noteLabel) targetIds.delete(noteLabel.id);
     await Promise.all(current.filter((assignment) => !targetIds.has(assignment.labelId)).map((assignment) => clearRecord(TABS.cardLabels, assignment.id, workspaceId)));
