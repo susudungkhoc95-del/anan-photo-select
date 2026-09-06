@@ -4,6 +4,9 @@ import WebKit
 private let appURL = URL(string: "https://anan-photo-select.onrender.com/")!
 private let workflowURL = URL(string: "https://anan-photo-select.onrender.com/workflow")!
 private let showURL = URL(string: "https://anan-photo-select.onrender.com/show")!
+private let vercelAppURL = URL(string: "https://ananstudio.vercel.app/")!
+private let vercelWorkflowURL = URL(string: "https://ananstudio.vercel.app/workflow")!
+private let vercelShowURL = URL(string: "https://ananstudio.vercel.app/show")!
 
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
   private var window: NSWindow?
@@ -99,6 +102,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
   @objc private func openSelectTab(_ sender: Any?) { openTab(url: appURL, from: NSApp.keyWindow ?? window) }
   @objc private func openWorkflowTab(_ sender: Any?) { openTab(url: workflowURL, from: NSApp.keyWindow ?? window) }
   @objc private func openShowTab(_ sender: Any?) { openTab(url: showURL, from: NSApp.keyWindow ?? window) }
+  @objc private func openVercelSelectTab(_ sender: Any?) { openTab(url: vercelAppURL, from: NSApp.keyWindow ?? window) }
+  @objc private func openVercelWorkflowTab(_ sender: Any?) { openTab(url: vercelWorkflowURL, from: NSApp.keyWindow ?? window) }
+  @objc private func openVercelShowTab(_ sender: Any?) { openTab(url: vercelShowURL, from: NSApp.keyWindow ?? window) }
 
   private func openTab(url: URL, from sourceWindow: NSWindow? = nil) {
     let newWindow = makeWindow(url: url)
@@ -121,9 +127,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     let fileMenuItem = NSMenuItem()
     let fileMenu = NSMenu(title: "Tệp")
-    fileMenu.addItem(NSMenuItem(title: "Tab DP Select mới", action: #selector(openSelectTab(_:)), keyEquivalent: "t"))
-    fileMenu.addItem(NSMenuItem(title: "Tab DP Workflow mới", action: #selector(openWorkflowTab(_:)), keyEquivalent: "T"))
-    fileMenu.addItem(NSMenuItem(title: "Tab SHOW mới", action: #selector(openShowTab(_:)), keyEquivalent: "s"))
+    let renderMenu = NSMenu(title: "Render")
+    renderMenu.addItem(NSMenuItem(title: "DP Select", action: #selector(openSelectTab(_:)), keyEquivalent: "t"))
+    renderMenu.addItem(NSMenuItem(title: "DP Workflow", action: #selector(openWorkflowTab(_:)), keyEquivalent: "T"))
+    renderMenu.addItem(NSMenuItem(title: "SHOW", action: #selector(openShowTab(_:)), keyEquivalent: "s"))
+    fileMenu.setSubmenu(renderMenu, for: fileMenu.addItem(withTitle: "Mở tab Render"))
+    let vercelMenu = NSMenu(title: "Vercel")
+    vercelMenu.addItem(NSMenuItem(title: "DP Select", action: #selector(openVercelSelectTab(_:)), keyEquivalent: "") )
+    vercelMenu.addItem(NSMenuItem(title: "DP Workflow", action: #selector(openVercelWorkflowTab(_:)), keyEquivalent: "") )
+    vercelMenu.addItem(NSMenuItem(title: "SHOW", action: #selector(openVercelShowTab(_:)), keyEquivalent: "") )
+    fileMenu.setSubmenu(vercelMenu, for: fileMenu.addItem(withTitle: "Mở tab Vercel"))
     fileMenu.addItem(.separator())
     fileMenu.addItem(withTitle: "Đóng tab", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
     fileMenuItem.submenu = fileMenu
