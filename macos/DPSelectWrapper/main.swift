@@ -163,23 +163,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
   func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
     guard let url = navigationAction.request.url else { return decisionHandler(.cancel) }
-    // Only a user-activated link should create a tab. WebKit also reports
-    // redirects, scripts, and popup-like navigation with targetFrame == nil;
-    // opening those recursively is what can produce an endless tab storm.
-    if navigationAction.targetFrame == nil && navigationAction.navigationType == .linkActivated {
-      openTab(url: url, from: webView.window)
-      decisionHandler(.cancel)
-      return
-    }
+    // Keep external links in the user's default browser. This avoids WebKit
+    // recursively treating popup/redirect navigation as new native tabs.
     if navigationAction.targetFrame == nil {
-      decisionHandler(.allow)
+      NSWorkspace.shared.open(url)
+      decisionHandler(.cancel)
       return
     }
     let host = url.host ?? ""
     if host == "anan-photo-select.onrender.com" || host == "ananstudio.vercel.app" || host.hasSuffix(".vercel.app") || url.scheme == "about" {
       decisionHandler(.allow)
     } else {
-      openTab(url: url, from: webView.window)
+      NSWorkspace.shared.open(url)
       decisionHandler(.cancel)
     }
   }
