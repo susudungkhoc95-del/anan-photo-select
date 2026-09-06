@@ -104,7 +104,7 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
     }
     refreshingRef.current = true;
     try {
-      const nextBoard = await rpc<WorkflowBoard>("getWorkflowBoard");
+      const nextBoard = await scopedRpc<WorkflowBoard>("getWorkflowBoard");
       // Keep cards that were added optimistically visible while a background
       // write is still in flight (a periodic refresh can happen meanwhile).
       const pendingCards = [...pendingCardsRef.current.values()];
@@ -174,7 +174,10 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
     // before requesting the protected board. Starting both requests caused an
     // expired session to leave Workflow spinning forever on a rejected board
     // request.
-    const cached = cachedBoard(scope);
+    // SHOW is intentionally a fresh workspace. Ignore and remove any cache
+    // left by an earlier build that used the shared workflow namespace.
+    const cached = scope === "show" ? null : cachedBoard(scope);
+    if (scope === "show") sessionStorage.removeItem(`${WORKFLOW_CACHE_KEY}-show`);
     if (cached) setBoard(cached);
     fetch("/api/auth").then((response) => response.json()).then(({ authenticated }) => {
       if (!active) return;

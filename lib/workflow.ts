@@ -143,14 +143,14 @@ async function appendActivity(workspaceId: string, cardId: string, activityType:
   return record;
 }
 
-async function ensureDefaultLists(workspaceId: string) {
+async function ensureDefaultLists(workspaceId: string, scope: WorkflowScope = "dp") {
   const board = await readBoard(workspaceId);
   const defaults: Array<{ name: string; systemKey: WorkflowList["systemKey"] }> = [
     { name: "CẦN LÀM", systemKey: "TODO_INBOX" },
     { name: "ĐANG LÀM", systemKey: "IN_PROGRESS" },
-    { name: "DONE", systemKey: "DONE" },
-    { name: "CHƯA CHỌN XONG", systemKey: "WAITING_SELECTION" }
+    { name: "DONE", systemKey: "DONE" }
   ];
+  if (scope === "dp") defaults.push({ name: "CHƯA CHỌN XONG", systemKey: "WAITING_SELECTION" });
   let nextPosition = Math.max(-1, ...board.lists.map((list) => list.position)) + 1;
   for (const item of defaults) {
     if (board.lists.some((list) => list.systemKey === item.systemKey)) continue;
@@ -278,7 +278,7 @@ async function syncResultSheetLinks(workspaceId: string, board: WorkflowBoard, a
 
 async function boardForCurrentWorkspace(scope: WorkflowScope = "dp") {
   const workspaceId = getWorkflowWorkspaceId(scope);
-  await ensureDefaultLists(workspaceId);
+  await ensureDefaultLists(workspaceId, scope);
   const board = scope === "show" ? await readBoard(workspaceId) : await syncWaitingSelectionCards(workspaceId, await readBoard(workspaceId));
   if (scope === "show") return board;
   const albums = await activeAlbums();
@@ -466,7 +466,7 @@ export async function moveWorkflowCard(payload: Record<string, unknown>) {
     // Moving a card only needs the workflow rows. Do not run the expensive
     // Google/album synchronization here; doing so made an otherwise simple
     // drag request intermittently time out and take down the browser tab.
-    await ensureDefaultLists(workspaceId);
+    await ensureDefaultLists(workspaceId, workflowScope(payload));
     const board = await readBoard(workspaceId);
     const card = findCard(board, payload.cardId);
     const sourceList = findList(board, card.listId);
