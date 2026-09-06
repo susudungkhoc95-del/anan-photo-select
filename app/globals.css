@@ -803,6 +803,14 @@ body:has(.client-page) .zoom-top .icon-button:hover {
 .workflow-column > header { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; padding: 12px 12px 10px; border-bottom: 1px solid var(--line); }
 .workflow-add-card-icon { flex: 0 0 auto; width: 28px; height: 28px; min-height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--muted); background: transparent; border: 0; box-shadow: none; }
 .workflow-add-card-icon:hover { color: var(--ink); background: transparent; border: 0; box-shadow: none; }
+body.admin-mode .workflow-add-card-icon,
+body.admin-mode .workflow-add-card-icon:hover {
+  background: transparent !important;
+  color: var(--muted) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+body.admin-mode .workflow-add-card-icon:hover { color: var(--ink) !important; }
 .workflow-column h2 { margin: 0; font-size: 15px; line-height: 1.2; }
 .workflow-column header > div { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 8px; }
 .workflow-column header span { color: var(--muted); font-size: 12px; }
