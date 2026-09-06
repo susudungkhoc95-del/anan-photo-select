@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { rpc } from "@/components/App";
 import QuickLinks from "@/components/QuickLinks";
+import EnvironmentSwitcher from "@/components/EnvironmentSwitcher";
 import type { Album, GuideTemplate, QuickLink, StudioSettings } from "@/lib/types";
 
 type ListedAlbum = Album & { clientUrl: string; spreadsheetUrl: string };
@@ -259,7 +260,7 @@ export default function AdminView() {
           <nav className="app-tabs header-tabs" aria-label="Khu vực quản trị"><Link className="active" href="/">DP Select</Link><Link href="/workflow" prefetch>DP Workflow</Link><Link href="/show" prefetch>SHOW</Link></nav>
         </div>
         <div className="topbar-actions">
-          <div className="workflow-search admin-header-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm kiếm album..." />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div>
+          <EnvironmentSwitcher path="/" /><div className="workflow-search admin-header-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm kiếm album..." />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div>
           <button className="secondary theme-toggle" onClick={logout} aria-label="Đăng xuất"><LogOut size={18} /></button>
         </div>
       </header>

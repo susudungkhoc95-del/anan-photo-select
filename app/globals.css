@@ -792,6 +792,11 @@ body:has(.client-page) .zoom-top .icon-button:hover {
 .workflow-search { display: flex; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid var(--line); border-radius: 14px; background: var(--field); box-shadow: none; }
 .workflow-header-actions { width: min(380px, 100%); display: flex; align-items: center; gap: 8px; }
 .workflow-header-actions .workflow-search { flex: 1; min-width: 0; }
+.environment-switcher { display: inline-flex; align-items: center; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 12px; background: rgba(7, 20, 33, .36); white-space: nowrap; }
+.environment-switcher-label { padding: 0 5px; color: var(--muted); font-size: 11px; font-weight: 800; }
+.environment-switcher a { padding: 6px 8px; border-radius: 9px; color: var(--muted); font-size: 12px; font-weight: 800; }
+.environment-switcher a:hover { color: var(--ink); }
+.environment-switcher a.active { color: #fff; background: #117c7a; }
 .workflow-search input { min-width: 0; margin: 0; border: 0; box-shadow: none; background: transparent; padding: 11px 0; }
 .workflow-search input:focus { box-shadow: none; }
 .workflow-search .icon-button { width: 31px; height: 31px; min-height: 31px; padding: 0; }

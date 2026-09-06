@@ -8,6 +8,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { CalendarClock, ChevronDown, Copy, ExternalLink, FolderSync, History, MoreVertical, Plus, Search, Settings, Trash2, X } from "lucide-react";
 import { rpc } from "@/components/App";
 import QuickLinks from "@/components/QuickLinks";
+import EnvironmentSwitcher from "@/components/EnvironmentSwitcher";
 import type { QuickLink, StudioSettings, WorkflowBoard, WorkflowCard, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
 import { normalizeWorkflowText, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
 
@@ -398,7 +399,7 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
   return <main className="workflow-page">
     <header className="workflow-header">
       <div className="workflow-header-left"><div className="workflow-brand"><img src="/dp-logo.png" alt="DP Select" /></div><nav className="app-tabs header-tabs" aria-label="Khu vực quản trị"><Link href="/" prefetch>DP Select</Link><Link className={scope === "dp" ? "active" : ""} href="/workflow">DP Workflow</Link><Link className={scope === "show" ? "active" : ""} href="/show">SHOW</Link></nav></div>
-      <div className="workflow-header-actions"><div className="workflow-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm kiếm thẻ..." />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div></div>
+      <div className="workflow-header-actions"><EnvironmentSwitcher path={scope === "show" ? "/show" : "/workflow"} /><div className="workflow-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm kiếm thẻ..." />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div></div>
     </header>
     <QuickLinks links={quickLinks} />
     {toast && <div className="toast" role="status">{toast}</div>}
