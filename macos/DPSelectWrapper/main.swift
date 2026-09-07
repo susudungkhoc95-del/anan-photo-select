@@ -8,8 +8,11 @@ private let vercelAppURL = URL(string: "https://ananstudio.vercel.app/")!
 private let vercelWorkflowURL = URL(string: "https://ananstudio.vercel.app/workflow")!
 private let vercelShowURL = URL(string: "https://ananstudio.vercel.app/show")!
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, NSWindowDelegate {
   private var window: NSWindow?
+  // Keep every tab alive explicitly. Relying only on AppKit's tab group can
+  // leave a released window behind when one tab is closed.
+  private var tabWindows: [NSWindow] = []
   private var statusLabels: [ObjectIdentifier: NSTextField] = [:]
 
   func applicationDidFinishLaunching(_ notification: Notification) {
@@ -71,16 +74,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     )
     let environment = url.host == "anan-photo-select.onrender.com" ? "Render" : "Vercel"
     window.title = "DP Workflow · \(environment)"
+    window.delegate = self
     window.titleVisibility = .visible
     window.tabbingIdentifier = "ANAN-STUDIO"
     window.tabbingMode = .preferred
     window.minSize = NSSize(width: 720, height: 560)
     window.contentView = content
     window.center()
+    tabWindows.append(window)
     return window
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+  func windowWillClose(_ notification: Notification) {
+    guard let closingWindow = notification.object as? NSWindow else { return }
+    tabWindows.removeAll { $0 === closingWindow }
+    if window === closingWindow {
+      window = tabWindows.first
+    }
+  }
 
   func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
     statusLabels[ObjectIdentifier(webView)]?.isHidden = true
