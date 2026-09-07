@@ -117,7 +117,10 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
       const pendingMoves = pendingCardMovesRef.current;
       for (const [cardId, pendingCard] of pendingMoves) {
         const serverCard = nextBoard.cards.find((card) => card.id === cardId);
-        if (serverCard?.listId === pendingCard.listId) pendingMoves.delete(cardId);
+        // A background refresh may have started before the drag request was
+        // written. Keep the optimistic order until the server confirms both
+        // the target list and the generated order key.
+        if (serverCard?.listId === pendingCard.listId && serverCard.orderKey === pendingCard.orderKey) pendingMoves.delete(cardId);
       }
       const pendingLabels = [...pendingCardLabelsRef.current.entries()];
       const pendingLabelCardIds = new Set(pendingCardLabelsRef.current.keys());
@@ -302,12 +305,15 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
     const movedCard = cards.find((item) => item.id === cardId);
     if (movedCard) pendingCardMovesRef.current.set(cardId, movedCard);
     try {
-      await scopedRpc("moveWorkflowCard", {
+      const savedCard = await scopedRpc<WorkflowCard>("moveWorkflowCard", {
         cardId,
         targetListId,
         beforeCardId: dropPosition === "before" ? beforeCardId : undefined,
         dropPosition
       });
+      // Store the server-generated order key so a concurrent background
+      // refresh cannot replace the successful drag with an older snapshot.
+      pendingCardMovesRef.current.set(cardId, savedCard);
     } catch (error) {
       pendingCardMovesRef.current.delete(cardId);
       setBoard(currentBoard);
