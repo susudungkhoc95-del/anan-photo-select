@@ -89,9 +89,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
   func windowWillClose(_ notification: Notification) {
     guard let closingWindow = notification.object as? NSWindow else { return }
-    tabWindows.removeAll { $0 === closingWindow }
-    if window === closingWindow {
-      window = tabWindows.first
+    // AppKit is still tearing down the tab during this callback. Defer all
+    // strong-reference changes until the close transaction has completed to
+    // avoid an EXC_BAD_ACCESS in objc_release on macOS.
+    DispatchQueue.main.async { [weak self, weak closingWindow] in
+      guard let self, let closingWindow else { return }
+      self.tabWindows.removeAll { $0 === closingWindow }
+      if self.window === closingWindow {
+        self.window = self.tabWindows.first
+      }
     }
   }
 
