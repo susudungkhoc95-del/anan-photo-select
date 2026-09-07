@@ -648,7 +648,11 @@ export async function createOrUpdateCardFromSelection(album: Album, selection: S
       existing.dpPhotoNoteCount = Object.values(selection.photoNotes).filter(Boolean).length;
       if (wasWaiting) {
         existing.listId = todo.id;
-        existing.position = Math.max(-1, ...board.cards.filter((card) => card.listId === todo.id && card.id !== existing.id).map((card) => card.position)) + 1;
+        const todoCards = board.cards.filter((card) => card.listId === todo.id && card.id !== existing.id);
+        const nextPosition = Math.max(-1, ...todoCards.map((card) => card.position)) + 1;
+        const lastCard = todoCards.sort((a, b) => a.orderKey.localeCompare(b.orderKey) || a.createdAt.localeCompare(b.createdAt)).at(-1);
+        existing.position = nextPosition;
+        existing.orderKey = orderKeyBetween(lastCard?.orderKey) || legacyOrderKey(nextPosition);
       }
       existing.updatedAt = now();
       await writeRow(TABS.cards, existing.id, workspaceId, cardValues(existing));
