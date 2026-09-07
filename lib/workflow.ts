@@ -80,8 +80,8 @@ async function serialise<T>(workspaceId: string, work: () => Promise<T>) {
   }
 }
 
-async function rows(tab: TabName) {
-  const records = await readAppRecords(tab);
+async function rows(tab: TabName, workspaceId?: string, options: Parameters<typeof readAppRecords>[2] = {}) {
+  const records = await readAppRecords(tab, workspaceId, options);
   return records.map((record) => ({
     id: record.record_id,
     workspaceId: record.workspace_id,
@@ -123,17 +123,35 @@ function activityValues(record: WorkflowActivity) { return [record.id, record.wo
 function labelValues(record: WorkflowLabel) { return [record.id, record.workspaceId, record.name, record.color, String(record.position), record.createdAt, record.updatedAt]; }
 function cardLabelValues(record: WorkflowCardLabel) { return [record.id, record.workspaceId, record.cardId, record.labelId, record.createdAt]; }
 
-async function readBoard(workspaceId: string): Promise<WorkflowBoard> {
-  const values = await Promise.all(Object.values(TABS).map((tab) => rows(tab)));
-  const scope = (index: number) => values[index].filter((row) => row.workspaceId === workspaceId).map((row) => row.values);
+async function readBoard(workspaceId: string, doneOffset = 0, includeAllDone = false): Promise<WorkflowBoard> {
+  const listRows = await rows(TABS.lists, workspaceId);
+  const lists = listRows.map((row) => row.values).map(listFrom).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt));
+  const doneList = lists.find((list) => list.systemKey === "DONE");
+  const cardOptions = doneList && !includeAllDone
+    ? { limit: 10, offset: doneOffset, orderBy: "updated_at" as const, ascending: false, payloadIndex: 2, payloadEquals: doneList.id }
+    : {};
+  const [cardRows, linkRows, activityRows, labelRows, cardLabelRows] = await Promise.all([
+    doneList && !includeAllDone ? Promise.all([
+      rows(TABS.cards, workspaceId, { payloadIndex: 2, payloadNotEquals: doneList.id }),
+      rows(TABS.cards, workspaceId, cardOptions)
+    ]).then(([active, done]) => [...active, ...done]) : rows(TABS.cards, workspaceId),
+    rows(TABS.links, workspaceId),
+    rows(TABS.activities, workspaceId),
+    rows(TABS.labels, workspaceId),
+    rows(TABS.cardLabels, workspaceId)
+  ]);
+  const cards = cardRows.map((row) => row.values).map(cardFrom).sort((a, b) => a.listId.localeCompare(b.listId) || a.orderKey.localeCompare(b.orderKey) || a.createdAt.localeCompare(b.createdAt));
+  const doneLoaded = cards.filter((card) => card.listId === doneList?.id).length;
   return {
     workspaceId,
-    lists: scope(0).map(listFrom).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt)),
-    cards: scope(1).map(cardFrom).sort((a, b) => a.listId.localeCompare(b.listId) || a.orderKey.localeCompare(b.orderKey) || a.createdAt.localeCompare(b.createdAt)),
-    links: scope(2).map(linkFrom).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt)),
-    activities: scope(3).map(activityFrom).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    labels: scope(4).map(labelFrom).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt)),
-    cardLabels: scope(5).map(cardLabelFrom)
+    lists,
+    cards,
+    doneHasMore: Boolean(doneList && doneLoaded === 10),
+    doneNextOffset: doneList ? doneOffset + doneLoaded : 0,
+    links: linkRows.map((row) => row.values).map(linkFrom).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt)),
+    activities: activityRows.map((row) => row.values).map(activityFrom).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    labels: labelRows.map((row) => row.values).map(labelFrom).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt)),
+    cardLabels: cardLabelRows.map((row) => row.values).map(cardLabelFrom)
   };
 }
 
@@ -276,13 +294,13 @@ async function syncResultSheetLinks(workspaceId: string, board: WorkflowBoard, a
   return changed;
 }
 
-async function boardForCurrentWorkspace(scope: WorkflowScope = "dp") {
+async function boardForCurrentWorkspace(scope: WorkflowScope = "dp", doneOffset = 0) {
   const workspaceId = getWorkflowWorkspaceId(scope);
   await ensureDefaultLists(workspaceId, scope);
-  const board = scope === "show" ? await readBoard(workspaceId) : await syncWaitingSelectionCards(workspaceId, await readBoard(workspaceId));
+  const board = scope === "show" ? await readBoard(workspaceId, doneOffset) : await syncWaitingSelectionCards(workspaceId, await readBoard(workspaceId, doneOffset));
   if (scope === "show") return board;
   const albums = await activeAlbums();
-  return await syncResultSheetLinks(workspaceId, board, albums) ? readBoard(workspaceId) : board;
+  return await syncResultSheetLinks(workspaceId, board, albums) ? readBoard(workspaceId, doneOffset) : board;
 }
 
 function findList(board: WorkflowBoard, id: unknown) {
@@ -348,6 +366,8 @@ async function assignCardOrderKey(workspaceId: string, cards: WorkflowCard[], ca
   }
   let key = orderKeyBetween(ordered[index - 1]?.orderKey, ordered[index]?.orderKey);
   if (!key) {
+    // Re-index only when the available key space is exhausted, not on every
+    // drag. This is rare and keeps normal moves to a single card write.
     for (const [position, item] of ordered.entries()) {
       item.position = position;
       item.orderKey = legacyOrderKey(position);
@@ -363,7 +383,8 @@ async function assignCardOrderKey(workspaceId: string, cards: WorkflowCard[], ca
 export async function getWorkflowBoard(payload: Record<string, unknown> = {}) {
   const scope = workflowScope(payload);
   const workspaceId = getWorkflowWorkspaceId(scope);
-  return serialise(workspaceId, () => boardForCurrentWorkspace(scope));
+  const doneOffset = Math.max(0, Number(payload.doneOffset) || 0);
+  return serialise(workspaceId, () => boardForCurrentWorkspace(scope, doneOffset));
 }
 
 export async function createWorkflowList(payload: Record<string, unknown>) {
@@ -472,10 +493,25 @@ export async function moveWorkflowCard(payload: Record<string, unknown>) {
     // Google/album synchronization here; doing so made an otherwise simple
     // drag request intermittently time out and take down the browser tab.
     await ensureDefaultLists(workspaceId, workflowScope(payload));
-    const board = await readBoard(workspaceId);
+    // Read only the dragged card and the target list's cards. This keeps a
+    // drag cheap even when DONE contains thousands of cards.
+    const targetListId = text(payload.targetListId, 100);
+    const [listRows, cardRows, targetRows] = await Promise.all([
+      rows(TABS.lists, workspaceId),
+      rows(TABS.cards, workspaceId, { payloadIndex: 0, payloadEquals: text(payload.cardId, 100) }),
+      rows(TABS.cards, workspaceId, { payloadIndex: 2, payloadEquals: targetListId })
+    ]);
+    const lists = listRows.map((row) => row.values).map(listFrom);
+    const cardRecords = [...cardRows, ...targetRows].filter((row, index, all) => all.findIndex((item) => item.id === row.id) === index);
+    const board: WorkflowBoard = {
+      workspaceId,
+      lists,
+      cards: cardRecords.map((row) => row.values).map(cardFrom),
+      links: [], activities: [], labels: [], cardLabels: []
+    };
     const card = findCard(board, payload.cardId);
     const sourceList = findList(board, card.listId);
-    const targetList = findList(board, payload.targetListId);
+    const targetList = findList(board, targetListId);
     const targetCards = board.cards.filter((item) => item.listId === targetList.id && item.id !== card.id);
     card.listId = targetList.id;
     const beforeCardId = text(payload.beforeCardId, 100) || undefined;

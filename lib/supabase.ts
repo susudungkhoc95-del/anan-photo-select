@@ -30,13 +30,17 @@ export type AppRecord = {
   updated_at?: string;
 };
 
-export async function readAppRecords(collection: string, workspaceId?: string) {
+export async function readAppRecords(collection: string, workspaceId?: string, options: { limit?: number; offset?: number; orderBy?: "created_at" | "updated_at"; ascending?: boolean; payloadIndex?: number; payloadEquals?: string; payloadNotEquals?: string } = {}) {
   let query = getSupabaseServer()
     .from(APP_RECORDS_TABLE)
     .select("collection, record_id, workspace_id, payload, created_at, updated_at")
-    .eq("collection", collection)
-    .order("created_at", { ascending: true });
+    .eq("collection", collection);
   if (workspaceId !== undefined) query = query.eq("workspace_id", workspaceId);
+  if (options.payloadIndex !== undefined && options.payloadEquals !== undefined) query = query.eq(`payload->>${options.payloadIndex}`, options.payloadEquals);
+  if (options.payloadIndex !== undefined && options.payloadNotEquals !== undefined) query = query.neq(`payload->>${options.payloadIndex}`, options.payloadNotEquals);
+  query = query.order(options.orderBy || "created_at", { ascending: options.ascending ?? true });
+  if (options.offset !== undefined) query = query.range(options.offset, options.offset + (options.limit ?? 1000) - 1);
+  else if (options.limit !== undefined) query = query.limit(options.limit);
   const { data, error } = await query;
   if (error) throw new Error(`Không đọc được dữ liệu Supabase: ${error.message}`);
   return (data || []) as AppRecord[];

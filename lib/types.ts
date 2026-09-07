@@ -159,6 +159,8 @@ export type WorkflowBoard = {
   workspaceId: string;
   lists: WorkflowList[];
   cards: WorkflowCard[];
+  doneHasMore?: boolean;
+  doneNextOffset?: number;
   links: WorkflowLink[];
   activities: WorkflowActivity[];
   labels: WorkflowLabel[];
