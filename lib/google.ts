@@ -2,7 +2,6 @@ import { google, sheets_v4, drive_v3 } from "googleapis";
 import { createHash, randomUUID } from "crypto";
 import type { Album, Draft, GuideTemplate, Photo, QuickLink, Selection, StudioSettings } from "@/lib/types";
 import { DEFAULT_GUIDE, DEFAULT_STUDIO_NAME } from "@/lib/types";
-import { sendSelectionEmail } from "@/lib/email";
 import { sendSelectionTelegram } from "@/lib/telegram";
 import { readAppRecords, removeAppRecord, saveAppRecord } from "@/lib/supabase";
 
@@ -752,20 +751,6 @@ export async function saveSelection(payload: Record<string, unknown>) {
   // Dynamic import keeps the core Google module independent from the Workflow repository.
   const { createOrUpdateCardFromSelection } = await import("@/lib/workflow");
   await createOrUpdateCardFromSelection(album, selection, spreadsheetUrl);
-  try {
-    await sendSelectionEmail({
-      album,
-      selectedCount: selection.selectedIds.length,
-      largePrintCount: selection.largePrintIds.length,
-      tablePrintCount: selection.tablePrintIds.length,
-      submittedAt: selection.submittedAt,
-      isUpdate: Boolean(previousSelection),
-      spreadsheetUrl,
-      clientUrl: albumUrl(album)
-    });
-  } catch (error) {
-    console.error("Không gửi được email thông báo:", error);
-  }
   try {
     await sendSelectionTelegram({
       album,
