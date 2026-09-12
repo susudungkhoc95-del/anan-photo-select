@@ -185,14 +185,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     guard let url = navigationAction.request.url else { return decisionHandler(.cancel) }
     let host = url.host ?? ""
     let isAppHost = host == "anan-photo-select.onrender.com" || host == "ananstudio.vercel.app" || host.hasSuffix(".vercel.app")
-    // App links (Render/Vercel) open in a native tab. Other links stay in the
-    // default browser, avoiding recursive WebKit tabs for external redirects.
+    // Links opened from the web app (including target="_blank" actions such as
+    // the admin "Mở" button) should be handed to the user's default browser.
+    // The native-tab behavior remains available through the wrapper's menus.
     if navigationAction.targetFrame == nil {
-      if isAppHost {
-        openTab(url: url, from: webView.window)
-      } else {
-        NSWorkspace.shared.open(url)
-      }
+      NSWorkspace.shared.open(url)
       decisionHandler(.cancel)
       return
     }
