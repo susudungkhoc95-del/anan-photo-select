@@ -569,6 +569,11 @@ body:has(.client-page) .send-flight-overlay {
 .review-photo-button:focus-visible { outline: 3px solid rgba(53,224,199,.4); outline-offset: 2px; }
 .review-item img { width: 144px; height: 192px; object-fit: cover; border-radius: 14px; background: rgba(219,233,255,.82); }
 .review-meta { display: grid; gap: 8px; align-content: start; }
+.review-name-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.review-name-row strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.review-remove-photo { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: inherit; box-shadow: none; }
+.review-remove-photo:hover:not(:disabled) { background: rgba(16,35,63,.08); }
+.review-remove-photo:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .review-options { display: flex; gap: 8px; flex-wrap: wrap; }
 .print-toggle {
   position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: 34px;
@@ -584,7 +589,6 @@ body:has(.client-page) .send-flight-overlay {
 }
 .print-toggle.active { background: rgba(53,224,199,.13); border-color: rgba(53,224,199,.42); color: var(--accent-dark); }
 .review-note { min-height: 45px; }
-.remove-photo { justify-self: start; padding: 7px 10px; border-radius: 10px; font-size: 12px; }
 .album-note {
   margin: 8px 2px 2px;
   padding: 14px 2px 2px;

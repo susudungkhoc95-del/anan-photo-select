@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Copy, Download, Heart, Image as ImageIcon, ImageOff, Send, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, Download, Heart, Image as ImageIcon, ImageOff, Send, Trash2, X } from "lucide-react";
 import { rpc } from "@/components/App";
 import { resolveRestoredSelection, selectionMatchesDraft } from "@/lib/selection-state";
 import type { Draft, FolderStat, Selection } from "@/lib/types";
@@ -532,10 +532,10 @@ function Review({ album, photos, selected, large, table, notes, albumNote, submi
         <button className="review-photo-button" onClick={() => onOpenPhoto(p.id)} aria-label={`Xem lớn ${stripExt(p.name)}`}>
           <DrivePhoto albumId={album.id} photo={p} />
         </button>
-        <div className="review-body review-meta"><strong>{stripExt(p.name)}</strong><div className="print-options review-options">
+        <div className="review-body review-meta"><div className="review-name-row"><strong>{stripExt(p.name)}</strong><button type="button" className="review-remove-photo" disabled={locked} onClick={() => onRemove(p.id)} aria-label={`Bỏ chọn ${stripExt(p.name)}`} title="Bỏ chọn ảnh"><Trash2 size={16} aria-hidden="true" /></button></div><div className="print-options review-options">
           <label className={`print-toggle ${large.has(p.id) ? "active" : ""}`}><input type="checkbox" disabled={locked} checked={large.has(p.id)} onChange={(e) => onPrint(p.id, "large", e.target.checked)} /><span className="print-toggle-mark" /> Ảnh phóng to 60×90</label>
           <label className={`print-toggle ${table.has(p.id) ? "active" : ""}`}><input type="checkbox" disabled={locked} checked={table.has(p.id)} onChange={(e) => onPrint(p.id, "table", e.target.checked)} /><span className="print-toggle-mark" /> Ảnh để bàn</label>
-        </div><textarea className="review-note" rows={2} disabled={locked} value={notes[p.id] || ""} onChange={(e) => onNote(p.id, e.target.value)} placeholder="Ví dụ: sửa da kỹ hơn, bỏ người phía sau..." /><button className="secondary remove-photo" disabled={locked} onClick={() => onRemove(p.id)}>Bỏ chọn ảnh</button></div>
+        </div><textarea className="review-note" rows={2} disabled={locked} value={notes[p.id] || ""} onChange={(e) => onNote(p.id, e.target.value)} placeholder="Ví dụ: sửa da kỹ hơn, bỏ người phía sau..." /></div>
       </article>)}
       <div className="album-note"><label>Lưu ý chung cho toàn bộ album<textarea rows={3} disabled={locked} value={albumNote} onChange={(e) => onAlbumNote(e.target.value)} placeholder="Nhập lưu ý chung nếu có" /></label></div>
     </div>
