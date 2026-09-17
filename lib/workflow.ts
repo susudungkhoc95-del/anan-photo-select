@@ -132,26 +132,25 @@ async function readBoard(workspaceId: string, doneOffset = 0, includeAllDone = f
   const listRows = await rows(TABS.lists, workspaceId);
   const lists = listRows.map((row) => row.values).map(listFrom).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt));
   const doneList = lists.find((list) => list.systemKey === "DONE");
-  const cardOptions = doneList && !includeAllDone
-    ? { limit: 10, offset: doneOffset, orderBy: "updated_at" as const, ascending: false, payloadIndex: 2, payloadEquals: doneList.id }
-    : {};
+  // DONE must be ordered by the moment the card was completed, not by the
+  // record's updated_at. The latter changes when somebody edits an old card
+  // and makes old cards jump back near the top. Since completedAt lives in the
+  // payload, read all DONE cards and sort them below by that stable value.
   const [cardRows, linkRows, activityRows, labelRows, cardLabelRows] = await Promise.all([
     doneList && !includeAllDone ? Promise.all([
       rows(TABS.cards, workspaceId, { payloadIndex: 2, payloadNotEquals: doneList.id }),
-      rows(TABS.cards, workspaceId, cardOptions)
+      rows(TABS.cards, workspaceId, { payloadIndex: 2, payloadEquals: doneList.id })
     ]).then(([active, done]) => [...active, ...done]) : rows(TABS.cards, workspaceId),
     rows(TABS.links, workspaceId),
     rows(TABS.activities, workspaceId),
     rows(TABS.labels, workspaceId),
     rows(TABS.cardLabels, workspaceId)
   ]);
-  const doneUpdatedAt = new Map(cardRows.map((row) => [row.id, row.updatedAt]));
   const cards = cardRows.map((row) => row.values).map(cardFrom).sort((a, b) => {
-    // DONE is paged by the row's updated_at timestamp. Keep that same
-    // newest-first order in the board so recently completed cards are not
-    // hidden behind old cards whose legacy orderKey is smaller.
     if (doneList && a.listId === doneList.id && b.listId === doneList.id) {
-      return (doneUpdatedAt.get(b.id) || b.updatedAt).localeCompare(doneUpdatedAt.get(a.id) || a.updatedAt) || b.completedAt.localeCompare(a.completedAt) || b.createdAt.localeCompare(a.createdAt);
+      // Newest completed card first. Legacy DONE cards without completedAt
+      // fall back to createdAt, never updatedAt (which is edit-sensitive).
+      return (b.completedAt || b.createdAt).localeCompare(a.completedAt || a.createdAt) || b.createdAt.localeCompare(a.createdAt);
     }
     return a.listId.localeCompare(b.listId) || a.orderKey.localeCompare(b.orderKey) || a.createdAt.localeCompare(b.createdAt);
   });
@@ -160,8 +159,8 @@ async function readBoard(workspaceId: string, doneOffset = 0, includeAllDone = f
     workspaceId,
     lists,
     cards,
-    doneHasMore: Boolean(doneList && doneLoaded === 10),
-    doneNextOffset: doneList ? doneOffset + doneLoaded : 0,
+    doneHasMore: false,
+    doneNextOffset: doneList ? doneLoaded : 0,
     links: linkRows.map((row) => row.values).map(linkFrom).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt)),
     activities: activityRows.map((row) => row.values).map(activityFrom).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     labels: labelRows.map((row) => row.values).map(labelFrom).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt)),
@@ -531,7 +530,9 @@ export async function moveWorkflowCard(payload: Record<string, unknown>) {
     const enteringDone = sourceList.id !== targetList.id && targetList.systemKey === "DONE";
     const beforeCardId = enteringDone ? undefined : text(payload.beforeCardId, 100) || undefined;
     const dropPosition = enteringDone ? "top" : payload.dropPosition === "bottom" ? "bottom" : beforeCardId ? "before" : "top";
-    if (targetList.systemKey === "DONE" && !card.completedAt) card.completedAt = now();
+    // Re-entering DONE is a new completion event, so reset the completion time
+    // every time. This is the exact timestamp used for the DONE order.
+    if (targetList.systemKey === "DONE" && enteringDone) card.completedAt = now();
     card.updatedAt = now();
     await assignCardOrderKey(workspaceId, targetCards, card, beforeCardId, dropPosition);
     await writeRow(TABS.cards, card.id, workspaceId, cardValues(card));
