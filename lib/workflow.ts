@@ -85,7 +85,12 @@ async function rows(tab: TabName, workspaceId?: string, options: Parameters<type
   return records.map((record) => ({
     id: record.record_id,
     workspaceId: record.workspace_id,
-    values: Array.isArray(record.payload) ? record.payload.map((cell) => String(cell ?? "")) : []
+    values: Array.isArray(record.payload) ? record.payload.map((cell) => String(cell ?? "")) : [],
+    // Keep the database timestamp available for paged collections. The DONE
+    // page is fetched by this field, so using it for the final sort prevents
+    // the fetch order and display order from disagreeing when payload dates
+    // are stale or were written by an older version.
+    updatedAt: record.updated_at || ""
   })).filter((item) => item.values[0]);
 }
 
@@ -140,12 +145,13 @@ async function readBoard(workspaceId: string, doneOffset = 0, includeAllDone = f
     rows(TABS.labels, workspaceId),
     rows(TABS.cardLabels, workspaceId)
   ]);
+  const doneUpdatedAt = new Map(cardRows.map((row) => [row.id, row.updatedAt]));
   const cards = cardRows.map((row) => row.values).map(cardFrom).sort((a, b) => {
     // DONE is paged by the row's updated_at timestamp. Keep that same
     // newest-first order in the board so recently completed cards are not
     // hidden behind old cards whose legacy orderKey is smaller.
     if (doneList && a.listId === doneList.id && b.listId === doneList.id) {
-      return b.updatedAt.localeCompare(a.updatedAt) || b.completedAt.localeCompare(a.completedAt) || b.createdAt.localeCompare(a.createdAt);
+      return (doneUpdatedAt.get(b.id) || b.updatedAt).localeCompare(doneUpdatedAt.get(a.id) || a.updatedAt) || b.completedAt.localeCompare(a.completedAt) || b.createdAt.localeCompare(a.createdAt);
     }
     return a.listId.localeCompare(b.listId) || a.orderKey.localeCompare(b.orderKey) || a.createdAt.localeCompare(b.createdAt);
   });

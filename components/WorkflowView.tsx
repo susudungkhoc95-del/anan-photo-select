@@ -327,7 +327,13 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
       const nextSourceCards = sourceCards.filter((item) => item.id !== cardId);
       const nextTargetCards = targetCards.filter((item) => item.id !== cardId);
       const insertAt = effectiveDropPosition === "bottom" ? nextTargetCards.length : effectiveDropPosition === "before" && beforeCardId ? Math.max(0, nextTargetCards.findIndex((item) => item.id === beforeCardId)) : 0;
-      nextTargetCards.splice(insertAt < 0 ? nextTargetCards.length : insertAt, 0, { ...card, listId: targetListId });
+      // DONE is displayed newest-first. Stamp the optimistic copy at the
+      // moment it enters DONE as well, otherwise a refresh racing the move
+      // can sort the card using its old timestamp and put it at the end.
+      const optimisticCard = enteringDone
+        ? { ...card, listId: targetListId, updatedAt: new Date().toISOString(), completedAt: card.completedAt || new Date().toISOString() }
+        : { ...card, listId: targetListId };
+      nextTargetCards.splice(insertAt < 0 ? nextTargetCards.length : insertAt, 0, optimisticCard);
       cards = [...currentBoard.cards.filter((item) => item.listId !== sourceListId && item.listId !== targetListId), ...nextSourceCards, ...nextTargetCards];
     }
 
