@@ -523,6 +523,9 @@ function CardModal({ board, cardId, onClose, onSave, onChanged, onLabelsChanged,
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
   const [activityOpen, setActivityOpen] = useState(false);
   const [rawBusy, setRawBusy] = useState(false);
+  const [addLinkOpen, setAddLinkOpen] = useState(false);
+  const [newLinkLabel, setNewLinkLabel] = useState("Link ảnh hoàn thiện");
+  const [newLinkUrl, setNewLinkUrl] = useState("");
   const links = board.links.filter((item) => item.cardId === card.id);
   // Keep the compact history panel, but let its scrollbar expose every activity.
   const activities = board.activities.filter((item) => item.cardId === card.id);
@@ -536,13 +539,15 @@ function CardModal({ board, cardId, onClose, onSave, onChanged, onLabelsChanged,
   }
   async function editLink(link: WorkflowLink) { const nextLabel = window.prompt("Tên hiển thị:", link.label); if (nextLabel === null) return; const nextUrl = window.prompt("URL:", link.url); if (nextUrl === null) return; await scopedRpc("updateWorkflowLink", { linkId: link.id, label: nextLabel, url: nextUrl }); await onChanged(); }
   async function addLink() {
-    const label = window.prompt("Tên hiển thị:", "Link ảnh hoàn thiện");
-    if (label === null || !label.trim()) return;
-    const url = window.prompt("URL:");
-    if (url === null || !url.trim()) return;
+    const label = newLinkLabel.trim();
+    const url = newLinkUrl.trim();
+    if (!label || !url) return;
     try {
       await scopedRpc("createWorkflowLink", { cardId: card.id, label: label.trim(), url: url.trim() });
       await onChanged();
+      setNewLinkLabel("Link ảnh hoàn thiện");
+      setNewLinkUrl("");
+      setAddLinkOpen(false);
       onNotice("Đã thêm đường link.");
     } catch (error) {
       onError(error as Error);
@@ -595,7 +600,7 @@ function CardModal({ board, cardId, onClose, onSave, onChanged, onLabelsChanged,
         {card.dpAlbumNote && <section className="workflow-dp-note"><h3>Lưu ý chung từ khách</h3><p>{card.dpAlbumNote}</p></section>}
       </div>
       <div className="workflow-modal-column workflow-content-column">
-        <section className="workflow-links"><div className="workflow-links-heading"><h3>Đường link</h3><button type="button" className="text-button workflow-add-link" onClick={() => void addLink()}><Plus size={14} /> Thêm link</button></div>{links.map((link) => { const linkLabel = link.label.toLowerCase(); const isCopyableLink = linkLabel.includes("sheet") || linkLabel.includes("raw"); return <div key={link.id} className="workflow-link"><span className="workflow-link-main"><a href={link.url} target="_blank" rel="noopener noreferrer">{link.label}<ExternalLink size={13} /></a></span><span className="workflow-link-actions">{isCopyableLink && <button type="button" className="text-button" onClick={() => void copyLink(link)}><Copy size={13} />{copiedLinkId === link.id ? "Đã copy" : "Copy"}</button>}<button type="button" className="text-button" onClick={() => void editLink(link)}>Sửa</button></span></div>; })}{card.source === "dp_select" && !links.some((link) => link.label === "Link RAW chọn") && <button type="button" className="secondary compact workflow-raw-action" disabled={busy || rawBusy} onClick={() => void createRawSelectionFolder()}>{rawBusy ? <><span className="spinner small" /> Đang nhặt RAW…</> : <><FolderSync size={15} /> Tạo thư mục RAW chọn</>}</button>}</section>
+        <section className="workflow-links"><div className="workflow-links-heading"><h3>Đường link</h3><button type="button" className="text-button workflow-add-link" aria-label={addLinkOpen ? "Đóng form thêm link" : "Thêm link"} title={addLinkOpen ? "Đóng form thêm link" : "Thêm link"} onClick={() => setAddLinkOpen((open) => !open)}><Plus size={15} /></button></div>{addLinkOpen && <div className="workflow-add-link-form"><input aria-label="Tên link mới" value={newLinkLabel} onChange={(event) => setNewLinkLabel(event.target.value)} placeholder="Tên hiển thị" /><input aria-label="URL link mới" value={newLinkUrl} onChange={(event) => setNewLinkUrl(event.target.value)} placeholder="https://…" inputMode="url" /><div><button type="button" className="secondary compact" disabled={!newLinkLabel.trim() || !newLinkUrl.trim()} onClick={() => void addLink()}>Lưu link</button><button type="button" className="text-button" onClick={() => setAddLinkOpen(false)}>Hủy</button></div></div>}{links.map((link) => { const linkLabel = link.label.toLowerCase(); const isCopyableLink = linkLabel.includes("sheet") || linkLabel.includes("raw"); return <div key={link.id} className="workflow-link"><span className="workflow-link-main"><a href={link.url} target="_blank" rel="noopener noreferrer">{link.label}<ExternalLink size={13} /></a></span><span className="workflow-link-actions">{isCopyableLink && <button type="button" className="text-button" onClick={() => void copyLink(link)}><Copy size={13} />{copiedLinkId === link.id ? "Đã copy" : "Copy"}</button>}<button type="button" className="text-button" onClick={() => void editLink(link)}>Sửa</button></span></div>; })}{card.source === "dp_select" && !links.some((link) => link.label === "Link RAW chọn") && <button type="button" className="secondary compact workflow-raw-action" disabled={busy || rawBusy} onClick={() => void createRawSelectionFolder()}>{rawBusy ? <><span className="spinner small" /> Đang nhặt RAW…</> : <><FolderSync size={15} /> Tạo thư mục RAW chọn</>}</button>}</section>
         <label className="workflow-note-field">Ghi chú<textarea rows={5} value={note} onChange={(event) => setNote(event.target.value)} /></label>
         <section className="workflow-card-labels"><h3>Nhãn</h3>{board.labels.length ? <div className="workflow-label-picker">{board.labels.map((label) => <label key={label.id} className={selectedLabelIds.includes(label.id) ? "selected" : ""} style={{ "--label-color": label.color } as React.CSSProperties}><input type="checkbox" checked={selectedLabelIds.includes(label.id)} disabled={busy} onChange={() => toggleLabel(label.id)} />{workflowLabelName(label)}</label>)}</div> : <p className="muted">Chưa có nhãn. Bấm nút Nhãn ở đầu trang để tạo nhãn.</p>}</section>
       </div>
