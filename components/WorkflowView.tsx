@@ -309,6 +309,9 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
     const card = currentBoard.cards.find((item) => item.id === cardId);
     if (!card) return;
     const sourceListId = card.listId;
+    const targetList = currentBoard.lists.find((list) => list.id === targetListId);
+    const enteringDone = sourceListId !== targetListId && targetList?.systemKey === "DONE";
+    const effectiveDropPosition = enteringDone ? "top" as const : dropPosition;
     const sourceCards = currentBoard.cards.filter((item) => item.listId === sourceListId);
     const targetCards = sourceListId === targetListId ? sourceCards : currentBoard.cards.filter((item) => item.listId === targetListId);
     const sourceIndex = sourceCards.findIndex((item) => item.id === cardId);
@@ -323,7 +326,7 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
     } else {
       const nextSourceCards = sourceCards.filter((item) => item.id !== cardId);
       const nextTargetCards = targetCards.filter((item) => item.id !== cardId);
-      const insertAt = dropPosition === "bottom" ? nextTargetCards.length : dropPosition === "before" && beforeCardId ? Math.max(0, nextTargetCards.findIndex((item) => item.id === beforeCardId)) : 0;
+      const insertAt = effectiveDropPosition === "bottom" ? nextTargetCards.length : effectiveDropPosition === "before" && beforeCardId ? Math.max(0, nextTargetCards.findIndex((item) => item.id === beforeCardId)) : 0;
       nextTargetCards.splice(insertAt < 0 ? nextTargetCards.length : insertAt, 0, { ...card, listId: targetListId });
       cards = [...currentBoard.cards.filter((item) => item.listId !== sourceListId && item.listId !== targetListId), ...nextSourceCards, ...nextTargetCards];
     }
@@ -335,8 +338,8 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
       const savedCard = await scopedRpc<WorkflowCard>("moveWorkflowCard", {
         cardId,
         targetListId,
-        beforeCardId: dropPosition === "before" ? beforeCardId : undefined,
-        dropPosition
+        beforeCardId: effectiveDropPosition === "before" ? beforeCardId : undefined,
+        dropPosition: effectiveDropPosition
       });
       // Store the server-generated order key so a concurrent background
       // refresh cannot replace the successful drag with an older snapshot.

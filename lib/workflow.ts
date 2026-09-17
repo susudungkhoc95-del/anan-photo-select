@@ -140,7 +140,15 @@ async function readBoard(workspaceId: string, doneOffset = 0, includeAllDone = f
     rows(TABS.labels, workspaceId),
     rows(TABS.cardLabels, workspaceId)
   ]);
-  const cards = cardRows.map((row) => row.values).map(cardFrom).sort((a, b) => a.listId.localeCompare(b.listId) || a.orderKey.localeCompare(b.orderKey) || a.createdAt.localeCompare(b.createdAt));
+  const cards = cardRows.map((row) => row.values).map(cardFrom).sort((a, b) => {
+    // DONE is paged by the row's updated_at timestamp. Keep that same
+    // newest-first order in the board so recently completed cards are not
+    // hidden behind old cards whose legacy orderKey is smaller.
+    if (doneList && a.listId === doneList.id && b.listId === doneList.id) {
+      return b.updatedAt.localeCompare(a.updatedAt) || b.completedAt.localeCompare(a.completedAt) || b.createdAt.localeCompare(a.createdAt);
+    }
+    return a.listId.localeCompare(b.listId) || a.orderKey.localeCompare(b.orderKey) || a.createdAt.localeCompare(b.createdAt);
+  });
   const doneLoaded = cards.filter((card) => card.listId === doneList?.id).length;
   return {
     workspaceId,
@@ -514,8 +522,9 @@ export async function moveWorkflowCard(payload: Record<string, unknown>) {
     const targetList = findList(board, targetListId);
     const targetCards = board.cards.filter((item) => item.listId === targetList.id && item.id !== card.id);
     card.listId = targetList.id;
-    const beforeCardId = text(payload.beforeCardId, 100) || undefined;
-    const dropPosition = payload.dropPosition === "bottom" ? "bottom" : beforeCardId ? "before" : "top";
+    const enteringDone = sourceList.id !== targetList.id && targetList.systemKey === "DONE";
+    const beforeCardId = enteringDone ? undefined : text(payload.beforeCardId, 100) || undefined;
+    const dropPosition = enteringDone ? "top" : payload.dropPosition === "bottom" ? "bottom" : beforeCardId ? "before" : "top";
     if (targetList.systemKey === "DONE" && !card.completedAt) card.completedAt = now();
     card.updatedAt = now();
     await assignCardOrderKey(workspaceId, targetCards, card, beforeCardId, dropPosition);
