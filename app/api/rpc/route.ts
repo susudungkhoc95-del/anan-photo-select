@@ -14,6 +14,7 @@ import {
   listAlbums,
   photoPage,
   photosByIds,
+  refreshAlbum,
   saveDraft,
   saveSelection,
   saveSettings,
@@ -45,6 +46,7 @@ export const maxDuration = 300;
 
 const adminActions = new Set([
   "createAlbum",
+  "refreshAlbum",
   "checkGoogleConnection",
   "listAlbums",
   "deleteAlbum",
@@ -85,6 +87,7 @@ export async function POST(request: Request) {
     let data: unknown;
     switch (action) {
       case "createAlbum": data = await createAlbum(payload); break;
+      case "refreshAlbum": data = await refreshAlbum(payload); break;
       case "checkGoogleConnection": data = await checkGoogleConnection(); break;
       case "getAlbum": data = await getAlbum(String(payload.albumId || "")); break;
       case "listAlbums": data = await listAlbums(payload); break;

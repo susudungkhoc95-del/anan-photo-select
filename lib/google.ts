@@ -243,8 +243,12 @@ async function scanFolder(
 }
 
 async function writePhotos(album: Album, photos: Photo[]) {
-  const { sheets, spreadsheetId } = getGoogleApi();
   await createSheet(album.photoSheet, true);
+  await writePhotoRows(album, photos);
+}
+
+async function writePhotoRows(album: Album, photos: Photo[]) {
+  const { sheets, spreadsheetId } = getGoogleApi();
   const values = [["ID", "TÊN FILE", "THƯ MỤC", "WIDTH", "HEIGHT"], ...photos.map((p) => [p.id, p.name, p.folder, p.width || "", p.height || ""])];
   await sheets.spreadsheets.values.update({
     spreadsheetId,
@@ -308,6 +312,41 @@ export async function createAlbum(payload: Record<string, unknown>) {
     ...album,
     clientUrl: albumUrl(album),
     spreadsheetUrl: albumSpreadsheetUrl(album)
+  };
+}
+
+/** Re-scan Drive while preserving the album and all existing photo IDs. */
+export async function refreshAlbum(payload: Record<string, unknown>) {
+  const album = await loadAlbum(clean(payload.albumId, 80));
+  if (album.status !== "active") throw new Error("Chỉ có thể cập nhật album đang dùng.");
+
+  const currentPhotos = await allPhotos(album);
+  const scanned: Photo[] = [];
+  const { drive } = getGoogleApi();
+  const root = await drive.files.get({ fileId: album.folderId, fields: "id,name,mimeType", supportsAllDrives: true });
+  if (root.data.mimeType !== "application/vnd.google-apps.folder") throw new Error("Thư mục nguồn của album không còn hợp lệ.");
+  await scanFolder(album.folderId, root.data.name || album.title, scanned);
+
+  const byId = new Map(currentPhotos.map((photo) => [photo.id, photo]));
+  const previousIds = new Set(byId.keys());
+  scanned.forEach((photo) => byId.set(photo.id, photo));
+  const photos = [...byId.values()].sort((a, b) => a.folder.localeCompare(b.folder, "vi") || a.name.localeCompare(b.name, "vi"));
+  const counts = new Map<string, number>();
+  photos.forEach((photo) => counts.set(photo.folder, (counts.get(photo.folder) || 0) + 1));
+
+  await writePhotoRows(album, photos);
+  const updated: Album = {
+    ...album,
+    photoCount: photos.length,
+    folders: [...counts.entries()].sort().map(([name, count]) => ({ name, count })),
+    updatedAt: new Date().toISOString()
+  };
+  await upsertJson(ALBUMS, updated.id, updated);
+  return {
+    ...updated,
+    clientUrl: albumUrl(updated),
+    spreadsheetUrl: albumSpreadsheetUrl(updated),
+    addedCount: photos.filter((photo) => !previousIds.has(photo.id)).length
   };
 }
 

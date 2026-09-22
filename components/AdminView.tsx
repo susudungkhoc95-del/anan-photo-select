@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  Archive, CheckCircle2, ChevronDown, Copy, ExternalLink, FolderSync, Images, KeyRound,
+  Archive, CheckCircle2, ChevronDown, Copy, ExternalLink, FolderSync, Images, KeyRound, RefreshCw,
   Link as LinkIcon, LogOut, Search, Settings, Sheet, X,
   Sparkles, Trash2
 } from "lucide-react";
@@ -165,6 +165,8 @@ export default function AdminView() {
       const result = await rpc<Record<string, unknown>>(name, { albumId, ...payload });
       if (name === "deleteAlbum") {
         notify("Đã xóa album.");
+      } else if (name === "refreshAlbum") {
+        notify(`Đã cập nhật Drive, thêm ${Number(result.addedCount || 0)} ảnh mới.`);
       } else if (name === "createRawSelectionFolder") {
         notify(`Đã chọn xong ${result.copied || 0} ảnh RAW.`);
       } else notify("Đã cập nhật.");
@@ -207,6 +209,15 @@ export default function AdminView() {
               largePrintLimit: Number(payload.largePrintLimit ?? album.largePrintLimit) || 0,
               tablePrintLimit: Number(payload.tablePrintLimit ?? album.tablePrintLimit) || 0,
               guide: String(payload.guide ?? album.guide),
+              updatedAt
+            };
+          }
+
+          if (name === "refreshAlbum") {
+            return {
+              ...album,
+              photoCount: Number(result.photoCount || album.photoCount),
+              folders: Array.isArray(result.folders) ? result.folders as ListedAlbum["folders"] : album.folders,
               updatedAt
             };
           }
@@ -391,6 +402,7 @@ function AlbumCard({ album, onAction, onNotify }: { album: ListedAlbum; onAction
           <label>Hướng dẫn chọn ảnh<textarea rows={6} value={selectionSettings.guide} onChange={(e) => setSelectionSettings({ ...selectionSettings, guide: e.target.value })} /></label>
           <button className="secondary compact" disabled={Boolean(busy)} onClick={() => run("updateAlbum", selectionSettings)}>Lưu thông số chọn ảnh</button>
         </div>}
+        <button className="secondary compact" disabled={Boolean(busy)} onClick={() => run("refreshAlbum")}><RefreshCw size={15} /> {busy === "refreshAlbum" ? "Đang quét Drive…" : "Cập nhật ảnh từ Drive"}</button>
       </div>}
       {confirmAction && <div className="modal-backdrop album-confirm-backdrop" onMouseDown={() => setConfirmAction(null)}><section className="album-confirm-modal" onMouseDown={(event) => event.stopPropagation()}>
         <h2>{confirmAction === "deleteAlbum" ? "Xóa album?" : "Lưu trữ album?"}</h2>
