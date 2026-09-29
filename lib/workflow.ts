@@ -473,9 +473,16 @@ export async function createWorkflowCard(payload: Record<string, unknown>) {
     const cardId = /^[A-Za-z0-9_-]{1,100}$/.test(requestedId) ? requestedId : randomUUID();
     const nextPosition = Math.max(-1, ...board.cards.filter((item) => item.listId === list.id).map((item) => item.position)) + 1;
     const lastCard = board.cards.filter((item) => item.listId === list.id).sort((a, b) => a.orderKey.localeCompare(b.orderKey)).at(-1);
+    const labelIds = Array.isArray(payload.labelIds) ? payload.labelIds.map((id) => text(id, 100)).filter(Boolean) : [];
+    if (new Set(labelIds).size !== labelIds.length) throw new Error("Nhãn bị trùng.");
+    labelIds.forEach((id) => findLabel(board, id));
     const card: WorkflowCard = { id: cardId, workspaceId, listId: list.id, title: requiredText(payload.title, "Tên thẻ"), note: text(payload.note, 5000), weddingDate: normalizeWeddingDate(payload.weddingDate), photoReturnDate: normalizeWeddingDate(payload.photoReturnDate), position: nextPosition, orderKey: orderKeyBetween(lastCard?.orderKey) || legacyOrderKey(nextPosition), source: "manual", dpSelectAlbumId: "", dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: timestamp, updatedAt: timestamp, completedAt: list.systemKey === "DONE" ? timestamp : "", createdBy: "admin", dpSummary: "", dpAlbumNote: "", dpPhotoNoteCount: 0 };
     await writeRow(TABS.cards, card.id, workspaceId, cardValues(card));
     await syncNoteLabel(workspaceId, board, card);
+    for (const labelId of labelIds) {
+      const assignment: WorkflowCardLabel = { id: randomUUID(), workspaceId, cardId: card.id, labelId, createdAt: timestamp };
+      await writeRow(TABS.cardLabels, assignment.id, workspaceId, cardLabelValues(assignment));
+    }
     await appendActivity(workspaceId, card.id, "CARD_CREATED", "Đã tạo thẻ thủ công.", "manual");
     return card;
   });
