@@ -91,7 +91,7 @@ TELEGRAM_CHAT_ID=123456789
 TELEGRAM_WEBHOOK_SECRET_TOKEN=chuoi-bi-mat-tu-chon
 ```
 
-Bot sẽ báo khi thẻ được kéo sang danh sách khác. Gọi `https://api.telegram.org/bot<TOKEN>/setWebhook?url=<NEXT_PUBLIC_APP_URL>/api/telegram/webhook` một lần sau khi deploy. Trong Telegram, gửi `/lists` để mở nút xem danh sách, các thẻ và thông tin cơ bản của từng thẻ. `TELEGRAM_CHAT_ID` có thể lấy bằng cách tạm gọi `getUpdates` sau khi nhắn tin cho bot.
+Bot sẽ báo khi thẻ được kéo sang danh sách khác. Khi gửi `/start`, bot hiện menu cố định ở cuối khung chat gồm `DP Workflow`, `Làm mới` và `Trợ giúp`. Gọi `https://api.telegram.org/bot<TOKEN>/setWebhook?url=<NEXT_PUBLIC_APP_URL>/api/telegram/webhook` một lần sau khi deploy. Trong Telegram, gửi `/lists` để mở nút xem danh sách, các thẻ và thông tin cơ bản của từng thẻ. `TELEGRAM_CHAT_ID` có thể lấy bằng cách tạm gọi `getUpdates` sau khi nhắn tin cho bot.
 
 ## 3. Chạy local
 

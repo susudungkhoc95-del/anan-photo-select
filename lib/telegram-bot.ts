@@ -18,6 +18,16 @@ function formatDateTime(value: string) {
 }
 function button(text: string, callbackData: string) { return { text: clip(text, 55), callback_data: callbackData }; }
 function keyboard(rows: Array<Array<{ text: string; callback_data: string }>>) { return { inline_keyboard: rows }; }
+function menuKeyboard() {
+  return {
+    keyboard: [
+      [{ text: "📊 DP Workflow" }, { text: "🔄 Làm mới" }],
+      [{ text: "ℹ️ Trợ giúp" }]
+    ],
+    resize_keyboard: true,
+    is_persistent: true
+  };
+}
 function chatIdOf(update: any): string {
   return String(update?.message?.chat?.id || update?.callback_query?.message?.chat?.id || "");
 }
@@ -43,6 +53,24 @@ async function showLists(chatId: string, scope: Scope, messageId?: number) {
   const body = { chat_id: chatId, text, reply_markup: listKeyboard(board, scope), disable_web_page_preview: true };
   if (messageId) await telegramApi("editMessageText", { ...body, message_id: messageId });
   else await telegramApi("sendMessage", body);
+}
+
+async function showHome(chatId: string) {
+  await telegramApi("sendMessage", {
+    chat_id: chatId,
+    text: "👋 Chào bạn! Chọn một chức năng bên dưới để quản lý workflow.",
+    reply_markup: menuKeyboard(),
+    disable_web_page_preview: true
+  });
+}
+
+async function showHelp(chatId: string) {
+  await telegramApi("sendMessage", {
+    chat_id: chatId,
+    text: "ℹ️ Hướng dẫn\n\n• 📋 Danh mục: xem các danh sách và thẻ.\n• 📊 DP Workflow: xem workflow DP.\n• 🎬 SHOW: xem workflow SHOW.\n• 🔄 Làm mới: mở lại danh sách DP mới nhất.\n\nBạn cũng có thể dùng /start hoặc /lists.",
+    reply_markup: menuKeyboard(),
+    disable_web_page_preview: true
+  });
 }
 
 async function showList(chatId: string, scope: Scope, listId: string, messageId?: number) {
@@ -90,7 +118,10 @@ export async function handleTelegramUpdate(update: any) {
     else if (type === "card") await showCard(chatId, scope, id, messageId);
     return { handled: true };
   }
-  const command = String(update?.message?.text || "").trim().split(/\s+/)[0].toLowerCase();
-  if (["/start", "/lists", "/danh_sach"].includes(command)) await showLists(chatId, "dp");
+  const messageText = String(update?.message?.text || "").trim();
+  const command = messageText.split(/\s+/)[0].toLowerCase();
+  if (command === "/start") await showHome(chatId);
+  else if (["/lists", "/danh_sach"].includes(command) || messageText === "🔄 Làm mới" || messageText === "📊 DP Workflow") await showLists(chatId, "dp");
+  else if (messageText === "ℹ️ Trợ giúp") await showHelp(chatId);
   return { handled: true };
 }
