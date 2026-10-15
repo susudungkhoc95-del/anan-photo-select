@@ -51,7 +51,11 @@ export function sendWorkflowMoveTelegram({ title, fromList, toList, movedAt, sco
     `Thời gian: ${vietnamTime(movedAt)}`,
     appUrl ? `Mở Workflow: ${appUrl}/${scope === "show" ? "show" : "workflow"}` : ""
   ].filter(Boolean).join("\n");
-  return sendTelegramMessage(message);
+  return sendTelegramMessage(message, {
+    replyMarkup: {
+      inline_keyboard: [[{ text: "📋 Xem các danh sách", callback_data: `lists:${scope}` }]]
+    }
+  });
 }
 
 /** Sends a non-blocking studio notification. Selection saving must never depend on Telegram delivery. */
