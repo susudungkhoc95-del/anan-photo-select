@@ -55,10 +55,12 @@ async function showLists(chatId: string, scope: Scope, messageId?: number) {
   else await telegramApi("sendMessage", body);
 }
 
-async function showHome(chatId: string) {
+async function showHome(chatId: string, registered: boolean) {
   await telegramApi("sendMessage", {
     chat_id: chatId,
-    text: "👋 Chào bạn! Chọn một chức năng bên dưới để quản lý workflow.",
+    text: registered
+      ? "✅ Đã nhận /start và đăng ký tài khoản của bạn. Bạn sẽ nhận được các thông báo workflow từ bot này.\n\nChọn một chức năng bên dưới để quản lý workflow."
+      : "⚠️ Bot đã nhận /start nhưng chưa lưu được đăng ký nhận thông báo. Vui lòng thử lại sau ít phút hoặc báo quản trị viên.\n\nBạn vẫn có thể chọn một chức năng bên dưới.",
     reply_markup: menuKeyboard(),
     disable_web_page_preview: true
   });
@@ -120,8 +122,8 @@ export async function handleTelegramUpdate(update: any) {
   const messageText = String(update?.message?.text || "").trim();
   const command = messageText.split(/\s+/)[0].toLowerCase();
   if (command === "/start") {
-    await registerTelegramChat(chatId, update?.message?.from);
-    await showHome(chatId);
+    const registered = await registerTelegramChat(chatId, update?.message?.from);
+    await showHome(chatId, registered);
   }
   else if (["/lists", "/danh_sach"].includes(command) || messageText === "🔄 Làm mới" || messageText === "📊 DP Workflow") await showLists(chatId, "dp");
   else if (messageText === "ℹ️ Trợ giúp") await showHelp(chatId);

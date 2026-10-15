@@ -58,15 +58,17 @@ export async function getTelegramChatIds() {
 }
 
 export async function registerTelegramChat(chatId: string, user?: { id?: number; username?: string; first_name?: string; last_name?: string }) {
-  if (!chatId) return;
+  if (!chatId) return false;
   try {
     await saveAppRecord(TELEGRAM_RECIPIENTS_COLLECTION, chatId, {
       chatId,
       user,
       registeredAt: new Date().toISOString()
     });
+    return true;
   } catch (error) {
     console.error("Không lưu được người nhận Telegram:", error);
+    return false;
   }
 }
 
