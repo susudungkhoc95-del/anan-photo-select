@@ -550,7 +550,9 @@ export async function moveWorkflowCard(payload: Record<string, unknown>) {
     }
     if (sourceList.id !== targetList.id) {
       await appendActivity(workspaceId, card.id, "CARD_MOVED", `Đã chuyển thẻ từ “${sourceList.name}” sang “${targetList.name}”.`, "manual", sourceList.id, targetList.id);
-      await sendWorkflowMoveTelegram({ title: card.title, fromList: sourceList.name, toList: targetList.name, movedAt: card.updatedAt, scope: workflowScope(payload) }).catch((error) => console.error("Telegram move notification failed", error));
+      if (workflowScope(payload) === "dp") {
+        await sendWorkflowMoveTelegram({ title: card.title, fromList: sourceList.name, toList: targetList.name, movedAt: card.updatedAt, scope: "dp" }).catch((error) => console.error("Telegram move notification failed", error));
+      }
     }
     return card;
   });
