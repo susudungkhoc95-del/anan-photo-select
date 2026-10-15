@@ -1,5 +1,5 @@
 import { getWorkflowBoard } from "@/lib/workflow";
-import { sendTelegramMessage } from "@/lib/telegram";
+import { registerTelegramChat, sendTelegramMessage } from "@/lib/telegram";
 import type { WorkflowBoard, WorkflowCard, WorkflowList } from "@/lib/types";
 
 type Scope = "dp" | "show";
@@ -31,7 +31,6 @@ function menuKeyboard() {
 function chatIdOf(update: any): string {
   return String(update?.message?.chat?.id || update?.callback_query?.message?.chat?.id || "");
 }
-function isAllowed(chatId: string) { return Boolean(chatId && process.env.TELEGRAM_CHAT_ID && chatId === String(process.env.TELEGRAM_CHAT_ID)); }
 function listFor(board: WorkflowBoard, listId: string) { return board.lists.find((list) => list.id === listId); }
 function cardFor(board: WorkflowBoard, cardId: string) { return board.cards.find((card) => card.id === cardId); }
 
@@ -107,7 +106,6 @@ async function showCard(chatId: string, scope: Scope, cardId: string, messageId?
 
 export async function handleTelegramUpdate(update: any) {
   const chatId = chatIdOf(update);
-  if (!isAllowed(chatId)) return { handled: false, reason: "unauthorized" };
   const callback = update?.callback_query;
   if (callback) {
     await telegramApi("answerCallbackQuery", { callback_query_id: callback.id });
@@ -121,8 +119,12 @@ export async function handleTelegramUpdate(update: any) {
   }
   const messageText = String(update?.message?.text || "").trim();
   const command = messageText.split(/\s+/)[0].toLowerCase();
-  if (command === "/start") await showHome(chatId);
+  if (command === "/start") {
+    await registerTelegramChat(chatId, update?.message?.from);
+    await showHome(chatId);
+  }
   else if (["/lists", "/danh_sach"].includes(command) || messageText === "🔄 Làm mới" || messageText === "📊 DP Workflow") await showLists(chatId, "dp");
   else if (messageText === "ℹ️ Trợ giúp") await showHelp(chatId);
+  else if (messageText) await showHelp(chatId);
   return { handled: true };
 }

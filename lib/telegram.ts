@@ -1,4 +1,7 @@
 import type { Album } from "@/lib/types";
+import { readAppRecords, saveAppRecord } from "@/lib/supabase";
+
+const TELEGRAM_RECIPIENTS_COLLECTION = "telegram_recipients";
 
 type SelectionTelegram = {
   album: Album;
@@ -28,17 +31,61 @@ function clip(value: string, max: number) {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
+/**
+ * Returns all configured recipients. TELEGRAM_CHAT_ID is kept for backwards
+ * compatibility; TELEGRAM_CHAT_IDS can contain a comma/space separated list.
+ */
+function getConfiguredTelegramChatIds() {
+  const values = [
+    process.env.TELEGRAM_CHAT_ID,
+    ...(process.env.TELEGRAM_CHAT_IDS || "").split(/[\s,]+/)
+  ];
+  return [...new Set(values.map((value) => value?.trim()).filter(Boolean))] as string[];
+}
+
+export async function getTelegramChatIds() {
+  const configuredIds = getConfiguredTelegramChatIds();
+  try {
+    const records = await readAppRecords(TELEGRAM_RECIPIENTS_COLLECTION);
+    const savedIds = records.map((record) => record.record_id).filter(Boolean);
+    return [...new Set([...configuredIds, ...savedIds])];
+  } catch (error) {
+    // Telegram notifications should keep working with env-only configuration
+    // if Supabase is unavailable or has not been configured yet.
+    console.error("Không đọc được danh sách người nhận Telegram:", error);
+    return configuredIds;
+  }
+}
+
+export async function registerTelegramChat(chatId: string, user?: { id?: number; username?: string; first_name?: string; last_name?: string }) {
+  if (!chatId) return;
+  try {
+    await saveAppRecord(TELEGRAM_RECIPIENTS_COLLECTION, chatId, {
+      chatId,
+      user,
+      registeredAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("Không lưu được người nhận Telegram:", error);
+  }
+}
+
 export async function sendTelegramMessage(text: string, options: { chatId?: string; replyMarkup?: unknown } = {}) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = options.chatId || process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) return { sent: false, reason: "not-configured" as const };
-  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "User-Agent": "ANAN-DP-Select/1.0" },
-    body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true, ...(options.replyMarkup ? { reply_markup: options.replyMarkup } : {}) })
-  });
-  if (!response.ok) throw new Error(`Telegram trả về lỗi ${response.status}.`);
-  return { sent: true as const };
+  const chatIds = options.chatId ? [options.chatId] : await getTelegramChatIds();
+  if (!token || chatIds.length === 0) return { sent: false, reason: "not-configured" as const };
+
+  const results = await Promise.allSettled(chatIds.map(async (chatId) => {
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": "ANAN-DP-Select/1.0" },
+      body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true, ...(options.replyMarkup ? { reply_markup: options.replyMarkup } : {}) })
+    });
+    if (!response.ok) throw new Error(`Telegram trả về lỗi ${response.status} cho chat ${chatId}.`);
+  }));
+  const sentCount = results.filter((result) => result.status === "fulfilled").length;
+  if (sentCount === 0) throw new Error("Telegram không gửi được đến bất kỳ chat nào.");
+  return { sent: true as const, sentTo: sentCount, totalRecipients: chatIds.length };
 }
 
 export function sendWorkflowMoveTelegram({ title, fromList, toList, movedAt, scope }: { title: string; fromList: string; toList: string; movedAt: string; scope: "dp" | "show" }) {
