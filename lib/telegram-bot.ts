@@ -21,8 +21,7 @@ function keyboard(rows: Array<Array<{ text: string; callback_data: string }>>) {
 function menuKeyboard() {
   return {
     keyboard: [
-      [{ text: "📊 DP Workflow" }, { text: "🔄 Làm mới" }],
-      [{ text: "ℹ️ Trợ giúp" }]
+      [{ text: "📊 DP Workflow" }, { text: "🔄 Làm mới" }]
     ],
     resize_keyboard: true,
     is_persistent: true
