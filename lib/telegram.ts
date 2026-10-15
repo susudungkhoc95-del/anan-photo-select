@@ -42,14 +42,12 @@ export async function sendTelegramMessage(text: string, options: { chatId?: stri
 }
 
 export function sendWorkflowMoveTelegram({ title, fromList, toList, movedAt, scope }: { title: string; fromList: string; toList: string; movedAt: string; scope: "dp" | "show" }) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
   const message = [
     "🔄 Thẻ vừa được chuyển danh sách",
     `Thẻ: ${clip(title, 180)}`,
     `Từ: ${clip(fromList, 100)}`,
     `Sang: ${clip(toList, 100)}`,
-    `Thời gian: ${vietnamTime(movedAt)}`,
-    appUrl ? `Mở Workflow: ${appUrl}/${scope === "show" ? "show" : "workflow"}` : ""
+    `Thời gian: ${vietnamTime(movedAt)}`
   ].filter(Boolean).join("\n");
   return sendTelegramMessage(message, {
     replyMarkup: {

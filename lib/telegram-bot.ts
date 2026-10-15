@@ -44,12 +44,13 @@ async function telegramApi(method: string, body: Record<string, unknown>) {
 }
 
 function listKeyboard(board: WorkflowBoard, scope: Scope) {
-  return keyboard(board.lists.map((list) => [button(`${list.name} (${board.cards.filter((card) => card.listId === list.id).length})`, `list:${scope}:${list.id}`)]));
+  return keyboard(board.lists.filter((list) => list.systemKey !== "DONE").map((list) => [button(`${list.name} (${board.cards.filter((card) => card.listId === list.id).length})`, `list:${scope}:${list.id}`)]));
 }
 
 async function showLists(chatId: string, scope: Scope, messageId?: number) {
   const board = await getWorkflowBoard({ scope });
-  const text = [`📋 ${scope === "show" ? "SHOW" : "DP WORKFLOW"}`, "Chọn một danh sách để xem các thẻ:", "", ...board.lists.map((list) => `• ${list.name}: ${board.cards.filter((card) => card.listId === list.id).length} thẻ`)].join("\n");
+  const visibleLists = board.lists.filter((list) => list.systemKey !== "DONE");
+  const text = [`📋 ${scope === "show" ? "SHOW" : "DP WORKFLOW"}`, "Chọn một danh sách để xem các thẻ:", "", ...visibleLists.map((list) => `• ${list.name}: ${board.cards.filter((card) => card.listId === list.id).length} thẻ`)].join("\n");
   const body = { chat_id: chatId, text, reply_markup: listKeyboard(board, scope), disable_web_page_preview: true };
   if (messageId) await telegramApi("editMessageText", { ...body, message_id: messageId });
   else await telegramApi("sendMessage", body);
