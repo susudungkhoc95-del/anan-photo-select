@@ -28,17 +28,30 @@ function clip(value: string, max: number) {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
-async function sendTelegramMessage(text: string) {
+export async function sendTelegramMessage(text: string, options: { chatId?: string; replyMarkup?: unknown } = {}) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const chatId = options.chatId || process.env.TELEGRAM_CHAT_ID;
   if (!token || !chatId) return { sent: false, reason: "not-configured" as const };
   const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "User-Agent": "ANAN-DP-Select/1.0" },
-    body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true })
+    body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true, ...(options.replyMarkup ? { reply_markup: options.replyMarkup } : {}) })
   });
   if (!response.ok) throw new Error(`Telegram trả về lỗi ${response.status}.`);
   return { sent: true as const };
+}
+
+export function sendWorkflowMoveTelegram({ title, fromList, toList, movedAt, scope }: { title: string; fromList: string; toList: string; movedAt: string; scope: "dp" | "show" }) {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+  const message = [
+    "🔄 Thẻ vừa được chuyển danh sách",
+    `Thẻ: ${clip(title, 180)}`,
+    `Từ: ${clip(fromList, 100)}`,
+    `Sang: ${clip(toList, 100)}`,
+    `Thời gian: ${vietnamTime(movedAt)}`,
+    appUrl ? `Mở Workflow: ${appUrl}/${scope === "show" ? "show" : "workflow"}` : ""
+  ].filter(Boolean).join("\n");
+  return sendTelegramMessage(message);
 }
 
 /** Sends a non-blocking studio notification. Selection saving must never depend on Telegram delivery. */

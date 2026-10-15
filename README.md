@@ -81,6 +81,18 @@ NOTIFICATION_EMAIL_TO=studio@your-domain.com
 
 `NOTIFICATION_EMAIL_TO` có thể chứa nhiều email, cách nhau bằng dấu phẩy. Trước khi gửi đến địa chỉ khác, domain trong địa chỉ `FROM` cần được xác minh trong Resend. Nếu chưa cấu hình đủ ba biến, app vẫn lưu lựa chọn và Sheet như bình thường, chỉ không gửi email.
 
+### Telegram bot cho DP Workflow
+
+Thêm các biến môi trường sau:
+
+```env
+TELEGRAM_BOT_TOKEN=123456:ABC...
+TELEGRAM_CHAT_ID=123456789
+TELEGRAM_WEBHOOK_SECRET_TOKEN=chuoi-bi-mat-tu-chon
+```
+
+Bot sẽ báo khi thẻ được kéo sang danh sách khác. Gọi `https://api.telegram.org/bot<TOKEN>/setWebhook?url=<NEXT_PUBLIC_APP_URL>/api/telegram/webhook` một lần sau khi deploy. Trong Telegram, gửi `/lists` để mở nút xem danh sách, các thẻ và thông tin cơ bản của từng thẻ. `TELEGRAM_CHAT_ID` có thể lấy bằng cách tạm gọi `getUpdates` sau khi nhắn tin cho bot.
+
 ## 3. Chạy local
 
 ```bash

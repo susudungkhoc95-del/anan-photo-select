@@ -18,7 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSWindow.allowsAutomaticWindowTabbing = true
     installMenu()
-    window = makeWindow(url: appURL)
+    // Vercel is the primary production flow. Render remains available from
+    // the File menu as the backup environment.
+    window = makeWindow(url: vercelAppURL)
     window?.makeKeyAndOrderFront(nil)
     NSApp.activate(ignoringOtherApps: true)
   }

@@ -3,7 +3,7 @@ import { albumSpreadsheetUrl, archiveAlbum, getWorkflowWorkspaceId, listAlbums }
 import type { Album, Selection, WorkflowActivity, WorkflowBoard, WorkflowCard, WorkflowCardLabel, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
 import { readAppRecords, removeAppRecord, saveAppRecord } from "@/lib/supabase";
 import { workflowAge } from "@/lib/workflow-utils";
-import { sendWorkflowAgeTelegram, sendWorkflowReturnDateTelegram } from "@/lib/telegram";
+import { sendWorkflowAgeTelegram, sendWorkflowMoveTelegram, sendWorkflowReturnDateTelegram } from "@/lib/telegram";
 
 const TABS = {
   lists: "WorkflowLists",
@@ -548,7 +548,10 @@ export async function moveWorkflowCard(payload: Record<string, unknown>) {
     } else if (sourceList.systemKey === "DONE" && card.dpSelectAlbumId) {
       await archiveAlbum(card.dpSelectAlbumId, true);
     }
-    if (sourceList.id !== targetList.id) await appendActivity(workspaceId, card.id, "CARD_MOVED", `Đã chuyển thẻ từ “${sourceList.name}” sang “${targetList.name}”.`, "manual", sourceList.id, targetList.id);
+    if (sourceList.id !== targetList.id) {
+      await appendActivity(workspaceId, card.id, "CARD_MOVED", `Đã chuyển thẻ từ “${sourceList.name}” sang “${targetList.name}”.`, "manual", sourceList.id, targetList.id);
+      await sendWorkflowMoveTelegram({ title: card.title, fromList: sourceList.name, toList: targetList.name, movedAt: card.updatedAt, scope: workflowScope(payload) }).catch((error) => console.error("Telegram move notification failed", error));
+    }
     return card;
   });
 }
