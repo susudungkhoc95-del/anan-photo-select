@@ -12,6 +12,7 @@ type SelectionTelegram = {
   albumNote: string;
   submittedAt: string;
   isUpdate: boolean;
+  changeSummary?: string;
   spreadsheetUrl: string;
   clientUrl: string;
 };
@@ -106,11 +107,12 @@ export function sendWorkflowMoveTelegram({ title, fromList, toList, movedAt, sco
 }
 
 /** Sends a non-blocking studio notification. Selection saving must never depend on Telegram delivery. */
-export async function sendSelectionTelegram({ album, selectedCount, largePrintCount, tablePrintCount, photoNoteCount, albumNote, submittedAt, isUpdate, spreadsheetUrl, clientUrl }: SelectionTelegram) {
+export async function sendSelectionTelegram({ album, selectedCount, largePrintCount, tablePrintCount, photoNoteCount, albumNote, submittedAt, isUpdate, changeSummary, spreadsheetUrl, clientUrl }: SelectionTelegram) {
   const action = isUpdate ? "đã cập nhật lựa chọn ảnh" : "đã gửi lựa chọn ảnh";
   const noteLines = [
     albumNote ? `Lưu ý chung: ${clip(albumNote, 800)}` : "Lưu ý chung: không có",
-    `Ghi chú riêng: ${photoNoteCount ? `${photoNoteCount} ảnh` : "không có"}`
+    `Ghi chú riêng: ${photoNoteCount ? `${photoNoteCount} ảnh` : "không có"}`,
+    changeSummary ? `Thay đổi: ${changeSummary}` : ""
   ];
   const message = [
     `📸 Khách ${action}`,

@@ -52,6 +52,7 @@ export type Selection = {
   photoNotes: Record<string, string>;
   albumNote: string;
   submittedAt: string;
+  contentHash?: string;
 };
 
 export type Draft = Omit<Selection, "submittedAt"> & { savedAt: string };

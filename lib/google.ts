@@ -4,10 +4,12 @@ import type { Album, Draft, GuideTemplate, Photo, QuickLink, Selection, StudioSe
 import { DEFAULT_GUIDE, DEFAULT_STUDIO_NAME } from "@/lib/types";
 import { sendSelectionTelegram } from "@/lib/telegram";
 import { readAppRecords, removeAppRecord, saveAppRecord } from "@/lib/supabase";
+import { selectionChangeSummary, selectionContentHash } from "@/lib/selection-history";
 
 const ALBUMS = "_albums";
 const DRAFTS = "_drafts";
 const SELECTIONS = "_selections";
+const SELECTION_SUBMISSIONS = "_selection_submissions";
 const SETTINGS = "_settings";
 const HEADER_BG = { red: 0.918, green: 0.851, blue: 0.722 };
 const ALBUM_CACHE_TTL_MS = 30_000;
@@ -767,7 +769,34 @@ export async function saveSelection(payload: Record<string, unknown>) {
   const album = await loadAlbum(clean(payload.albumId, 80));
   await assertAlbumSelectionOpen(album.id);
   const normalized = await normalizeSelection(album, payload);
+  const submissionId = clean(payload.submissionId, 120) || randomUUID();
+  const contentHash = selectionContentHash(normalized);
+  const priorSubmission = await readJson<{ albumId: string; contentHash: string }>(SELECTION_SUBMISSIONS, submissionId);
+  if (priorSubmission) {
+    if (priorSubmission.albumId !== album.id || priorSubmission.contentHash !== contentHash) {
+      throw new Error("Mã lần gửi đã được dùng cho nội dung khác.");
+    }
+    return { ok: true, duplicate: true, unchanged: true, count: normalized.selectedIds.length, spreadsheetUrl: albumSpreadsheetUrl(album) };
+  }
   const previousSelection = await readJson<Selection>(SELECTIONS, album.id);
+  const previousHash = previousSelection?.contentHash || (previousSelection ? selectionContentHash(previousSelection) : "");
+  const changeType = !previousSelection ? "initial" : previousHash === contentHash ? "unchanged" : "updated";
+  const changeSummary = selectionChangeSummary(previousSelection, normalized);
+
+  if (changeType === "unchanged") {
+    await saveAppRecord(SELECTION_SUBMISSIONS, submissionId, {
+      albumId: album.id,
+      submissionId,
+      sessionId: clean(payload.sessionId, 80),
+      submittedAt: new Date().toISOString(),
+      contentHash,
+      previousContentHash: previousHash,
+      changeType,
+      changeSummary,
+      notificationSent: false
+    });
+    return { ok: true, duplicate: false, unchanged: true, count: normalized.selectedIds.length, spreadsheetUrl: albumSpreadsheetUrl(album) };
+  }
   const selection: Selection = {
     albumId: album.id,
     sessionId: clean(payload.sessionId, 80),
@@ -776,6 +805,7 @@ export async function saveSelection(payload: Record<string, unknown>) {
     tablePrintIds: normalized.tablePrintIds,
     photoNotes: normalized.photoNotes,
     albumNote: normalized.albumNote,
+    contentHash,
     submittedAt: new Date().toISOString()
   };
   await upsertJson(SELECTIONS, album.id, selection);
@@ -790,6 +820,17 @@ export async function saveSelection(payload: Record<string, unknown>) {
   // Dynamic import keeps the core Google module independent from the Workflow repository.
   const { createOrUpdateCardFromSelection } = await import("@/lib/workflow");
   await createOrUpdateCardFromSelection(album, selection, spreadsheetUrl);
+  await saveAppRecord(SELECTION_SUBMISSIONS, submissionId, {
+    albumId: album.id,
+    submissionId,
+    sessionId: selection.sessionId,
+    submittedAt: selection.submittedAt,
+    contentHash,
+    previousContentHash: previousHash,
+    changeType,
+    changeSummary,
+    notificationSent: false
+  });
   try {
     await sendSelectionTelegram({
       album,
@@ -799,9 +840,22 @@ export async function saveSelection(payload: Record<string, unknown>) {
       photoNoteCount: Object.keys(selection.photoNotes).length,
       albumNote: selection.albumNote,
       submittedAt: selection.submittedAt,
-      isUpdate: Boolean(previousSelection),
+      isUpdate: changeType === "updated",
+      changeSummary,
       spreadsheetUrl,
       clientUrl: albumUrl(album)
+    });
+    await saveAppRecord(SELECTION_SUBMISSIONS, submissionId, {
+      albumId: album.id,
+      submissionId,
+      sessionId: selection.sessionId,
+      submittedAt: selection.submittedAt,
+      contentHash,
+      previousContentHash: previousHash,
+      changeType,
+      changeSummary,
+      notificationSent: true,
+      notificationSentAt: new Date().toISOString()
     });
   } catch (error) {
     console.error("Không gửi được Telegram thông báo:", error);

@@ -91,6 +91,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
   const [submittedCount, setSubmittedCount] = useState(0);
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const submitInFlight = useRef(false);
   const [sendAnimation, setSendAnimation] = useState<"idle" | "sending" | "success">("idle");
   const [toast, setToast] = useState("");
   const selectedRef = useRef(selected);
@@ -300,14 +301,16 @@ export default function ClientView({ albumId }: { albumId: string }) {
     });
   }
   async function submit() {
+    if (submitInFlight.current) return;
     if (album?.selectionLocked) return notify(lockedMessage("resend"));
     if (!selected.size) return notify("Bạn chưa chọn ảnh nào.");
     const selectedIds = [...selected];
     const selectedCount = selectedIds.length;
     setSendAnimation("sending");
+    submitInFlight.current = true;
     setSubmitting(true);
     try {
-      await rpc("saveSelection", { albumId, sessionId: sessionId.current, selectedIds, largePrintIds: [...large], tablePrintIds: [...table], photoNotes: notes, albumNote });
+      await rpc("saveSelection", { albumId, sessionId: sessionId.current, submissionId: crypto.randomUUID(), selectedIds, largePrintIds: [...large], tablePrintIds: [...table], photoNotes: notes, albumNote });
       localStorage.removeItem(`anan-draft-${albumId}`);
       setSubmitted(true); setSubmittedCount(selectedCount); setHasPendingChanges(false); setReview(false); setReviewZoom(null);
       setSendAnimation("success");
@@ -316,7 +319,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
     } catch (e) {
       setSendAnimation("idle");
       notify(`Không thể gửi ${selectedCount} ảnh. ${(e as Error).message}`);
-    } finally { setSubmitting(false); }
+    } finally { submitInFlight.current = false; setSubmitting(false); }
   }
   async function openReview() {
     if (!selected.size) return notify("Bạn chưa chọn ảnh nào.");
