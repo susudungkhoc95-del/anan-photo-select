@@ -843,7 +843,8 @@ export async function saveSelection(payload: Record<string, unknown>) {
       isUpdate: changeType === "updated",
       changeSummary,
       spreadsheetUrl,
-      clientUrl: albumUrl(album)
+      clientUrl: albumUrl(album),
+      customerChatUrl: album.customerChatUrl
     });
     await saveAppRecord(SELECTION_SUBMISSIONS, submissionId, {
       albumId: album.id,

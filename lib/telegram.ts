@@ -15,6 +15,7 @@ type SelectionTelegram = {
   changeSummary?: string;
   spreadsheetUrl: string;
   clientUrl: string;
+  customerChatUrl?: string;
 };
 
 function vietnamTime(value: string) {
@@ -107,7 +108,7 @@ export function sendWorkflowMoveTelegram({ title, fromList, toList, movedAt, sco
 }
 
 /** Sends a non-blocking studio notification. Selection saving must never depend on Telegram delivery. */
-export async function sendSelectionTelegram({ album, selectedCount, largePrintCount, tablePrintCount, photoNoteCount, albumNote, submittedAt, isUpdate, changeSummary, spreadsheetUrl, clientUrl }: SelectionTelegram) {
+export async function sendSelectionTelegram({ album, selectedCount, largePrintCount, tablePrintCount, photoNoteCount, albumNote, submittedAt, isUpdate, changeSummary, spreadsheetUrl, clientUrl, customerChatUrl }: SelectionTelegram) {
   const action = isUpdate ? "đã cập nhật lựa chọn ảnh" : "đã gửi lựa chọn ảnh";
   const noteLines = [
     albumNote ? `Lưu ý chung: ${clip(albumNote, 800)}` : "Lưu ý chung: không có",
@@ -123,8 +124,9 @@ export async function sendSelectionTelegram({ album, selectedCount, largePrintCo
     ...noteLines,
     `Thời gian: ${vietnamTime(submittedAt)}`,
     "",
-    `Mở Sheet kết quả: ${spreadsheetUrl}`,
-    `Mở album: ${clientUrl}`
+    `Sheet ảnh chọn: ${spreadsheetUrl}`,
+    `Mở album: ${clientUrl}`,
+    customerChatUrl ? `nhóm chat: ${customerChatUrl}` : ""
   ].join("\n");
 
   return sendTelegramMessage(message);
