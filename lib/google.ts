@@ -784,17 +784,49 @@ export async function saveSelection(payload: Record<string, unknown>) {
   const changeSummary = selectionChangeSummary(previousSelection, normalized);
 
   if (changeType === "unchanged") {
+    const submittedAt = new Date().toISOString();
     await saveAppRecord(SELECTION_SUBMISSIONS, submissionId, {
       albumId: album.id,
       submissionId,
       sessionId: clean(payload.sessionId, 80),
-      submittedAt: new Date().toISOString(),
+      submittedAt,
       contentHash,
       previousContentHash: previousHash,
       changeType,
       changeSummary,
       notificationSent: false
     });
+    try {
+      await sendSelectionTelegram({
+        album,
+        selectedCount: normalized.selectedIds.length,
+        largePrintCount: normalized.largePrintIds.length,
+        tablePrintCount: normalized.tablePrintIds.length,
+        photoNoteCount: Object.keys(normalized.photoNotes).length,
+        albumNote: normalized.albumNote,
+        submittedAt,
+        isUpdate: false,
+        isUnchanged: true,
+        changeSummary,
+        spreadsheetUrl: albumSpreadsheetUrl(album),
+        clientUrl: albumUrl(album),
+        customerChatUrl: album.customerChatUrl
+      });
+      await saveAppRecord(SELECTION_SUBMISSIONS, submissionId, {
+        albumId: album.id,
+        submissionId,
+        sessionId: clean(payload.sessionId, 80),
+        submittedAt,
+        contentHash,
+        previousContentHash: previousHash,
+        changeType,
+        changeSummary,
+        notificationSent: true,
+        notificationSentAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Không gửi được Telegram thông báo lần gửi không thay đổi:", error);
+    }
     return { ok: true, duplicate: false, unchanged: true, count: normalized.selectedIds.length, spreadsheetUrl: albumSpreadsheetUrl(album) };
   }
   const selection: Selection = {
