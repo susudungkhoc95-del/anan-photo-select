@@ -764,9 +764,11 @@ function DrivePhoto({ albumId, photo, zoom = false, onDimensions }: { albumId: s
         `https://lh3.googleusercontent.com/d/${encodeURIComponent(photo.id)}=w900`
       ];
   const [sourceIndex, setSourceIndex] = useState(0);
+  const [srcSetDisabled, setSrcSetDisabled] = useState(false);
   const sharperImageRef = useRef<HTMLImageElement | null>(null);
   useEffect(() => {
     setSourceIndex(0);
+    setSrcSetDisabled(false);
     if (!zoom) return;
     let active = true;
     let candidate = 1;
@@ -789,13 +791,19 @@ function DrivePhoto({ albumId, photo, zoom = false, onDimensions }: { albumId: s
   return <img
     className={zoom ? "zoom-image" : undefined}
     src={sources[Math.min(sourceIndex, sources.length - 1)]}
-    srcSet={!zoom ? photo.thumbSrcSet : undefined}
+    // Once a Drive srcset candidate fails, remove srcset before switching
+    // source. Otherwise the browser can keep selecting the same broken
+    // candidate and never reach the fallback URL.
+    srcSet={!zoom && !srcSetDisabled ? photo.thumbSrcSet : undefined}
     sizes={zoom ? "100vw" : "(max-width: 560px) 50vw, (max-width: 1000px) 33vw, 25vw"}
     alt={photo.name}
     loading={zoom ? "eager" : "lazy"}
     fetchPriority={zoom ? "high" : "auto"}
     decoding="async"
     onLoad={(event) => onDimensions?.(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)}
-    onError={() => setSourceIndex((index) => Math.min(index + 1, sources.length - 1))}
+    onError={() => {
+      setSrcSetDisabled(true);
+      setSourceIndex((index) => Math.min(index + 1, sources.length - 1));
+    }}
   />;
 }
