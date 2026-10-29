@@ -15,19 +15,19 @@ describe("workflow search", () => {
   });
 
   it("filters cards with a return date, including past dates", () => {
-    expect(workflowCardMatches(card, links, "/tra")).toBe(false);
-    expect(workflowCardMatches({ ...card, photoReturnDate: "   " }, links, "/tra")).toBe(false);
-    expect(workflowCardMatches({ ...card, photoReturnDate: "2020-01-01" }, links, "/tra")).toBe(true);
+    expect(workflowCardMatches(card, links, "/tra", [], list)).toBe(false);
+    expect(workflowCardMatches({ ...card, photoReturnDate: "   " }, links, "/tra", [], list)).toBe(false);
+    expect(workflowCardMatches({ ...card, photoReturnDate: "2020-01-01" }, links, "/tra", [], list)).toBe(true);
   });
 
   it("combines the command with title, note, link and label searches", () => {
     const dated = { ...card, photoReturnDate: "2026-11-02" };
-    expect(workflowCardMatches(dated, links, "/TRA hong ngoc")).toBe(true);
-    expect(workflowCardMatches(dated, links, "chinh da /tra")).toBe(true);
-    expect(workflowCardMatches(dated, links, "/tra spreadsheets")).toBe(true);
-    expect(workflowCardMatches(dated, links, "/tra gap", ["Gấp"])).toBe(true);
-    expect(workflowCardMatches(card, links, "/tra gap", ["Gấp"])).toBe(false);
-    expect(workflowCardMatches(dated, links, "/tra khong co")).toBe(false);
+    expect(workflowCardMatches(dated, links, "/TRA hong ngoc", [], list)).toBe(true);
+    expect(workflowCardMatches(dated, links, "chinh da /tra", [], list)).toBe(true);
+    expect(workflowCardMatches(dated, links, "/tra spreadsheets", [], list)).toBe(true);
+    expect(workflowCardMatches(dated, links, "/tra gap", ["Gấp"], list)).toBe(true);
+    expect(workflowCardMatches(card, links, "/tra gap", ["Gấp"], list)).toBe(false);
+    expect(workflowCardMatches(dated, links, "/tra khong co", [], list)).toBe(false);
     expect(workflowCardMatches(card, links, "gap", ["Gấp"])).toBe(true);
     expect(workflowCardMatches(card, links, "")).toBe(true);
   });
@@ -36,6 +36,18 @@ describe("workflow search", () => {
     expect(parseWorkflowQuery("  /TRA\tHồng Ngọc  /tra ")).toEqual({ hasReturnDate: true, text: "Hồng Ngọc" });
     expect(parseWorkflowQuery("/tralai")).toEqual({ hasReturnDate: false, text: "/tralai" });
     expect(parseWorkflowQuery("https://example.com/tra").hasReturnDate).toBe(false);
+  });
+
+  it("limits /tra to the todo and in-progress system lists, even after renaming", () => {
+    const dated = { ...card, photoReturnDate: "2026-11-02" };
+    for (const systemKey of ["TODO_INBOX", "IN_PROGRESS", "DONE", "WAITING_SELECTION", ""] as const) {
+      const currentList = { ...list, systemKey, name: "Tên mới" };
+      expect(workflowCardMatches(dated, links, "/tra", [], currentList)).toBe(systemKey === "TODO_INBOX" || systemKey === "IN_PROGRESS");
+      expect(workflowCardMatches(dated, links, "/TRA hong ngoc", [], currentList)).toBe(systemKey === "TODO_INBOX" || systemKey === "IN_PROGRESS");
+      expect(workflowCardMatches(dated, links, "hong ngoc", [], currentList)).toBe(true);
+    }
+    expect(workflowCardMatches(dated, links, "/tra")).toBe(false);
+    expect(workflowCardMatches(dated, links, "/tra", [], { ...list, id: "other" })).toBe(false);
   });
 });
 

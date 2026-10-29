@@ -219,7 +219,7 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
   const searchQuery = useMemo(() => parseWorkflowQuery(query), [query]);
   const filtered = useMemo(() => {
     if (!board || !query.trim()) return board?.cards || [];
-    return board.cards.filter((card) => workflowCardMatches(card, board.links.filter((link) => link.cardId === card.id), query, board.labels.filter((label) => board.cardLabels.some((assignment) => assignment.cardId === card.id && assignment.labelId === label.id)).map((label) => label.name)));
+    return board.cards.filter((card) => workflowCardMatches(card, board.links.filter((link) => link.cardId === card.id), query, board.labels.filter((label) => board.cardLabels.some((assignment) => assignment.cardId === card.id && assignment.labelId === label.id)).map((label) => label.name), board.lists.find((list) => list.id === card.listId)));
   }, [board, query]);
 
   const loadMoreDone = useCallback(async () => {
@@ -444,15 +444,15 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
   return <main className="workflow-page">
     <header className="workflow-header">
       <div className="workflow-header-left"><div className="workflow-brand"><img src="/dp-logo.png" alt="DP Select" /></div><nav className="app-tabs header-tabs" aria-label="Khu vực quản trị"><Link href="/" prefetch>DP Select</Link><Link className={scope === "dp" ? "active" : ""} href="/workflow">DP Workflow</Link><Link className={scope === "show" ? "active" : ""} href="/show">SHOW</Link></nav></div>
-      <div className="workflow-header-actions"><EnvironmentSwitcher path={scope === "show" ? "/show" : "/workflow"} /><div className="workflow-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm thẻ... hoặc /tra" aria-label="Tìm kiếm thẻ; gõ /tra để lọc thẻ đã có ngày hẹn trả ảnh" />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div></div>
+      <div className="workflow-header-actions"><EnvironmentSwitcher path={scope === "show" ? "/show" : "/workflow"} /><div className="workflow-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm thẻ... hoặc /tra" aria-label="Tìm kiếm thẻ; gõ /tra để lọc thẻ có ngày hẹn trả ảnh trong Cần làm và Đang làm" />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div></div>
     </header>
     <QuickLinks links={quickLinks} />
     {toast && <div className="toast" role="status">{toast}</div>}
-    {query && <p className="workflow-search-note" role="status">{searchQuery.hasReturnDate && <>Đã có ngày hẹn trả ảnh · {filtered.length}/{board.cards.length} thẻ{board.doneHasMore ? " đã tải" : ""}. </>}Xóa tìm kiếm để sắp xếp thẻ.</p>}
+    {query && <p className="workflow-search-note" role="status">{searchQuery.hasReturnDate && <>Có hẹn trả ảnh trong Cần làm / Đang làm · {filtered.length}/{board.cards.length} thẻ{board.doneHasMore ? " đã tải" : ""}. </>}Xóa tìm kiếm để sắp xếp thẻ.</p>}
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragCancel={() => { if (dragOriginRef.current) setBoard(dragOriginRef.current.board); dragOriginRef.current = null; setActiveDragId(null); }} onDragEnd={(event) => { void onDragEnd(event).finally(() => { dragOriginRef.current = null; setActiveDragId(null); }); }}>
       <SortableContext items={board.lists.map((list) => `list-${list.id}`)} strategy={horizontalListSortingStrategy}>
         <div className="workflow-board">
-          {board.lists.map((list) => <WorkflowColumn key={list.id} list={list} cards={filtered.filter((card) => card.listId === list.id)} labels={board.labels} cardLabelIds={board.cardLabels} pendingCardIds={pendingCardIds} searching={Boolean(query)} dropTarget={nativeDropTarget} onLoadMore={list.systemKey === "DONE" ? loadMoreDone : undefined} doneLoading={doneLoadingRef.current} onAdd={() => setCreateModal({ type: "card", list })} onOpen={(cardId) => setCardModal({ cardId })} onQuickEdit={setQuickCardId} onRename={() => renameList(list)} onDelete={() => setDeleteList(list)} onCardDragStart={onNativeCardDragStart} onCardDragOver={onNativeCardDragOver} onCardDragEnd={() => setNativeDropTarget(null)} onCardDrop={onNativeCardDrop} />)}
+          {board.lists.map((list) => <WorkflowColumn key={list.id} list={list} cards={filtered.filter((card) => card.listId === list.id)} labels={board.labels} cardLabelIds={board.cardLabels} pendingCardIds={pendingCardIds} searching={Boolean(query)} dropTarget={nativeDropTarget} onLoadMore={list.systemKey === "DONE" && !searchQuery.hasReturnDate ? loadMoreDone : undefined} doneLoading={doneLoadingRef.current} onAdd={() => setCreateModal({ type: "card", list })} onOpen={(cardId) => setCardModal({ cardId })} onQuickEdit={setQuickCardId} onRename={() => renameList(list)} onDelete={() => setDeleteList(list)} onCardDragStart={onNativeCardDragStart} onCardDragOver={onNativeCardDragOver} onCardDragEnd={() => setNativeDropTarget(null)} onCardDrop={onNativeCardDrop} />)}
           <button type="button" className="workflow-add-list" onClick={() => setCreateModal({ type: "list" })}><Plus size={18} /> Thêm danh sách</button>
         </div>
       </SortableContext>

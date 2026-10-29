@@ -12,9 +12,9 @@ export function parseWorkflowQuery(query: string) {
   };
 }
 
-export function workflowCardMatches(card: WorkflowCard, links: WorkflowLink[], query: string, labelNames: string[] = []) {
+export function workflowCardMatches(card: WorkflowCard, links: WorkflowLink[], query: string, labelNames: string[] = [], list?: WorkflowList) {
   const parsed = parseWorkflowQuery(query);
-  if (parsed.hasReturnDate && !card.photoReturnDate.trim()) return false;
+  if (parsed.hasReturnDate && (!card.photoReturnDate.trim() || !list || card.listId !== list.id || (list.systemKey !== "TODO_INBOX" && list.systemKey !== "IN_PROGRESS"))) return false;
   const needle = normalizeWorkflowText(parsed.text);
   if (!needle) return true;
   return normalizeWorkflowText([card.title, card.note, ...links.flatMap((link) => [link.label, link.url])].join(" ")).includes(needle)
