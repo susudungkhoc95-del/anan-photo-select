@@ -10,7 +10,7 @@ import { rpc } from "@/components/App";
 import QuickLinks from "@/components/QuickLinks";
 import EnvironmentSwitcher from "@/components/EnvironmentSwitcher";
 import type { QuickLink, StudioSettings, WorkflowBoard, WorkflowCard, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
-import { normalizeWorkflowText, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
+import { parseWorkflowQuery, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
 
 type ModalState = { cardId: string } | null;
 type CreateState = { type: "list" } | { type: "card"; list: WorkflowList } | null;
@@ -216,10 +216,10 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
     return () => { active = false; };
   }, [scope]);
 
+  const searchQuery = useMemo(() => parseWorkflowQuery(query), [query]);
   const filtered = useMemo(() => {
     if (!board || !query.trim()) return board?.cards || [];
-    const needle = normalizeWorkflowText(query.trim());
-    return board.cards.filter((card) => workflowCardMatches(card, board.links.filter((link) => link.cardId === card.id), query) || board.labels.some((label) => board.cardLabels.some((assignment) => assignment.cardId === card.id && assignment.labelId === label.id) && normalizeWorkflowText(label.name).includes(needle)));
+    return board.cards.filter((card) => workflowCardMatches(card, board.links.filter((link) => link.cardId === card.id), query, board.labels.filter((label) => board.cardLabels.some((assignment) => assignment.cardId === card.id && assignment.labelId === label.id)).map((label) => label.name)));
   }, [board, query]);
 
   const loadMoreDone = useCallback(async () => {
@@ -369,11 +369,13 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
   }
 
   function onNativeCardDragStart(cardId: string, event: React.DragEvent<HTMLElement>) {
+    if (query.trim()) { event.preventDefault(); return; }
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", cardId);
   }
 
   function onNativeCardDragOver(targetListId: string, beforeCardId: string | undefined, dropPosition: "top" | "before" | "bottom", event: React.DragEvent<HTMLElement>) {
+    if (query.trim()) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     const cardId = event.dataTransfer.getData("text/plain");
@@ -442,11 +444,11 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
   return <main className="workflow-page">
     <header className="workflow-header">
       <div className="workflow-header-left"><div className="workflow-brand"><img src="/dp-logo.png" alt="DP Select" /></div><nav className="app-tabs header-tabs" aria-label="Khu vực quản trị"><Link href="/" prefetch>DP Select</Link><Link className={scope === "dp" ? "active" : ""} href="/workflow">DP Workflow</Link><Link className={scope === "show" ? "active" : ""} href="/show">SHOW</Link></nav></div>
-      <div className="workflow-header-actions"><EnvironmentSwitcher path={scope === "show" ? "/show" : "/workflow"} /><div className="workflow-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm kiếm thẻ..." />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div></div>
+      <div className="workflow-header-actions"><EnvironmentSwitcher path={scope === "show" ? "/show" : "/workflow"} /><div className="workflow-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm thẻ... hoặc /tra" aria-label="Tìm kiếm thẻ; gõ /tra để lọc thẻ đã có ngày hẹn trả ảnh" />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div></div>
     </header>
     <QuickLinks links={quickLinks} />
     {toast && <div className="toast" role="status">{toast}</div>}
-    {query && <p className="workflow-search-note">Xóa tìm kiếm để sắp xếp thẻ.</p>}
+    {query && <p className="workflow-search-note" role="status">{searchQuery.hasReturnDate && <>Đã có ngày hẹn trả ảnh · {filtered.length}/{board.cards.length} thẻ{board.doneHasMore ? " đã tải" : ""}. </>}Xóa tìm kiếm để sắp xếp thẻ.</p>}
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragCancel={() => { if (dragOriginRef.current) setBoard(dragOriginRef.current.board); dragOriginRef.current = null; setActiveDragId(null); }} onDragEnd={(event) => { void onDragEnd(event).finally(() => { dragOriginRef.current = null; setActiveDragId(null); }); }}>
       <SortableContext items={board.lists.map((list) => `list-${list.id}`)} strategy={horizontalListSortingStrategy}>
         <div className="workflow-board">

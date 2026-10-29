@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
+import { parseWorkflowQuery, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
 import type { WorkflowCard, WorkflowLink, WorkflowList } from "@/lib/types";
 
 const list: WorkflowList = { id: "todo", workspaceId: "studio", name: "CẦN LÀM", position: 0, systemKey: "TODO_INBOX", createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z" };
@@ -12,6 +12,30 @@ describe("workflow search", () => {
     expect(workflowCardMatches(card, links, "chỉnh da")).toBe(true);
     expect(workflowCardMatches(card, links, "spreadsheets")).toBe(true);
     expect(workflowCardMatches(card, links, "không có")).toBe(false);
+  });
+
+  it("filters cards with a return date, including past dates", () => {
+    expect(workflowCardMatches(card, links, "/tra")).toBe(false);
+    expect(workflowCardMatches({ ...card, photoReturnDate: "   " }, links, "/tra")).toBe(false);
+    expect(workflowCardMatches({ ...card, photoReturnDate: "2020-01-01" }, links, "/tra")).toBe(true);
+  });
+
+  it("combines the command with title, note, link and label searches", () => {
+    const dated = { ...card, photoReturnDate: "2026-11-02" };
+    expect(workflowCardMatches(dated, links, "/TRA hong ngoc")).toBe(true);
+    expect(workflowCardMatches(dated, links, "chinh da /tra")).toBe(true);
+    expect(workflowCardMatches(dated, links, "/tra spreadsheets")).toBe(true);
+    expect(workflowCardMatches(dated, links, "/tra gap", ["Gấp"])).toBe(true);
+    expect(workflowCardMatches(card, links, "/tra gap", ["Gấp"])).toBe(false);
+    expect(workflowCardMatches(dated, links, "/tra khong co")).toBe(false);
+    expect(workflowCardMatches(card, links, "gap", ["Gấp"])).toBe(true);
+    expect(workflowCardMatches(card, links, "")).toBe(true);
+  });
+
+  it("recognizes only a complete command token, regardless of case or whitespace", () => {
+    expect(parseWorkflowQuery("  /TRA\tHồng Ngọc  /tra ")).toEqual({ hasReturnDate: true, text: "Hồng Ngọc" });
+    expect(parseWorkflowQuery("/tralai")).toEqual({ hasReturnDate: false, text: "/tralai" });
+    expect(parseWorkflowQuery("https://example.com/tra").hasReturnDate).toBe(false);
   });
 });
 

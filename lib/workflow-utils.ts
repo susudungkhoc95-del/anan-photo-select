@@ -4,10 +4,21 @@ export function normalizeWorkflowText(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d").toLowerCase();
 }
 
-export function workflowCardMatches(card: WorkflowCard, links: WorkflowLink[], query: string) {
-  const needle = normalizeWorkflowText(query.trim());
+export function parseWorkflowQuery(query: string) {
+  const tokens = query.trim().split(/\s+/);
+  return {
+    hasReturnDate: tokens.some((token) => token.toLowerCase() === "/tra"),
+    text: tokens.filter((token) => token.toLowerCase() !== "/tra").join(" ")
+  };
+}
+
+export function workflowCardMatches(card: WorkflowCard, links: WorkflowLink[], query: string, labelNames: string[] = []) {
+  const parsed = parseWorkflowQuery(query);
+  if (parsed.hasReturnDate && !card.photoReturnDate.trim()) return false;
+  const needle = normalizeWorkflowText(parsed.text);
   if (!needle) return true;
-  return normalizeWorkflowText([card.title, card.note, ...links.flatMap((link) => [link.label, link.url])].join(" ")).includes(needle);
+  return normalizeWorkflowText([card.title, card.note, ...links.flatMap((link) => [link.label, link.url])].join(" ")).includes(needle)
+    || labelNames.some((name) => normalizeWorkflowText(name).includes(needle));
 }
 
 export function workflowAge(card: WorkflowCard, list: WorkflowList, currentTime = Date.now()) {
