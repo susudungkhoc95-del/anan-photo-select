@@ -484,7 +484,9 @@ function hydratePhoto(p: Photo) {
   return {
     ...p,
     thumbUrl: `https://drive.google.com/thumbnail?id=${id}&sz=w600`,
-    thumbSrcSet: [400, 600, 900].map((width) => `https://drive.google.com/thumbnail?id=${id}&sz=w${width} ${width}w`).join(", "),
+    // Some Drive 400px thumbnails have the wrong orientation even when the
+    // 600px and larger versions are upright. Keep every grid candidate >=600px.
+    thumbSrcSet: [600, 900].map((width) => `https://drive.google.com/thumbnail?id=${id}&sz=w${width} ${width}w`).join(", "),
     zoomUrl: `https://drive.google.com/thumbnail?id=${id}&sz=w4000`,
     downloadUrl: `https://drive.google.com/uc?export=download&id=${id}`,
     viewUrl: `https://drive.google.com/file/d/${id}/view`
