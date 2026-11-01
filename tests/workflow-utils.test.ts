@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseWorkflowQuery, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
+import { parseWorkflowQuery, sortWorkflowCardsByReturnDate, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
 import type { WorkflowCard, WorkflowLink, WorkflowList } from "@/lib/types";
 
 const list: WorkflowList = { id: "todo", workspaceId: "studio", name: "CẦN LÀM", position: 0, systemKey: "TODO_INBOX", createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z" };
@@ -48,6 +48,17 @@ describe("workflow search", () => {
     }
     expect(workflowCardMatches(dated, links, "/tra")).toBe(false);
     expect(workflowCardMatches(dated, links, "/tra", [], { ...list, id: "other" })).toBe(false);
+  });
+});
+
+describe("workflow return date order", () => {
+  it("puts overdue and earlier deadlines first across months and years without changing saved order", () => {
+    const dates = ["2027-01-01", "2026-11-04", "2026-10-26", "2026-11-01", "2026-11-01", "2026-12-31"];
+    const cards = dates.map((photoReturnDate, index) => ({ ...card, id: String(index), photoReturnDate }));
+    const sorted = sortWorkflowCardsByReturnDate(cards);
+    expect(sorted.map((item) => item.id)).toEqual(["2", "3", "4", "1", "5", "0"]);
+    expect(cards.map((item) => item.photoReturnDate)).toEqual(dates);
+    expect(sorted).not.toBe(cards);
   });
 });
 

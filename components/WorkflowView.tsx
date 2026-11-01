@@ -10,7 +10,7 @@ import { rpc } from "@/components/App";
 import QuickLinks from "@/components/QuickLinks";
 import EnvironmentSwitcher from "@/components/EnvironmentSwitcher";
 import type { QuickLink, StudioSettings, WorkflowBoard, WorkflowCard, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
-import { parseWorkflowQuery, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
+import { parseWorkflowQuery, sortWorkflowCardsByReturnDate, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
 
 type ModalState = { cardId: string } | null;
 type CreateState = { type: "list" } | { type: "card"; list: WorkflowList } | null;
@@ -219,8 +219,9 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
   const searchQuery = useMemo(() => parseWorkflowQuery(query), [query]);
   const filtered = useMemo(() => {
     if (!board || !query.trim()) return board?.cards || [];
-    return board.cards.filter((card) => workflowCardMatches(card, board.links.filter((link) => link.cardId === card.id), query, board.labels.filter((label) => board.cardLabels.some((assignment) => assignment.cardId === card.id && assignment.labelId === label.id)).map((label) => label.name), board.lists.find((list) => list.id === card.listId)));
-  }, [board, query]);
+    const matches = board.cards.filter((card) => workflowCardMatches(card, board.links.filter((link) => link.cardId === card.id), query, board.labels.filter((label) => board.cardLabels.some((assignment) => assignment.cardId === card.id && assignment.labelId === label.id)).map((label) => label.name), board.lists.find((list) => list.id === card.listId)));
+    return searchQuery.hasReturnDate ? sortWorkflowCardsByReturnDate(matches) : matches;
+  }, [board, query, searchQuery.hasReturnDate]);
 
   const loadMoreDone = useCallback(async () => {
     if (doneLoadingRef.current || !board?.doneHasMore || board.doneNextOffset === undefined) return;
@@ -448,7 +449,7 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
     </header>
     <QuickLinks links={quickLinks} />
     {toast && <div className="toast" role="status">{toast}</div>}
-    {query && <p className="workflow-search-note" role="status">{searchQuery.hasReturnDate && <>Có hẹn trả ảnh trong Cần làm / Đang làm · {filtered.length}/{board.cards.length} thẻ{board.doneHasMore ? " đã tải" : ""}. </>}Xóa tìm kiếm để sắp xếp thẻ.</p>}
+    {query && <p className="workflow-search-note" role="status">{searchQuery.hasReturnDate && <>Có hẹn trả ảnh trong Cần làm / Đang làm · {filtered.length}/{board.cards.length} thẻ{board.doneHasMore ? " đã tải" : ""} · Ngày hẹn từ sớm đến muộn. </>}Xóa tìm kiếm để sắp xếp thẻ.</p>}
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragCancel={() => { if (dragOriginRef.current) setBoard(dragOriginRef.current.board); dragOriginRef.current = null; setActiveDragId(null); }} onDragEnd={(event) => { void onDragEnd(event).finally(() => { dragOriginRef.current = null; setActiveDragId(null); }); }}>
       <SortableContext items={board.lists.map((list) => `list-${list.id}`)} strategy={horizontalListSortingStrategy}>
         <div className="workflow-board">

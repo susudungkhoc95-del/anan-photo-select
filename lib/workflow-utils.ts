@@ -21,6 +21,12 @@ export function workflowCardMatches(card: WorkflowCard, links: WorkflowLink[], q
     || labelNames.some((name) => normalizeWorkflowText(name).includes(needle));
 }
 
+export function sortWorkflowCardsByReturnDate(cards: WorkflowCard[]) {
+  // Dates are stored as YYYY-MM-DD. Sort a copy so clearing /tra restores
+  // the board's saved order; equal dates retain their existing order.
+  return [...cards].sort((a, b) => a.photoReturnDate.localeCompare(b.photoReturnDate));
+}
+
 export function workflowAge(card: WorkflowCard, list: WorkflowList, currentTime = Date.now()) {
   const base = card.selectionSubmittedAt || card.createdAt;
   // Ngày 1 is the first rolling 24-hour period after submission. The card moves
