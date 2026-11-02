@@ -31,6 +31,17 @@ export type AppRecord = {
 };
 
 export async function readAppRecords(collection: string, workspaceId?: string, options: { limit?: number; offset?: number; orderBy?: "created_at" | "updated_at"; ascending?: boolean; payloadIndex?: number; payloadEquals?: string; payloadNotEquals?: string } = {}) {
+  // Unbounded reads must page explicitly: Supabase otherwise silently returns
+  // only the first 1,000 records, hiding newer workflow activities.
+  if (options.limit === undefined && options.offset === undefined) {
+    const records: AppRecord[] = [];
+    const pageSize = 500;
+    for (let offset = 0; ; offset += pageSize) {
+      const page = await readAppRecords(collection, workspaceId, { ...options, limit: pageSize, offset });
+      records.push(...page);
+      if (page.length < pageSize) return records;
+    }
+  }
   let query = getSupabaseServer()
     .from(APP_RECORDS_TABLE)
     .select("collection, record_id, workspace_id, payload, created_at, updated_at")
@@ -39,6 +50,7 @@ export async function readAppRecords(collection: string, workspaceId?: string, o
   if (options.payloadIndex !== undefined && options.payloadEquals !== undefined) query = query.eq(`payload->>${options.payloadIndex}`, options.payloadEquals);
   if (options.payloadIndex !== undefined && options.payloadNotEquals !== undefined) query = query.neq(`payload->>${options.payloadIndex}`, options.payloadNotEquals);
   query = query.order(options.orderBy || "created_at", { ascending: options.ascending ?? true });
+  query = query.order("record_id", { ascending: true });
   if (options.offset !== undefined) query = query.range(options.offset, options.offset + (options.limit ?? 1000) - 1);
   else if (options.limit !== undefined) query = query.limit(options.limit);
   const { data, error } = await query;
