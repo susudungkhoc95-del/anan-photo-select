@@ -1131,3 +1131,9 @@ body.admin-mode .workflow-add-card-icon:hover { color: var(--ink) !important; }
   .review-panel > footer { margin-top: 8px; }
   .review-panel > footer { align-items: stretch; justify-content: flex-end; flex-wrap: wrap; }
 }
+
+.classifier-panel { margin-top: 12px; }
+.classifier-panel p { margin: 8px 0; }
+.classifier-results { max-height: 240px; overflow: auto; margin: 10px 0; }
+.classifier-results table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.classifier-results th, .classifier-results td { padding: 6px; text-align: left; border-bottom: 1px solid #31505a; }

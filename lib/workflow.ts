@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "crypto";
-import { albumSpreadsheetUrl, archiveAlbum, getWorkflowWorkspaceId, listAlbums } from "@/lib/google";
+import { albumSpreadsheetUrl, archiveAlbum, getGoogleApi, getWorkflowWorkspaceId, listAlbums, quoteSheet } from "@/lib/google";
 import type { Album, Selection, WorkflowActivity, WorkflowBoard, WorkflowCard, WorkflowCardLabel, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
 import { readAppRecords, removeAppRecord, saveAppRecord } from "@/lib/supabase";
 import { workflowAge } from "@/lib/workflow-utils";
@@ -398,6 +398,29 @@ export async function getWorkflowBoard(payload: Record<string, unknown> = {}) {
   const workspaceId = getWorkflowWorkspaceId(scope);
   const doneOffset = Math.max(0, Number(payload.doneOffset) || 0);
   return serialise(workspaceId, () => boardForCurrentWorkspace(scope, doneOffset));
+}
+
+export async function getClassifierSheet(payload: Record<string, unknown>) {
+  const board = await getWorkflowBoard(payload);
+  const card = board.cards.find((item) => item.id === String(payload.cardId || ""));
+  if (!card || card.source !== "dp_select") throw new Error("Không tìm thấy thẻ DP Select.");
+  const link = board.links.find((item) => item.cardId === card.id && item.label === "Sheet ảnh chọn");
+  if (!link) throw new Error("Thẻ chưa có Sheet ảnh chọn.");
+  const url = new URL(link.url);
+  if (url.hostname !== "docs.google.com") throw new Error("Link Sheet không hợp lệ.");
+  const spreadsheetId = url.pathname.match(/^\/spreadsheets\/d\/([\w-]+)/)?.[1];
+  const gid = url.searchParams.get("gid") || new URLSearchParams(url.hash.slice(1)).get("gid");
+  if (!spreadsheetId || !gid || !/^\d+$/.test(gid)) throw new Error("Link Sheet phải có ID và gid của trang ảnh chọn.");
+  const { sheets } = getGoogleApi();
+  const metadata = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties(sheetId,title)" });
+  const title = metadata.data.sheets?.find((s) => s.properties?.sheetId === Number(gid))?.properties?.title;
+  if (!title) throw new Error("Không tìm thấy trang Sheet ảnh chọn.");
+  const result = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${quoteSheet(title)}!A:D` });
+  const rows = result.data.values || [];
+  const header = (rows[0] || []).map((v: unknown) => String(v).trim().toUpperCase());
+  if (header[1] !== "TÊN FILE" || header[2] !== "AP" || header[3] !== "ĐB") throw new Error("Cấu trúc Sheet không đúng: cần cột TÊN FILE, AP và ĐB.");
+  const truthy = (v: unknown) => ["x", "yes", "true", "ok", "y", "có", "co", "1"].includes(String(v || "").trim().toLowerCase());
+  return rows.slice(1).filter((r) => String(r[1] || "").trim()).map((r) => ({ name: String(r[1]).trim(), group: truthy(r[2]) ? "ANH PHONG" : truthy(r[3]) ? "ANH DE BAN" : "ANH SUA" }));
 }
 
 export async function createWorkflowList(payload: Record<string, unknown>) {

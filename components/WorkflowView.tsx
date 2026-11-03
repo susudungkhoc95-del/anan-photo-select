@@ -8,6 +8,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { CalendarClock, ChevronDown, Copy, ExternalLink, FolderSync, History, MoreVertical, Plus, Search, Settings, Trash2, X } from "lucide-react";
 import { rpc } from "@/components/App";
 import QuickLinks from "@/components/QuickLinks";
+import PhotoClassifier from "@/components/PhotoClassifier";
 import EnvironmentSwitcher from "@/components/EnvironmentSwitcher";
 import type { QuickLink, StudioSettings, WorkflowBoard, WorkflowCard, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
 import { parseWorkflowQuery, sortWorkflowCardsByReturnDate, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
@@ -612,6 +613,7 @@ function CardModal({ board, cardId, onClose, onSave, onChanged, onLabelsChanged,
         <div className="workflow-inline-field"><label htmlFor="workflow-wedding-date">Ngày cưới</label><div className="workflow-inline-control"><input id="workflow-wedding-date" type="date" value={weddingDate} onChange={(event) => setWeddingDate(event.target.value)} /><button type="button" className="secondary compact" disabled={!weddingDate || busy} onClick={() => setWeddingDate("")}>Xóa ngày</button></div></div>
         <div className="workflow-inline-field"><label htmlFor="workflow-return-date">Ngày hẹn trả ảnh</label><div className="workflow-inline-control"><input id="workflow-return-date" type="date" value={photoReturnDate} onChange={(event) => setPhotoReturnDate(event.target.value)} /><button type="button" className="secondary compact" disabled={!photoReturnDate || busy} onClick={() => setPhotoReturnDate("")}>Xóa ngày</button></div></div>
         <div className="workflow-time"><span className="workflow-created">Thẻ tạo: <b>{formatTime(card.createdAt)}</b></span><span className="workflow-submitted">Khách gửi ảnh: <b>{formatTime(card.selectionSubmittedAt)}</b></span><span className="workflow-updated">Cập nhật: <b>{formatTime(card.updatedAt)}</b></span>{card.completedAt && <span className="workflow-completed">Hoàn thành: <b>{formatTime(card.completedAt)}</b></span>}<span className={`workflow-status ${age.level}`}>Trạng thái: <b>{age.label}</b></span></div>
+        {card.source === "dp_select" && links.some((link) => link.label === "Sheet ảnh chọn") && <PhotoClassifier cardId={card.id} />}
         {card.dpSummary && <section className="workflow-dp-info"><h3>Tóm tắt Sheet ảnh chọn</h3><p>{card.dpSummary}</p></section>}
         {card.dpPhotoNoteCount > 0 && <p className="workflow-dp-photo-note">Có ghi chú riêng cho {card.dpPhotoNoteCount} ảnh · Xem chi tiết trong Sheet ảnh chọn.</p>}
         {card.dpAlbumNote && <section className="workflow-dp-note"><h3>Lưu ý chung từ khách</h3><p>{card.dpAlbumNote}</p></section>}
