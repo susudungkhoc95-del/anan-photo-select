@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
   private func makeWindow(url: URL) -> NSWindow {
     let configuration = WKWebViewConfiguration()
     configuration.websiteDataStore = .default()
+    configuration.userContentController.addScriptMessageHandler(ClassifierBridge(), contentWorld: .page, name: "dpClassifier")
     let scrollbarStyle = """
       const style = document.createElement('style');
       style.textContent = 'html, body { scrollbar-color: #496a85 #0a2034 !important; } ::-webkit-scrollbar { width: 10px !important; height: 10px !important; } ::-webkit-scrollbar-track { background: #0a2034 !important; } ::-webkit-scrollbar-thumb { background: #496a85 !important; border: 2px solid #0a2034 !important; border-radius: 999px !important; }';
