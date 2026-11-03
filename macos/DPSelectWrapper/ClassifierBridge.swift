@@ -21,41 +21,30 @@ final class ClassifierBridge: NSObject, WKScriptMessageHandlerWithReply {
       replyHandler(nil, "Yêu cầu không hợp lệ."); return
     }
     guard !working else { replyHandler(nil, "Đang phân loại ảnh."); return }
-    if action == "prepare" {
+    if action == "choose" {
       directory = nil; plan = []
-      guard let rows = body["rows"] as? [[String: String]], rows.count <= 10000,
-            rows.allSatisfy({ ($0["name"]?.count ?? 0) > 0 && ($0["name"]?.count ?? 0) <= 255 && groups.contains($0["group"] ?? "") }) else {
-        replyHandler(nil, "Danh sách ảnh không hợp lệ."); return
-      }
       let panel = NSOpenPanel()
       panel.title = "Chọn thư mục ảnh gốc"
       panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
       guard panel.runModal() == .OK, let root = panel.url else { replyHandler(nil, "Đã hủy chọn thư mục."); return }
+      directory = root
+      replyHandler(["directory": root.lastPathComponent, "items": []], nil)
+    } else if action == "run" {
+      guard let root = directory else { replyHandler(nil, "Hãy chọn thư mục ảnh gốc."); return }
+      guard let rows = body["rows"] as? [[String: String]], !rows.isEmpty, rows.count <= 10000,
+            rows.allSatisfy({ ($0["name"]?.count ?? 0) > 0 && ($0["name"]?.count ?? 0) <= 255 && groups.contains($0["group"] ?? "") }) else {
+        replyHandler(nil, "Danh sách ảnh không hợp lệ."); return
+      }
       working = true
       DispatchQueue.global(qos: .userInitiated).async {
         let result = self.makePlan(root: root, rows: rows)
-        DispatchQueue.main.async {
-          self.working = false
-          switch result {
-          case .success(let entries):
-            self.directory = root; self.plan = entries
-            replyHandler(["directory": root.lastPathComponent, "items": self.response(entries)], nil)
-          case .failure(let error): replyHandler(nil, error.localizedDescription)
-          }
+        switch result {
+        case .success(let entries):
+          let results = self.execute(root: root, entries: entries)
+          DispatchQueue.main.async { self.working = false; replyHandler(["items": self.response(results)], nil) }
+        case .failure(let error):
+          DispatchQueue.main.async { self.working = false; replyHandler(nil, error.localizedDescription) }
         }
-      }
-    } else if action == "run" {
-      guard let root = directory, !plan.isEmpty else { replyHandler(nil, "Hãy chọn thư mục và kiểm tra trước."); return }
-      let alert = NSAlert()
-      alert.messageText = "Di chuyển ảnh đã chọn?"
-      alert.informativeText = "Ảnh sẽ được di chuyển trong thư mục \(root.lastPathComponent). Các file trùng hoặc đã tồn tại sẽ được bỏ qua."
-      alert.addButton(withTitle: "Di chuyển"); alert.addButton(withTitle: "Hủy")
-      guard alert.runModal() == .alertFirstButtonReturn else { replyHandler(nil, "Đã hủy phân loại."); return }
-      let current = plan
-      plan = []; working = true
-      DispatchQueue.global(qos: .userInitiated).async {
-        let entries = self.execute(root: root, entries: current)
-        DispatchQueue.main.async { self.working = false; replyHandler(["items": self.response(entries)], nil) }
       }
     } else { replyHandler(nil, "Tác vụ không hợp lệ.") }
   }
