@@ -1132,3 +1132,4 @@ body.admin-mode .workflow-add-card-icon:hover { color: var(--ink) !important; }
   .review-panel > footer { align-items: stretch; justify-content: flex-end; flex-wrap: wrap; }
 }
 
+.workflow-link-actions .workflow-download-action { display: inline-flex; align-items: center; text-decoration: none; font-size: 12px; font-weight: 600; }
