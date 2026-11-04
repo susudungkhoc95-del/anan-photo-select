@@ -308,10 +308,11 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
 
   async function moveCard(cardId: string, targetListId: string, beforeCardId?: string, dropPosition: "top" | "before" | "bottom" = "top") {
     const currentBoard = boardRef.current || board;
-    if (!currentBoard || query.trim()) return;
+    if (!currentBoard || (query.trim() && !searchQuery.hasReturnDate)) return;
     const card = currentBoard.cards.find((item) => item.id === cardId);
     if (!card) return;
     const sourceListId = card.listId;
+    if (searchQuery.hasReturnDate && sourceListId === targetListId) return;
     const targetList = currentBoard.lists.find((list) => list.id === targetListId);
     const enteringDone = sourceListId !== targetListId && targetList?.systemKey === "DONE";
     const effectiveDropPosition = enteringDone ? "top" as const : dropPosition;
@@ -354,6 +355,7 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
       // refresh cannot replace the successful drag with an older snapshot.
       pendingCardMovesRef.current.set(cardId, savedCard);
       await load(true);
+      if (searchQuery.hasReturnDate) notify(`Đã chuyển thẻ sang “${targetList?.name || "danh sách mới"}”.`);
     } catch (error) {
       pendingCardMovesRef.current.delete(cardId);
       setBoard(currentBoard);
@@ -372,13 +374,13 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
   }
 
   function onNativeCardDragStart(cardId: string, event: React.DragEvent<HTMLElement>) {
-    if (query.trim()) { event.preventDefault(); return; }
+    if (query.trim() && !searchQuery.hasReturnDate) { event.preventDefault(); return; }
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", cardId);
   }
 
   function onNativeCardDragOver(targetListId: string, beforeCardId: string | undefined, dropPosition: "top" | "before" | "bottom", event: React.DragEvent<HTMLElement>) {
-    if (query.trim()) return;
+    if (query.trim() && !searchQuery.hasReturnDate) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     const cardId = event.dataTransfer.getData("text/plain");
@@ -451,7 +453,7 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
     </header>
     <QuickLinks links={quickLinks} />
     {toast && <div className="toast" role="status">{toast}</div>}
-    {query && <p className="workflow-search-note" role="status">{searchQuery.hasReturnDate && <>Có hẹn trả ảnh trong Cần làm / Đang làm · {filtered.length}/{board.cards.length} thẻ{board.doneHasMore ? " đã tải" : ""} · Ngày hẹn từ sớm đến muộn. </>}Xóa tìm kiếm để sắp xếp thẻ.</p>}
+    {query && <p className="workflow-search-note" role="status">{searchQuery.hasReturnDate ? <>Có hẹn trả ảnh trong Cần làm / Đang làm · {filtered.length}/{board.cards.length} thẻ{board.doneHasMore ? " đã tải" : ""} · Ngày hẹn từ sớm đến muộn. Kéo thẻ sang danh sách khác để chuyển trạng thái.</> : <>Xóa tìm kiếm để sắp xếp thẻ.</>}</p>}
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragCancel={() => { if (dragOriginRef.current) setBoard(dragOriginRef.current.board); dragOriginRef.current = null; setActiveDragId(null); }} onDragEnd={(event) => { void onDragEnd(event).finally(() => { dragOriginRef.current = null; setActiveDragId(null); }); }}>
       <SortableContext items={board.lists.map((list) => `list-${list.id}`)} strategy={horizontalListSortingStrategy}>
         <div className="workflow-board">
