@@ -1134,3 +1134,5 @@ body.admin-mode .workflow-add-card-icon:hover { color: var(--ink) !important; }
 }
 
 .workflow-link-actions .workflow-download-action { display: inline-flex; align-items: center; text-decoration: none; font-size: 12px; font-weight: 600; }
+body.admin-mode .workflow-link-actions .workflow-download-action { border-color: rgba(151, 195, 239, .34); color: #f4f9ff; background: #117c7a; }
+body.admin-mode.admin-light-mode .workflow-link-actions .workflow-download-action { border-color: rgba(255, 255, 255, .42); color: #fff; background: linear-gradient(180deg, #65f2dc, var(--accent)); }
