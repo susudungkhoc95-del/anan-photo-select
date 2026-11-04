@@ -1132,12 +1132,3 @@ body.admin-mode .workflow-add-card-icon:hover { color: var(--ink) !important; }
   .review-panel > footer { align-items: stretch; justify-content: flex-end; flex-wrap: wrap; }
 }
 
-.classifier-panel { margin-top: 12px; }
-.classifier-panel p { margin: 8px 0; }
-.classifier-results { max-height: 240px; overflow: auto; margin: 10px 0; }
-.classifier-results table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.classifier-results th, .classifier-results td { padding: 6px; text-align: left; border-bottom: 1px solid #31505a; }
-.classifier-overlay { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0, 0, 0, .65); }
-.classifier-report { background: #0c2531; border: 1px solid #31505a; border-radius: 14px; padding: 20px; width: min(620px, 100%); max-height: 80vh; overflow: auto; }
-.classifier-report h3 { margin: 0 0 12px; }
-.classifier-report p { margin: 8px 0; }

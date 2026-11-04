@@ -28,34 +28,28 @@ async function exists(dir: FileSystemDirectoryHandle, name: string) {
   try { await dir.getFileHandle(name); return true; } catch (e) { if (missing(e)) return false; throw e; }
 }
 
-export default function PhotoClassifier({ cardId }: { cardId: string }) {
-  const [items, setItems] = useState<Item[]>([]);
+export default function PhotoClassifier({ cardId, onNotice, onError }: { cardId: string; onNotice: (message: string) => void; onError: (error: Error) => void }) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [folder, setFolder] = useState("");
-  const [showResults, setShowResults] = useState(false);
 
   async function classify() {
-    setError(""); setItems([]); setFolder(""); setShowResults(false);
     const native = nativeBridge();
     try {
       let dir: Directory | undefined;
       if (native) {
         setBusy(true);
-        const chosen = await native.postMessage({ action: "choose" });
-        setFolder(chosen.directory || "");
+        await native.postMessage({ action: "choose" });
       } else {
         const picker = (window as Window & { showDirectoryPicker?: (options: { mode: "readwrite" }) => Promise<Directory> }).showDirectoryPicker;
         if (!picker) throw new Error("Vui lòng dùng ứng dụng DP Workflow mới hoặc Chrome/Edge để chọn thư mục.");
         dir = await picker({ mode: "readwrite" });
         setBusy(true);
-        setFolder(dir.name);
       }
       const rows = await rpc<SheetRow[]>("getClassifierSheet", { cardId, scope: "dp" });
       if (!rows.length) throw new Error("Sheet không có ảnh để phân loại.");
+      let completed: { status: string }[] = [];
       if (native) {
         const result = await native.postMessage({ action: "run", rows });
-        setItems(result.items.map((item) => ({ name: item.path || item.name, group: item.group, status: item.status })));
+        completed = result.items;
       } else if (dir) {
         const sources = await scan(dir);
         const counts = new Map<string, number>();
@@ -83,27 +77,17 @@ export default function PhotoClassifier({ cardId }: { cardId: string }) {
             await item.source.parent.removeEntry(item.source.file.name);
             results[i] = { ...item, status: "Đã di chuyển" };
           } catch (e) { results[i] = { ...item, status: `Lỗi: ${e instanceof Error ? e.message : "không thể di chuyển"}` }; }
-          setItems([...results]);
         }
-        setItems(results);
+        completed = results;
       }
-      setShowResults(true);
+      const moved = completed.filter((item) => item.status === "Đã di chuyển").length;
+      const skipped = completed.length - moved;
+      onNotice(`Đã lọc ${moved} ảnh${skipped ? ` · ${skipped} ảnh bị bỏ qua hoặc lỗi` : ""}.`);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      if (!(e instanceof DOMException && e.name === "AbortError") && !message.includes("Đã hủy chọn thư mục")) { setError(message); setShowResults(true); }
+      if (!(e instanceof DOMException && e.name === "AbortError") && !message.includes("Đã hủy chọn thư mục")) onError(new Error(message));
     } finally { setBusy(false); }
   }
 
-  return <>
-    <button type="button" className="text-button" disabled={busy} onClick={() => void classify()}>{busy ? "Đang lọc…" : "Lọc ảnh"}</button>
-    {showResults && <div className="classifier-overlay" role="dialog" aria-modal="true" aria-label="Kết quả lọc ảnh">
-      <div className="classifier-report">
-        <h3>Kết quả lọc ảnh</h3>
-        {folder && <p>Thư mục: {folder} · Đã di chuyển: {items.filter((item) => item.status === "Đã di chuyển").length} · Bỏ qua hoặc lỗi: {items.filter((item) => item.status !== "Đã di chuyển").length}</p>}
-        {error && <p role="alert">{error}</p>}
-        {items.length > 0 && <div className="classifier-results"><table><thead><tr><th>Ảnh</th><th>Nhóm</th><th>Trạng thái</th></tr></thead><tbody>{items.map((item, i) => <tr key={i}><td>{item.source?.path || item.name}</td><td>{item.group}</td><td>{item.status}</td></tr>)}</tbody></table></div>}
-        <button type="button" className="secondary compact" onClick={() => setShowResults(false)}>Đóng</button>
-      </div>
-    </div>}
-  </>;
+  return <button type="button" className="text-button" disabled={busy} onClick={() => void classify()}>{busy ? "Đang lọc…" : "Lọc ảnh"}</button>;
 }
