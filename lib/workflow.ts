@@ -401,10 +401,16 @@ export async function getWorkflowBoard(payload: Record<string, unknown> = {}) {
 }
 
 export async function getClassifierSheet(payload: Record<string, unknown>) {
-  const board = await getWorkflowBoard(payload);
-  const card = board.cards.find((item) => item.id === String(payload.cardId || ""));
+  const workspaceId = getWorkflowWorkspaceId(workflowScope(payload));
+  const cardId = text(payload.cardId, 100);
+  if (!cardId) throw new Error("Không tìm thấy thẻ DP Select.");
+  const [cardRows, linkRows] = await Promise.all([
+    rows(TABS.cards, workspaceId, { payloadIndex: 0, payloadEquals: cardId }),
+    rows(TABS.links, workspaceId, { payloadIndex: 2, payloadEquals: cardId })
+  ]);
+  const card = cardRows.map((row) => cardFrom(row.values)).find((item) => item.id === cardId);
   if (!card || card.source !== "dp_select") throw new Error("Không tìm thấy thẻ DP Select.");
-  const link = board.links.find((item) => item.cardId === card.id && item.label === "Sheet ảnh chọn");
+  const link = linkRows.map((row) => linkFrom(row.values)).find((item) => item.cardId === card.id && item.label === "Sheet ảnh chọn");
   if (!link) throw new Error("Thẻ chưa có Sheet ảnh chọn.");
   const url = new URL(link.url);
   if (url.hostname !== "docs.google.com") throw new Error("Link Sheet không hợp lệ.");
@@ -416,11 +422,11 @@ export async function getClassifierSheet(payload: Record<string, unknown>) {
   const title = metadata.data.sheets?.find((s) => s.properties?.sheetId === Number(gid))?.properties?.title;
   if (!title) throw new Error("Không tìm thấy trang Sheet ảnh chọn.");
   const result = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${quoteSheet(title)}!A:D` });
-  const rows = result.data.values || [];
-  const header = (rows[0] || []).map((v: unknown) => String(v).trim().toUpperCase());
+  const sheetRows = result.data.values || [];
+  const header = (sheetRows[0] || []).map((v: unknown) => String(v).trim().toUpperCase());
   if (header[1] !== "TÊN FILE" || header[2] !== "AP" || header[3] !== "ĐB") throw new Error("Cấu trúc Sheet không đúng: cần cột TÊN FILE, AP và ĐB.");
   const truthy = (v: unknown) => ["x", "yes", "true", "ok", "y", "có", "co", "1"].includes(String(v || "").trim().toLowerCase());
-  return rows.slice(1).filter((r) => String(r[1] || "").trim()).map((r) => ({ name: String(r[1]).trim(), group: truthy(r[2]) ? "ANH PHONG" : truthy(r[3]) ? "ANH DE BAN" : "ANH SUA" }));
+  return sheetRows.slice(1).filter((r) => String(r[1] || "").trim()).map((r) => ({ name: String(r[1]).trim(), group: truthy(r[2]) ? "ANH PHONG" : truthy(r[3]) ? "ANH DE BAN" : "ANH SUA" }));
 }
 
 export async function createWorkflowList(payload: Record<string, unknown>) {
