@@ -931,7 +931,8 @@ body.admin-mode .workflow-add-card-icon:hover { color: var(--ink) !important; }
 .platform-link-icon { flex: 0 0 auto; color: var(--muted); }
 .workflow-link-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; font-weight: 500; }
 .workflow-link-actions { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; }
-.workflow-link-actions .text-button { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; }
+.workflow-link-actions .text-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 28px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--accent-dark); background: rgba(19, 67, 78, .56); box-shadow: none; font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.workflow-link-actions .text-button:hover:not(:disabled) { border-color: rgba(92, 222, 210, .52); background: rgba(31, 91, 100, .72); }
 .workflow-raw-action { margin-top: 12px; }
 .text-button { border: 0; padding: 4px; color: var(--accent-dark); background: transparent; box-shadow: none; }
 .text-button.danger { color: #c53939; }
