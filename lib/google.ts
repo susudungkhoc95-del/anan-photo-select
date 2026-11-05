@@ -262,6 +262,8 @@ async function writePhotoRows(album: Album, photos: Photo[]) {
 }
 
 export async function createAlbum(payload: Record<string, unknown>) {
+  const weddingDate = clean(payload.weddingDate, 10);
+  if (weddingDate && (!/^\d{4}-\d{2}-\d{2}$/.test(weddingDate) || !Number.isFinite(Date.parse(weddingDate)) || new Date(weddingDate).toISOString().slice(0, 10) !== weddingDate)) throw new Error("Ngày cưới không hợp lệ.");
   const folderUrl = clean(payload.folderUrl, 1000);
   const folderId = extractFolderId(folderUrl);
   if (!folderId) throw new Error("Không đọc được ID thư mục Drive.");
@@ -292,6 +294,7 @@ export async function createAlbum(payload: Record<string, unknown>) {
   const album: Album = {
     id,
     title: clean(payload.title) || root.data.name || "Album",
+    weddingDate,
     folderId,
     folderUrl,
     rawFolderId,

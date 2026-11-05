@@ -262,7 +262,7 @@ async function syncWaitingSelectionCards(workspaceId: string, board: WorkflowBoa
     const cardCreatedAt = album.createdAt || timestamp;
     const cardId = `dp_${createHash("sha256").update(`${workspaceId}:${album.id}`).digest("hex").slice(0, 24)}`;
     const card: WorkflowCard = {
-      id: cardId, workspaceId, listId: waiting.id, title: text(album.title, 200) || "Album DP Select", note: "", weddingDate: "", photoReturnDate: "", position: nextPosition, orderKey: legacyOrderKey(nextPosition++),
+      id: cardId, workspaceId, listId: waiting.id, title: text(album.title, 200) || "Album DP Select", note: "", weddingDate: album.weddingDate || "", photoReturnDate: "", position: nextPosition, orderKey: legacyOrderKey(nextPosition++),
       source: "dp_select", dpSelectAlbumId: album.id, dpSelectSubmissionId: "", selectionSubmittedAt: "", createdAt: cardCreatedAt, updatedAt: timestamp,
       completedAt: "", createdBy: "dp_select", dpSummary: `Chờ khách gửi ảnh chọn · ${album.photoCount} ảnh trong album`, dpAlbumNote: "", dpPhotoNoteCount: 0
     };
@@ -732,6 +732,7 @@ export async function createOrUpdateCardFromSelection(album: Album, selection: S
     const existing = matching[0];
     if (existing) {
       const wasWaiting = Boolean(waiting && existing.listId === waiting.id);
+      existing.weddingDate = existing.weddingDate || album.weddingDate || "";
       existing.dpSelectSubmissionId = selection.sessionId;
       // Keep the original customer submission as the work-age baseline.
       // Re-submitting choices updates the result sheet but must not reset “Ngày N”.
@@ -764,7 +765,7 @@ export async function createOrUpdateCardFromSelection(album: Album, selection: S
     const cardId = `dp_${createHash("sha256").update(`${workspaceId}:${album.id}`).digest("hex").slice(0, 24)}`;
     const nextPosition = Math.max(-1, ...board.cards.filter((item) => item.listId === todo.id).map((item) => item.position)) + 1;
     const lastCard = board.cards.filter((item) => item.listId === todo.id).sort((a, b) => a.orderKey.localeCompare(b.orderKey)).at(-1);
-    const card: WorkflowCard = { id: cardId, workspaceId, listId: todo.id, title: text(album.title, 200) || "Album DP Select", note: "", weddingDate: "", photoReturnDate: "", position: nextPosition, orderKey: orderKeyBetween(lastCard?.orderKey) || legacyOrderKey(nextPosition), source: "dp_select", dpSelectAlbumId: album.id, dpSelectSubmissionId: selection.sessionId, selectionSubmittedAt: selection.submittedAt, createdAt: album.createdAt || timestamp, updatedAt: timestamp, completedAt: "", createdBy: "dp_select", dpSummary: dpSelectionSummary(selection), dpAlbumNote: selection.albumNote, dpPhotoNoteCount: Object.values(selection.photoNotes).filter(Boolean).length };
+    const card: WorkflowCard = { id: cardId, workspaceId, listId: todo.id, title: text(album.title, 200) || "Album DP Select", note: "", weddingDate: album.weddingDate || "", photoReturnDate: "", position: nextPosition, orderKey: orderKeyBetween(lastCard?.orderKey) || legacyOrderKey(nextPosition), source: "dp_select", dpSelectAlbumId: album.id, dpSelectSubmissionId: selection.sessionId, selectionSubmittedAt: selection.submittedAt, createdAt: album.createdAt || timestamp, updatedAt: timestamp, completedAt: "", createdBy: "dp_select", dpSummary: dpSelectionSummary(selection), dpAlbumNote: selection.albumNote, dpPhotoNoteCount: Object.values(selection.photoNotes).filter(Boolean).length };
     await writeRow(TABS.cards, card.id, workspaceId, cardValues(card));
     try {
       const link: WorkflowLink = { id: randomUUID(), workspaceId, cardId: card.id, label: "Sheet ảnh chọn", url: spreadsheetUrl, position: 0, createdAt: timestamp, updatedAt: timestamp };

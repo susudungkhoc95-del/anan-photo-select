@@ -11,6 +11,7 @@ export type RawReport = {
 export type Album = {
   id: string;
   title: string;
+  weddingDate?: string;
   folderId: string;
   folderUrl: string;
   rawFolderId?: string;

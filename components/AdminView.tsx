@@ -38,7 +38,7 @@ function writeSessionCache(key: string, value: unknown) {
 }
 
 const initialForm = {
-  title: "", folderUrl: "", rawFolderUrl: "", customerChatUrl: "", maxSelect: "0",
+  title: "", weddingDate: "", folderUrl: "", rawFolderUrl: "", customerChatUrl: "", maxSelect: "0",
   largePrintLimit: "2", tablePrintLimit: "10", guide: ""
 };
 
@@ -282,6 +282,7 @@ export default function AdminView() {
           <form className="form-stack" onSubmit={create}>
             <label>Tên album<input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ví dụ: Linh & Minh - 20.05.2026" /></label>
             <label>Link thư mục Drive chứa ảnh<span className="input-with-icon"><Images className="input-symbol" size={18} /><input value={form.folderUrl} onChange={(e) => setForm({ ...form, folderUrl: e.target.value })} placeholder="https://drive.google.com/drive/folders/…" required /></span></label>
+            <label>Ngày cưới<input type="date" value={form.weddingDate} onChange={(e) => setForm({ ...form, weddingDate: e.target.value })} /></label>
             <label>Link thư mục Drive chứa ảnh RAW<span className="input-with-icon"><Images className="input-symbol" size={18} /><input value={form.rawFolderUrl} onChange={(e) => setForm({ ...form, rawFolderUrl: e.target.value })} placeholder="https://drive.google.com/drive/folders/…" /></span></label>
             <label>Link nhóm chat khách<span className="input-with-icon"><LinkIcon className="input-symbol" size={18} /><input value={form.customerChatUrl} onChange={(e) => setForm({ ...form, customerChatUrl: e.target.value })} placeholder="https://zalo.me/g/... hoặc https://m.me/..." /></span></label>
             <button type="button" className={`secondary selection-settings-toggle ${selectionSettingsOpen ? "open" : ""}`} onClick={() => setSelectionSettingsOpen((open) => !open)}>Thông số chọn ảnh <ChevronDown size={18} /></button>
@@ -394,7 +395,10 @@ function AlbumCard({ album, onAction, onNotify }: { album: ListedAlbum; onAction
           <button className="secondary compact" onClick={() => run("updateCustomerChat", { customerChatUrl: chat })}>Lưu nhóm chat</button>
           {album.customerChatUrl && <a className="button secondary compact" href={album.customerChatUrl} target="_blank" rel="noreferrer">Mở nhóm chat</a>}
         </div>
+        <div className="album-management-actions">
         <button className="secondary compact album-settings-toggle" onClick={() => setSelectionSettingsOpen((open) => !open)}><Settings size={15} /> {selectionSettingsOpen ? "Ẩn thông số chọn ảnh" : "Sửa thông số chọn ảnh"}</button>
+        <button className="secondary compact" disabled={Boolean(busy)} onClick={() => run("refreshAlbum")}><RefreshCw size={15} /> {busy === "refreshAlbum" ? "Đang quét Drive…" : "Cập nhật ảnh từ Drive"}</button>
+        </div>
         {selectionSettingsOpen && <div className="album-selection-editor">
           <label>Số ảnh tối đa khách được chọn<input type="number" min="0" value={selectionSettings.maxSelect} onChange={(e) => setSelectionSettings({ ...selectionSettings, maxSelect: e.target.value })} /></label>
           <label>Ảnh phóng to 60×90<input type="number" min="0" value={selectionSettings.largePrintLimit} onChange={(e) => setSelectionSettings({ ...selectionSettings, largePrintLimit: e.target.value })} /></label>
@@ -402,7 +406,6 @@ function AlbumCard({ album, onAction, onNotify }: { album: ListedAlbum; onAction
           <label>Hướng dẫn chọn ảnh<textarea rows={6} value={selectionSettings.guide} onChange={(e) => setSelectionSettings({ ...selectionSettings, guide: e.target.value })} /></label>
           <button className="secondary compact" disabled={Boolean(busy)} onClick={() => run("updateAlbum", selectionSettings)}>Lưu thông số chọn ảnh</button>
         </div>}
-        <button className="secondary compact" disabled={Boolean(busy)} onClick={() => run("refreshAlbum")}><RefreshCw size={15} /> {busy === "refreshAlbum" ? "Đang quét Drive…" : "Cập nhật ảnh từ Drive"}</button>
       </div>}
       {confirmAction && <div className="modal-backdrop album-confirm-backdrop" onMouseDown={() => setConfirmAction(null)}><section className="album-confirm-modal" onMouseDown={(event) => event.stopPropagation()}>
         <h2>{confirmAction === "deleteAlbum" ? "Xóa album?" : "Lưu trữ album?"}</h2>
