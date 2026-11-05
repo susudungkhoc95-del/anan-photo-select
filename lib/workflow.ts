@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "crypto";
 import { albumSpreadsheetUrl, archiveAlbum, getGoogleApi, getWorkflowWorkspaceId, listAlbums, quoteSheet } from "@/lib/google";
 import type { Album, Selection, WorkflowActivity, WorkflowBoard, WorkflowCard, WorkflowCardLabel, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
 import { readAppRecords, removeAppRecord, saveAppRecord } from "@/lib/supabase";
-import { workflowAge } from "@/lib/workflow-utils";
+import { workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
 import { sendWorkflowAgeTelegram, sendWorkflowMoveTelegram, sendWorkflowReturnDateTelegram } from "@/lib/telegram";
 
 const TABS = {
@@ -128,18 +128,21 @@ function activityValues(record: WorkflowActivity) { return [record.id, record.wo
 function labelValues(record: WorkflowLabel) { return [record.id, record.workspaceId, record.name, record.color, String(record.position), record.createdAt, record.updatedAt]; }
 function cardLabelValues(record: WorkflowCardLabel) { return [record.id, record.workspaceId, record.cardId, record.labelId, record.createdAt]; }
 
-async function readBoard(workspaceId: string, doneOffset = 0, includeAllDone = false): Promise<WorkflowBoard> {
+async function readBoard(workspaceId: string, doneOffset = 0, includeAllDone = true): Promise<WorkflowBoard> {
   const listRows = await rows(TABS.lists, workspaceId);
   const lists = listRows.map((row) => row.values).map(listFrom).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt));
   const doneList = lists.find((list) => list.systemKey === "DONE");
-  // DONE must be ordered by the moment the card was completed, not by the
-  // record's updated_at. The latter changes when somebody edits an old card
-  // and makes old cards jump back near the top. Since completedAt lives in the
-  // payload, read all DONE cards and sort them below by that stable value.
+  const pageSize = 20;
+  // Merge bounded streams so legacy cards use createdAt when completedAt is absent.
+  const doneRows = !includeAllDone && doneList ? await Promise.all([
+    rows(TABS.cards, workspaceId, { payloadIndex: 2, payloadEquals: doneList.id, nonEmptyPayloadIndex: 12, orderByPayload: 12, secondaryOrderByPayload: 10, ascending: false, limit: doneOffset + pageSize + 1 }),
+    rows(TABS.cards, workspaceId, { payloadIndex: 2, payloadEquals: doneList.id, emptyPayloadIndex: 12, orderByPayload: 10, ascending: false, limit: doneOffset + pageSize + 1 })
+  ]).then((streams) => streams.flat().sort((a, b) => (b.values[12] || b.values[10]).localeCompare(a.values[12] || a.values[10]) || b.values[10].localeCompare(a.values[10]) || a.id.localeCompare(b.id))) : [];
+  const doneHasMore = doneRows.length > doneOffset + pageSize;
   const [cardRows, linkRows, activityRows, labelRows, cardLabelRows] = await Promise.all([
     doneList && !includeAllDone ? Promise.all([
       rows(TABS.cards, workspaceId, { payloadIndex: 2, payloadNotEquals: doneList.id }),
-      rows(TABS.cards, workspaceId, { payloadIndex: 2, payloadEquals: doneList.id })
+      Promise.resolve(doneRows.slice(doneOffset, doneOffset + pageSize))
     ]).then(([active, done]) => [...active, ...done]) : rows(TABS.cards, workspaceId),
     rows(TABS.links, workspaceId),
     rows(TABS.activities, workspaceId),
@@ -159,8 +162,8 @@ async function readBoard(workspaceId: string, doneOffset = 0, includeAllDone = f
     workspaceId,
     lists,
     cards,
-    doneHasMore: false,
-    doneNextOffset: doneList ? doneLoaded : 0,
+    doneHasMore,
+    doneNextOffset: doneList ? doneOffset + doneLoaded : 0,
     links: linkRows.map((row) => row.values).map(linkFrom).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt)),
     activities: activityRows.map((row) => row.values).map(activityFrom).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     labels: labelRows.map((row) => row.values).map(labelFrom).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt)),
@@ -175,16 +178,16 @@ async function appendActivity(workspaceId: string, cardId: string, activityType:
 }
 
 async function ensureDefaultLists(workspaceId: string, scope: WorkflowScope = "dp") {
-  const board = await readBoard(workspaceId);
+  const lists = (await rows(TABS.lists, workspaceId)).map((row) => listFrom(row.values));
   const defaults: Array<{ name: string; systemKey: WorkflowList["systemKey"] }> = [
     { name: "CẦN LÀM", systemKey: "TODO_INBOX" },
     { name: "ĐANG LÀM", systemKey: "IN_PROGRESS" },
     { name: "DONE", systemKey: "DONE" }
   ];
   if (scope === "dp") defaults.push({ name: "CHƯA CHỌN XONG", systemKey: "WAITING_SELECTION" });
-  let nextPosition = Math.max(-1, ...board.lists.map((list) => list.position)) + 1;
+  let nextPosition = Math.max(-1, ...lists.map((list) => list.position)) + 1;
   for (const item of defaults) {
-    if (board.lists.some((list) => list.systemKey === item.systemKey)) continue;
+    if (lists.some((list) => list.systemKey === item.systemKey)) continue;
     const timestamp = now();
     const list: WorkflowList = { id: randomUUID(), workspaceId, name: item.name, position: nextPosition++, systemKey: item.systemKey, createdAt: timestamp, updatedAt: timestamp };
     await writeRow(TABS.lists, list.id, workspaceId, listValues(list));
@@ -220,10 +223,10 @@ async function syncCustomerChatLink(workspaceId: string, links: WorkflowLink[], 
 }
 
 /** Keeps a final system column in sync with active albums that customers have not submitted yet. */
-async function syncWaitingSelectionCards(workspaceId: string, board: WorkflowBoard): Promise<WorkflowBoard> {
+async function syncWaitingSelectionCards(workspaceId: string, board: WorkflowBoard, reload = () => readBoard(workspaceId), albumsPromise = activeAlbums()): Promise<WorkflowBoard> {
   const waiting = board.lists.find((list) => list.systemKey === "WAITING_SELECTION");
   if (!waiting) return board;
-  const albums = await activeAlbums();
+  const albums = await albumsPromise;
   const activeAlbumIds = new Set(albums.map((album) => album.id));
   const orphanCards = board.cards.filter((card) =>
     card.source === "dp_select" &&
@@ -276,7 +279,7 @@ async function syncWaitingSelectionCards(workspaceId: string, board: WorkflowBoa
     await appendActivity(workspaceId, card.id, "CARD_WAITING_FOR_SELECTION", "Đã tạo thẻ chờ khách gửi ảnh chọn.", "dp_select");
     changed = true;
   }
-  return changed ? readBoard(workspaceId) : board;
+  return changed ? reload() : board;
 }
 
 /** Repair legacy/stale Sheet links from the album's canonical spreadsheet ID. */
@@ -307,13 +310,15 @@ async function syncResultSheetLinks(workspaceId: string, board: WorkflowBoard, a
   return changed;
 }
 
-async function boardForCurrentWorkspace(scope: WorkflowScope = "dp", doneOffset = 0) {
+async function boardForCurrentWorkspace(scope: WorkflowScope = "dp", doneOffset = 0, paged = false) {
   const workspaceId = getWorkflowWorkspaceId(scope);
   await ensureDefaultLists(workspaceId, scope);
-  const board = scope === "show" ? await readBoard(workspaceId, doneOffset) : await syncWaitingSelectionCards(workspaceId, await readBoard(workspaceId, doneOffset));
+  const reload = () => readBoard(workspaceId, doneOffset, !paged);
+  let board = await reload();
   if (scope === "show") return board;
-  const albums = await activeAlbums();
-  return await syncResultSheetLinks(workspaceId, board, albums) ? readBoard(workspaceId, doneOffset) : board;
+  const albumsPromise = activeAlbums();
+  board = await syncWaitingSelectionCards(workspaceId, board, reload, albumsPromise);
+  return await syncResultSheetLinks(workspaceId, board, await albumsPromise) ? reload() : board;
 }
 
 function findList(board: WorkflowBoard, id: unknown) {
@@ -397,7 +402,14 @@ export async function getWorkflowBoard(payload: Record<string, unknown> = {}) {
   const scope = workflowScope(payload);
   const workspaceId = getWorkflowWorkspaceId(scope);
   const doneOffset = Math.max(0, Number(payload.doneOffset) || 0);
-  return serialise(workspaceId, () => boardForCurrentWorkspace(scope, doneOffset));
+  const query = text(payload.query, 500).trim();
+  return serialise(workspaceId, async () => {
+    const board = await boardForCurrentWorkspace(scope, doneOffset, !query);
+    if (!query) return board;
+    const cards = board.cards.filter((card) => workflowCardMatches(card, board.links.filter((link) => link.cardId === card.id), query, board.labels.filter((label) => board.cardLabels.some((assignment) => assignment.cardId === card.id && assignment.labelId === label.id)).map((label) => label.name), board.lists.find((list) => list.id === card.listId)));
+    const ids = new Set(cards.map((card) => card.id));
+    return { ...board, cards, links: board.links.filter((link) => ids.has(link.cardId)), activities: board.activities.filter((activity) => ids.has(activity.cardId)), cardLabels: board.cardLabels.filter((label) => ids.has(label.cardId)), doneHasMore: false };
+  });
 }
 
 export async function getClassifierSheet(payload: Record<string, unknown>) {

@@ -1138,3 +1138,11 @@ body.admin-mode .workflow-add-card-icon:hover { color: var(--ink) !important; }
 .workflow-link-actions .workflow-download-action { display: inline-flex; align-items: center; text-decoration: none; font-size: 12px; font-weight: 600; }
 body.admin-mode .workflow-link-actions .workflow-download-action { border-color: rgba(151, 195, 239, .34); color: #f4f9ff; background: #117c7a; }
 body.admin-mode.admin-light-mode .workflow-link-actions .workflow-download-action { border-color: rgba(255, 255, 255, .42); color: #fff; background: linear-gradient(180deg, #65f2dc, var(--accent)); }
+
+/* Compact album fields use their names as placeholders. */
+.create-panel .album-create-field { position: relative; display: block; margin: 0; }
+.create-panel .album-create-field > input { height: 46px; margin: 0; padding: 12px 14px; font-size: 13px; }
+.create-panel .album-create-field > input::placeholder { font-size: 13px; font-weight: 700; }
+.album-create-date > span { position: absolute; z-index: 1; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 13px; font-weight: 700; pointer-events: none; }
+.album-create-date.has-value > span, .album-create-date:focus-within > span { display: none; }
+.album-create-date:not(.has-value):not(:focus-within) input::-webkit-datetime-edit { opacity: 0; }

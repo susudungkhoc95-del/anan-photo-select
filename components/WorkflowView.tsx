@@ -71,6 +71,10 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
   const [board, setBoard] = useState<WorkflowBoard | null>(null);
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>([]);
   const [query, setQuery] = useState("");
+  const lastRequestedSearchRef = useRef("");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const queryRef = useRef("");
+  queryRef.current = query;
   const [toast, setToast] = useState("");
   const [cardModal, setCardModal] = useState<ModalState>(null);
   const [createModal, setCreateModal] = useState<CreateState>(null);
@@ -113,7 +117,9 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
     }
     refreshingRef.current = true;
     try {
-      const nextBoard = await scopedRpc<WorkflowBoard>("getWorkflowBoard");
+      const requestedQuery = queryRef.current;
+      const nextBoard = await scopedRpc<WorkflowBoard>("getWorkflowBoard", { query: requestedQuery });
+      if (requestedQuery !== queryRef.current) { refreshPendingRef.current = true; return; }
       // Keep cards that were added optimistically visible while a background
       // write is still in flight (a periodic refresh can happen meanwhile).
       const pendingCards = [...pendingCardsRef.current.values()];
@@ -147,10 +153,11 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
           ...pendingLabels.flatMap(([cardId, labelIds]) => labelIds.map((labelId) => ({ id: `local-label-${cardId}-${labelId}`, workspaceId: nextBoard.workspaceId, cardId, labelId, createdAt: new Date().toISOString() })))
         ];
       }
-      cacheBoard(mergedBoard, scope);
+      setSearchLoading(false);
+      if (!queryRef.current.trim()) cacheBoard(mergedBoard, scope);
       setBoard(mergedBoard);
     }
-    catch (error) { if (!silent) notify((error as Error).message); }
+    catch (error) { setSearchLoading(false); if (!silent || queryRef.current.trim()) notify((error as Error).message); }
     finally {
       refreshingRef.current = false;
       if (refreshPendingRef.current) {
@@ -205,7 +212,7 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
       // read-only Drive shortcuts below the topbar.
       void scopedRpc<StudioSettings>("getSettings").then((settings) => setQuickLinks(settings.quickLinks || [])).catch(() => {});
       scopedRpc<WorkflowBoard>("getWorkflowBoard").then((nextBoard) => {
-        if (!active) return;
+        if (!active || queryRef.current.trim()) return;
         // The initial request can race with a drag started from a cached board,
         // so apply the same pending-mutation merge used by background refreshes.
         const mergedBoard = pendingCardMovesRef.current.size
@@ -218,18 +225,28 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
     return () => { active = false; };
   }, [scope]);
 
+  useEffect(() => {
+    if (auth !== "yes") return;
+    if (lastRequestedSearchRef.current === query) { setSearchLoading(false); return; }
+    setSearchLoading(true);
+    const timer = window.setTimeout(() => { lastRequestedSearchRef.current = query; void load(true); }, 300);
+    return () => window.clearTimeout(timer);
+  }, [query, auth, load]);
+
   const searchQuery = useMemo(() => parseWorkflowQuery(query), [query]);
+  const hasDateFilter = searchQuery.hasReturnDate || searchQuery.hasWeddingDate;
   const filtered = useMemo(() => {
     if (!board || !query.trim()) return board?.cards || [];
     const matches = board.cards.filter((card) => workflowCardMatches(card, board.links.filter((link) => link.cardId === card.id), query, board.labels.filter((label) => board.cardLabels.some((assignment) => assignment.cardId === card.id && assignment.labelId === label.id)).map((label) => label.name), board.lists.find((list) => list.id === card.listId)));
-    return searchQuery.hasReturnDate ? sortWorkflowCardsByReturnDate(matches) : matches;
-  }, [board, query, searchQuery.hasReturnDate]);
+    return hasDateFilter ? sortWorkflowCardsByReturnDate(matches, searchQuery.hasReturnDate ? "photoReturnDate" : "weddingDate") : matches;
+  }, [board, query, hasDateFilter, searchQuery.hasReturnDate]);
 
   const loadMoreDone = useCallback(async () => {
-    if (doneLoadingRef.current || !board?.doneHasMore || board.doneNextOffset === undefined) return;
+    if (queryRef.current.trim() || doneLoadingRef.current || !board?.doneHasMore || board.doneNextOffset === undefined) return;
     doneLoadingRef.current = true;
     try {
       const nextPage = await scopedRpc<WorkflowBoard>("getWorkflowBoard", { doneOffset: board.doneNextOffset });
+      if (queryRef.current.trim()) return;
       setBoard((current) => {
         if (!current) return nextPage;
         const existingIds = new Set(current.cards.map((card) => card.id));
@@ -308,11 +325,11 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
 
   async function moveCard(cardId: string, targetListId: string, beforeCardId?: string, dropPosition: "top" | "before" | "bottom" = "top") {
     const currentBoard = boardRef.current || board;
-    if (!currentBoard || (query.trim() && !searchQuery.hasReturnDate)) return;
+    if (!currentBoard || (query.trim() && !hasDateFilter)) return;
     const card = currentBoard.cards.find((item) => item.id === cardId);
     if (!card) return;
     const sourceListId = card.listId;
-    if (searchQuery.hasReturnDate && sourceListId === targetListId) return;
+    if (hasDateFilter && sourceListId === targetListId) return;
     const targetList = currentBoard.lists.find((list) => list.id === targetListId);
     const enteringDone = sourceListId !== targetListId && targetList?.systemKey === "DONE";
     const effectiveDropPosition = enteringDone ? "top" as const : dropPosition;
@@ -355,7 +372,7 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
       // refresh cannot replace the successful drag with an older snapshot.
       pendingCardMovesRef.current.set(cardId, savedCard);
       await load(true);
-      if (searchQuery.hasReturnDate) notify(`Đã chuyển thẻ sang “${targetList?.name || "danh sách mới"}”.`);
+      if (hasDateFilter) notify(`Đã chuyển thẻ sang “${targetList?.name || "danh sách mới"}”.`);
     } catch (error) {
       pendingCardMovesRef.current.delete(cardId);
       setBoard(currentBoard);
@@ -374,13 +391,13 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
   }
 
   function onNativeCardDragStart(cardId: string, event: React.DragEvent<HTMLElement>) {
-    if (query.trim() && !searchQuery.hasReturnDate) { event.preventDefault(); return; }
+    if (query.trim() && !hasDateFilter) { event.preventDefault(); return; }
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", cardId);
   }
 
   function onNativeCardDragOver(targetListId: string, beforeCardId: string | undefined, dropPosition: "top" | "before" | "bottom", event: React.DragEvent<HTMLElement>) {
-    if (query.trim() && !searchQuery.hasReturnDate) return;
+    if (query.trim() && !hasDateFilter) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     const cardId = event.dataTransfer.getData("text/plain");
@@ -449,15 +466,16 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
   return <main className="workflow-page">
     <header className="workflow-header">
       <div className="workflow-header-left"><div className="workflow-brand"><img src="/dp-logo.png" alt="DP Select" /></div><nav className="app-tabs header-tabs" aria-label="Khu vực quản trị"><Link href="/" prefetch>DP Select</Link><Link className={scope === "dp" ? "active" : ""} href="/workflow">DP Workflow</Link><Link className={scope === "show" ? "active" : ""} href="/show">SHOW</Link></nav></div>
-      <div className="workflow-header-actions"><EnvironmentSwitcher path={scope === "show" ? "/show" : "/workflow"} /><div className="workflow-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm thẻ... hoặc /tra" aria-label="Tìm kiếm thẻ; gõ /tra để lọc thẻ có ngày hẹn trả ảnh trong Cần làm và Đang làm" />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div></div>
+      <div className="workflow-header-actions"><EnvironmentSwitcher path={scope === "show" ? "/show" : "/workflow"} /><div className="workflow-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm thẻ... /t trả ảnh, /n ngày cưới" aria-label="Tìm kiếm thẻ; gõ /t để lọc ngày trả ảnh, /n để lọc ngày cưới trong Cần làm và Đang làm" />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div></div>
     </header>
     <QuickLinks links={quickLinks} />
     {toast && <div className="toast" role="status">{toast}</div>}
-    {query && <p className="workflow-search-note" role="status">{searchQuery.hasReturnDate ? <>Có hẹn trả ảnh trong Cần làm / Đang làm · {filtered.length}/{board.cards.length} thẻ{board.doneHasMore ? " đã tải" : ""} · Ngày hẹn từ sớm đến muộn. Kéo thẻ sang danh sách khác để chuyển trạng thái.</> : <>Xóa tìm kiếm để sắp xếp thẻ.</>}</p>}
+    {searchLoading && <p className="workflow-search-note" role="status">Đang tìm trên toàn bộ thẻ…</p>}
+    {query && !hasDateFilter && <p className="workflow-search-note" role="status">Xóa tìm kiếm để sắp xếp thẻ.</p>}
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragCancel={() => { if (dragOriginRef.current) setBoard(dragOriginRef.current.board); dragOriginRef.current = null; setActiveDragId(null); }} onDragEnd={(event) => { void onDragEnd(event).finally(() => { dragOriginRef.current = null; setActiveDragId(null); }); }}>
       <SortableContext items={board.lists.map((list) => `list-${list.id}`)} strategy={horizontalListSortingStrategy}>
         <div className="workflow-board">
-          {board.lists.map((list) => <WorkflowColumn key={list.id} list={list} cards={filtered.filter((card) => card.listId === list.id)} labels={board.labels} cardLabelIds={board.cardLabels} pendingCardIds={pendingCardIds} searching={Boolean(query)} dropTarget={nativeDropTarget} onLoadMore={list.systemKey === "DONE" && !searchQuery.hasReturnDate ? loadMoreDone : undefined} doneLoading={doneLoadingRef.current} onAdd={() => setCreateModal({ type: "card", list })} onOpen={(cardId) => setCardModal({ cardId })} onQuickEdit={setQuickCardId} onRename={() => renameList(list)} onDelete={() => setDeleteList(list)} onCardDragStart={onNativeCardDragStart} onCardDragOver={onNativeCardDragOver} onCardDragEnd={() => setNativeDropTarget(null)} onCardDrop={onNativeCardDrop} />)}
+          {board.lists.map((list) => <WorkflowColumn key={list.id} list={list} cards={filtered.filter((card) => card.listId === list.id)} labels={board.labels} cardLabelIds={board.cardLabels} pendingCardIds={pendingCardIds} searching={Boolean(query)} dropTarget={nativeDropTarget} onLoadMore={list.systemKey === "DONE" && !query.trim() ? loadMoreDone : undefined} doneLoading={doneLoadingRef.current} onAdd={() => setCreateModal({ type: "card", list })} onOpen={(cardId) => setCardModal({ cardId })} onQuickEdit={setQuickCardId} onRename={() => renameList(list)} onDelete={() => setDeleteList(list)} onCardDragStart={onNativeCardDragStart} onCardDragOver={onNativeCardDragOver} onCardDragEnd={() => setNativeDropTarget(null)} onCardDrop={onNativeCardDrop} />)}
           <button type="button" className="workflow-add-list" onClick={() => setCreateModal({ type: "list" })}><Plus size={18} /> Thêm danh sách</button>
         </div>
       </SortableContext>

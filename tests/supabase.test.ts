@@ -6,7 +6,7 @@ vi.mock("@supabase/supabase-js", () => ({
     const calls: Array<[string, ...unknown[]]> = [];
     mock.calls.push(calls);
     const query: Record<string, unknown> = {};
-    for (const method of ["select", "eq", "neq", "order", "range", "limit"]) {
+    for (const method of ["select", "eq", "neq", "not", "or", "order", "range", "limit"]) {
       query[method] = (...args: unknown[]) => { calls.push([method, ...args]); return query; };
     }
     query.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve(mock.pages.shift()).then(resolve, reject);
@@ -42,6 +42,23 @@ describe("Supabase collection pagination", () => {
     await readAppRecords("WorkflowCards", "studio", { limit: 20, offset: 40 });
     expect(mock.calls).toHaveLength(1);
     expect(mock.calls[0]).toContainEqual(["range", 40, 59]);
+  });
+
+  it("pages completed cards by completion date, with stable creation-date ordering", async () => {
+    mock.pages = [{ data: [], error: null }];
+    await readAppRecords("WorkflowCards", "studio", { payloadIndex: 2, payloadEquals: "done", nonEmptyPayloadIndex: 12, orderByPayload: 12, secondaryOrderByPayload: 10, ascending: false, limit: 21 });
+    const calls = mock.calls[0];
+    expect(calls).toContainEqual(["not", "payload->>12", "is", null]);
+    expect(calls).toContainEqual(["neq", "payload->>12", ""]);
+    expect(calls.filter(([method]) => method === "order")).toEqual([["order", "payload->>12", { ascending: false }], ["order", "payload->>10", { ascending: false }], ["order", "record_id", { ascending: true }]]);
+    expect(calls).toContainEqual(["limit", 21]);
+  });
+
+  it("includes missing and empty completion dates in the legacy stream", async () => {
+    mock.pages = [{ data: [], error: null }];
+    await readAppRecords("WorkflowCards", "studio", { emptyPayloadIndex: 12, orderByPayload: 10, ascending: false, limit: 21 });
+    expect(mock.calls[0]).toContainEqual(["or", "payload->>12.is.null,payload->>12.eq."]);
+    expect(mock.calls[0]).toContainEqual(["order", "payload->>10", { ascending: false }]);
   });
 
   it("propagates a later page failure instead of returning incomplete history", async () => {

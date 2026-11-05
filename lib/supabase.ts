@@ -30,7 +30,7 @@ export type AppRecord = {
   updated_at?: string;
 };
 
-export async function readAppRecords(collection: string, workspaceId?: string, options: { limit?: number; offset?: number; orderBy?: "created_at" | "updated_at"; ascending?: boolean; payloadIndex?: number; payloadEquals?: string; payloadNotEquals?: string } = {}) {
+export async function readAppRecords(collection: string, workspaceId?: string, options: { limit?: number; offset?: number; orderBy?: "created_at" | "updated_at"; orderByPayload?: number; secondaryOrderByPayload?: number; emptyPayloadIndex?: number; nonEmptyPayloadIndex?: number; ascending?: boolean; payloadIndex?: number; payloadEquals?: string; payloadNotEquals?: string } = {}) {
   // Unbounded reads must page explicitly: Supabase otherwise silently returns
   // only the first 1,000 records, hiding newer workflow activities.
   if (options.limit === undefined && options.offset === undefined) {
@@ -49,7 +49,10 @@ export async function readAppRecords(collection: string, workspaceId?: string, o
   if (workspaceId !== undefined) query = query.eq("workspace_id", workspaceId);
   if (options.payloadIndex !== undefined && options.payloadEquals !== undefined) query = query.eq(`payload->>${options.payloadIndex}`, options.payloadEquals);
   if (options.payloadIndex !== undefined && options.payloadNotEquals !== undefined) query = query.neq(`payload->>${options.payloadIndex}`, options.payloadNotEquals);
-  query = query.order(options.orderBy || "created_at", { ascending: options.ascending ?? true });
+  if (options.emptyPayloadIndex !== undefined) query = query.or(`payload->>${options.emptyPayloadIndex}.is.null,payload->>${options.emptyPayloadIndex}.eq.`);
+  if (options.nonEmptyPayloadIndex !== undefined) query = query.not(`payload->>${options.nonEmptyPayloadIndex}`, "is", null).neq(`payload->>${options.nonEmptyPayloadIndex}`, "");
+  query = query.order(options.orderByPayload !== undefined ? `payload->>${options.orderByPayload}` : options.orderBy || "created_at", { ascending: options.ascending ?? true });
+  if (options.secondaryOrderByPayload !== undefined) query = query.order(`payload->>${options.secondaryOrderByPayload}`, { ascending: options.ascending ?? true });
   query = query.order("record_id", { ascending: true });
   if (options.offset !== undefined) query = query.range(options.offset, options.offset + (options.limit ?? 1000) - 1);
   else if (options.limit !== undefined) query = query.limit(options.limit);

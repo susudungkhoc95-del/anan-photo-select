@@ -280,11 +280,11 @@ export default function AdminView() {
         <section className="panel create-panel">
           <div className="panel-heading"><span className="panel-icon"><Sparkles size={20} /></span><h1>Tạo trang chọn ảnh</h1></div>
           <form className="form-stack" onSubmit={create}>
-            <label>Tên album<input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ví dụ: Linh & Minh - 20.05.2026" /></label>
-            <label>Link thư mục Drive chứa ảnh<span className="input-with-icon"><Images className="input-symbol" size={18} /><input value={form.folderUrl} onChange={(e) => setForm({ ...form, folderUrl: e.target.value })} placeholder="https://drive.google.com/drive/folders/…" required /></span></label>
-            <label>Ngày cưới<input type="date" value={form.weddingDate} onChange={(e) => setForm({ ...form, weddingDate: e.target.value })} /></label>
-            <label>Link thư mục Drive chứa ảnh RAW<span className="input-with-icon"><Images className="input-symbol" size={18} /><input value={form.rawFolderUrl} onChange={(e) => setForm({ ...form, rawFolderUrl: e.target.value })} placeholder="https://drive.google.com/drive/folders/…" /></span></label>
-            <label>Link nhóm chat khách<span className="input-with-icon"><LinkIcon className="input-symbol" size={18} /><input value={form.customerChatUrl} onChange={(e) => setForm({ ...form, customerChatUrl: e.target.value })} placeholder="https://zalo.me/g/... hoặc https://m.me/..." /></span></label>
+            <label className="album-create-field"><input aria-label="Tên album" placeholder="Tên album" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></label>
+            <label className={`album-create-field album-create-date ${form.weddingDate ? "has-value" : ""}`}><span>Ngày cưới</span><input aria-label="Ngày cưới" type="date" value={form.weddingDate} onChange={(e) => setForm({ ...form, weddingDate: e.target.value })} /></label>
+            <label className="album-create-field"><input aria-label="Link thư mục Drive chứa ảnh" placeholder="Link thư mục Drive chứa ảnh" value={form.folderUrl} onChange={(e) => setForm({ ...form, folderUrl: e.target.value })} required /></label>
+            <label className="album-create-field"><input aria-label="Link thư mục Drive chứa ảnh RAW" placeholder="Link thư mục Drive chứa ảnh RAW" value={form.rawFolderUrl} onChange={(e) => setForm({ ...form, rawFolderUrl: e.target.value })} /></label>
+            <label className="album-create-field"><input aria-label="Link nhóm chat khách" placeholder="Link nhóm chat khách" value={form.customerChatUrl} onChange={(e) => setForm({ ...form, customerChatUrl: e.target.value })} /></label>
             <button type="button" className={`secondary selection-settings-toggle ${selectionSettingsOpen ? "open" : ""}`} onClick={() => setSelectionSettingsOpen((open) => !open)}>Thông số chọn ảnh <ChevronDown size={18} /></button>
             {selectionSettingsOpen && <div className="selection-settings-fields">
               {guideTemplates.length > 0 && <label>Mẫu hướng dẫn

@@ -7,24 +7,27 @@ export function normalizeWorkflowText(value: string) {
 export function parseWorkflowQuery(query: string) {
   const tokens = query.trim().split(/\s+/);
   return {
-    hasReturnDate: tokens.some((token) => token.toLowerCase() === "/tra"),
-    text: tokens.filter((token) => token.toLowerCase() !== "/tra").join(" ")
+    hasReturnDate: tokens.some((token) => token.toLowerCase() === "/t"),
+    hasWeddingDate: tokens.some((token) => token.toLowerCase() === "/n"),
+    text: tokens.filter((token) => !["/t", "/n"].includes(token.toLowerCase())).join(" ")
   };
 }
 
 export function workflowCardMatches(card: WorkflowCard, links: WorkflowLink[], query: string, labelNames: string[] = [], list?: WorkflowList) {
   const parsed = parseWorkflowQuery(query);
-  if (parsed.hasReturnDate && (!card.photoReturnDate.trim() || !list || card.listId !== list.id || (list.systemKey !== "TODO_INBOX" && list.systemKey !== "IN_PROGRESS"))) return false;
+  if ((parsed.hasReturnDate || parsed.hasWeddingDate) && (!list || card.listId !== list.id || (list.systemKey !== "TODO_INBOX" && list.systemKey !== "IN_PROGRESS"))) return false;
+  if (parsed.hasReturnDate && !card.photoReturnDate.trim()) return false;
+  if (parsed.hasWeddingDate && !card.weddingDate.trim()) return false;
   const needle = normalizeWorkflowText(parsed.text);
   if (!needle) return true;
   return normalizeWorkflowText([card.title, card.note, ...links.flatMap((link) => [link.label, link.url])].join(" ")).includes(needle)
     || labelNames.some((name) => normalizeWorkflowText(name).includes(needle));
 }
 
-export function sortWorkflowCardsByReturnDate(cards: WorkflowCard[]) {
-  // Dates are stored as YYYY-MM-DD. Sort a copy so clearing /tra restores
+export function sortWorkflowCardsByReturnDate(cards: WorkflowCard[], field: "photoReturnDate" | "weddingDate" = "photoReturnDate") {
+  // Dates are stored as YYYY-MM-DD. Sort a copy so clearing the date filter restores
   // the board's saved order; equal dates retain their existing order.
-  return [...cards].sort((a, b) => a.photoReturnDate.localeCompare(b.photoReturnDate));
+  return [...cards].sort((a, b) => a[field].localeCompare(b[field]));
 }
 
 export function workflowAge(card: WorkflowCard, list: WorkflowList, currentTime = Date.now()) {
