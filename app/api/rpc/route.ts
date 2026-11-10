@@ -32,6 +32,7 @@ import {
   deleteWorkflowLink,
   deleteWorkflowList,
   getWorkflowBoard,
+  getWorkflowDoneCards,
   getClassifierSheet,
   moveWorkflowCard,
   reorderWorkflowLists,
@@ -60,6 +61,7 @@ const adminActions = new Set([
   "getSettings",
   "saveSettings",
   "getWorkflowBoard",
+  "getWorkflowDoneCards",
   "getClassifierSheet",
   "createWorkflowList",
   "updateWorkflowList",
@@ -109,6 +111,7 @@ export async function POST(request: Request) {
       case "getSettings": data = await getSettings(); break;
       case "saveSettings": data = await saveSettings(payload); break;
       case "getWorkflowBoard": data = await getWorkflowBoard(payload); break;
+      case "getWorkflowDoneCards": data = await getWorkflowDoneCards(payload); break;
       case "getClassifierSheet": data = await getClassifierSheet(payload); break;
       case "createWorkflowList": data = await createWorkflowList(payload); break;
       case "updateWorkflowList": data = await updateWorkflowList(payload); break;

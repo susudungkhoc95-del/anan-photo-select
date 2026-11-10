@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseWorkflowQuery, sortWorkflowCardsByReturnDate, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
+import { createWorkflowSearch, parseWorkflowQuery, sortWorkflowCardsByReturnDate, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
 import type { WorkflowCard, WorkflowLink, WorkflowList } from "@/lib/types";
 
 const list: WorkflowList = { id: "todo", workspaceId: "studio", name: "CẦN LÀM", position: 0, systemKey: "TODO_INBOX", createdAt: "2026-08-01T00:00:00.000Z", updatedAt: "2026-08-01T00:00:00.000Z" };
@@ -7,6 +7,23 @@ const card: WorkflowCard = { id: "card", workspaceId: "studio", listId: "todo", 
 const links: WorkflowLink[] = [{ id: "link", workspaceId: "studio", cardId: "card", label: "Sheet ảnh chọn", url: "https://docs.google.com/spreadsheets/d/example", position: 0, createdAt: card.createdAt, updatedAt: card.updatedAt }];
 
 describe("workflow search", () => {
+  it("indexes metadata for archived cards and uses the current card contents", () => {
+    const done = { ...list, id: "done", systemKey: "DONE" as const };
+    const archived = { ...card, listId: done.id, weddingDate: "2026-12-01" };
+    const label = { id: "urgent", workspaceId: card.workspaceId, name: "Gấp", color: "#ef4444", position: 0, createdAt: card.createdAt, updatedAt: card.updatedAt };
+    const search = createWorkflowSearch({
+      lists: [list, done],
+      links,
+      labels: [label],
+      cardLabels: [{ id: "assignment", workspaceId: card.workspaceId, cardId: card.id, labelId: label.id, createdAt: card.createdAt }]
+    });
+    expect(search([archived], parseWorkflowQuery("gap"))).toEqual([archived]);
+    expect(search([archived], parseWorkflowQuery("spreadsheets"))).toEqual([archived]);
+    expect(search([archived], parseWorkflowQuery("/n gap"))).toEqual([]);
+    expect(search([archived], parseWorkflowQuery("hong ngoc"))).toEqual([archived]);
+    expect(search([{ ...archived, title: "Tên mới" }], parseWorkflowQuery("hong ngoc"))).toEqual([]);
+  });
+
   it("finds title, note and links without accents", () => {
     expect(workflowCardMatches(card, links, "hong ngoc")).toBe(true);
     expect(workflowCardMatches(card, links, "chỉnh da")).toBe(true);

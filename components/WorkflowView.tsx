@@ -12,13 +12,14 @@ import PhotoClassifier from "@/components/PhotoClassifier";
 import EnvironmentSwitcher from "@/components/EnvironmentSwitcher";
 import type { QuickLink, StudioSettings, WorkflowBoard, WorkflowCard, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
 import { dpDriveDownloadUrl } from "@/lib/drive-handoff";
-import { parseWorkflowQuery, sortWorkflowCardsByReturnDate, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
+import { compareWorkflowDoneCards, createWorkflowSearch, parseWorkflowQuery, sortWorkflowCardsByReturnDate, workflowAge } from "@/lib/workflow-utils";
 
 type ModalState = { cardId: string } | null;
 type CreateState = { type: "list" } | { type: "card"; list: WorkflowList } | null;
 type CardChanges = Pick<WorkflowCard, "title" | "note" | "weddingDate" | "photoReturnDate">;
 type PendingCardEdit = CardChanges & Pick<WorkflowCard, "updatedAt">;
 type NativeDropTarget = { listId: string; beforeCardId?: string; dropPosition: "top" | "before" | "bottom" } | null;
+type DoneArchive = { scope: WorkflowScope; listId: string; cards: WorkflowCard[] | null };
 const LABEL_COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#a855f7"];
 const WORKFLOW_CACHE_KEY = "anan-workflow-board";
 const ADMIN_SESSION_KEY = "anan-admin-session";
@@ -71,8 +72,8 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
   const [board, setBoard] = useState<WorkflowBoard | null>(null);
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>([]);
   const [query, setQuery] = useState("");
-  const lastRequestedSearchRef = useRef("");
-  const [searchLoading, setSearchLoading] = useState(false);
+  const [doneArchive, setDoneArchive] = useState<DoneArchive | null>(null);
+  const [archiveRevision, setArchiveRevision] = useState(0);
   const queryRef = useRef("");
   queryRef.current = query;
   const [toast, setToast] = useState("");
@@ -97,6 +98,7 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
   const refreshPendingRef = useRef(false);
   const lastVisibilityRefreshRef = useRef(0);
   const doneLoadingRef = useRef(false);
+  const deletedCardIdsRef = useRef(new Set<string>());
   const toastTimerRef = useRef<number | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -117,9 +119,7 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
     }
     refreshingRef.current = true;
     try {
-      const requestedQuery = queryRef.current;
-      const nextBoard = await scopedRpc<WorkflowBoard>("getWorkflowBoard", { query: requestedQuery });
-      if (requestedQuery !== queryRef.current) { refreshPendingRef.current = true; return; }
+      const nextBoard = await rpc<WorkflowBoard>("getWorkflowBoard", { scope });
       // Keep cards that were added optimistically visible while a background
       // write is still in flight (a periodic refresh can happen meanwhile).
       const pendingCards = [...pendingCardsRef.current.values()];
@@ -153,11 +153,11 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
           ...pendingLabels.flatMap(([cardId, labelIds]) => labelIds.map((labelId) => ({ id: `local-label-${cardId}-${labelId}`, workspaceId: nextBoard.workspaceId, cardId, labelId, createdAt: new Date().toISOString() })))
         ];
       }
-      setSearchLoading(false);
-      if (!queryRef.current.trim()) cacheBoard(mergedBoard, scope);
+      cacheBoard(mergedBoard, scope);
       setBoard(mergedBoard);
+      setArchiveRevision((revision) => revision + 1);
     }
-    catch (error) { setSearchLoading(false); if (!silent || queryRef.current.trim()) notify((error as Error).message); }
+    catch (error) { if (!silent) notify((error as Error).message); }
     finally {
       refreshingRef.current = false;
       if (refreshPendingRef.current) {
@@ -212,7 +212,7 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
       // read-only Drive shortcuts below the topbar.
       void scopedRpc<StudioSettings>("getSettings").then((settings) => setQuickLinks(settings.quickLinks || [])).catch(() => {});
       scopedRpc<WorkflowBoard>("getWorkflowBoard").then((nextBoard) => {
-        if (!active || queryRef.current.trim()) return;
+        if (!active) return;
         // The initial request can race with a drag started from a cached board,
         // so apply the same pending-mutation merge used by background refreshes.
         const mergedBoard = pendingCardMovesRef.current.size
@@ -220,35 +220,69 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
           : nextBoard;
         cacheBoard(mergedBoard, scope);
         setBoard(mergedBoard);
+        setArchiveRevision((revision) => revision + 1);
       }).catch((error) => { if (active) notify((error as Error).message); });
     }).catch(() => { if (active) setAuth("no"); });
     return () => { active = false; };
   }, [scope]);
 
+  const archiveListId = board?.doneHasMore ? board.lists.find((list) => list.systemKey === "DONE")?.id : undefined;
+  const archive = doneArchive?.scope === scope && doneArchive.listId === archiveListId ? doneArchive : null;
   useEffect(() => {
-    if (auth !== "yes") return;
-    if (lastRequestedSearchRef.current === query) { setSearchLoading(false); return; }
-    setSearchLoading(true);
-    const timer = window.setTimeout(() => { lastRequestedSearchRef.current = query; void load(true); }, 300);
-    return () => window.clearTimeout(timer);
-  }, [query, auth, load]);
+    if (auth !== "yes" || !archiveListId) return;
+    const controller = new AbortController();
+    void rpc<WorkflowCard[]>("getWorkflowDoneCards", { scope, listId: archiveListId }, controller.signal)
+      .then((cards) => {
+        if (controller.signal.aborted) return;
+        setDoneArchive({
+          scope,
+          listId: archiveListId,
+          cards: cards.filter((card) => !deletedCardIdsRef.current.has(card.id)).map((card) => {
+            const edit = pendingCardEditsRef.current.get(card.id);
+            return edit ? { ...card, ...edit } : card;
+          })
+        });
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setDoneArchive((current) => current?.scope === scope && current.listId === archiveListId && current.cards
+          ? current
+          : { scope, listId: archiveListId, cards: null });
+      });
+    return () => controller.abort();
+  }, [auth, scope, archiveListId, archiveRevision]);
 
   const searchQuery = useMemo(() => parseWorkflowQuery(query), [query]);
   const hasDateFilter = searchQuery.hasReturnDate || searchQuery.hasWeddingDate;
+  const searchCards = useMemo(() => board ? createWorkflowSearch(board) : null, [board]);
   const filtered = useMemo(() => {
-    if (!board || !query.trim()) return board?.cards || [];
-    const matches = board.cards.filter((card) => workflowCardMatches(card, board.links.filter((link) => link.cardId === card.id), query, board.labels.filter((label) => board.cardLabels.some((assignment) => assignment.cardId === card.id && assignment.labelId === label.id)).map((label) => label.name), board.lists.find((list) => list.id === card.listId)));
-    return hasDateFilter ? sortWorkflowCardsByReturnDate(matches, searchQuery.hasReturnDate ? "photoReturnDate" : "weddingDate") : matches;
-  }, [board, query, hasDateFilter, searchQuery.hasReturnDate]);
+    if (!board || !searchCards || !query.trim()) return board?.cards || [];
+    const matches = searchCards(board.cards, searchQuery);
+    if (hasDateFilter) return sortWorkflowCardsByReturnDate(matches, searchQuery.hasReturnDate ? "photoReturnDate" : "weddingDate");
+    if (!archive?.cards) return matches;
+    const loadedIds = new Set(board.cards.map((card) => card.id));
+    const archivedMatches = searchCards(archive.cards, searchQuery).filter((card) => !loadedIds.has(card.id));
+    const doneMatches = matches.filter((card) => card.listId === archiveListId);
+    return [
+      ...matches.filter((card) => card.listId !== archiveListId),
+      ...[...doneMatches, ...archivedMatches].sort(compareWorkflowDoneCards)
+    ];
+  }, [board, query, searchQuery, hasDateFilter, searchCards, archive, archiveListId]);
+  const archiveSearch = Boolean(searchQuery.text && !hasDateFilter && archiveListId);
+  const detailBoard = useMemo(() => {
+    const detailId = cardModal?.cardId || quickCardId;
+    if (!detailId || !board || board.cards.some((card) => card.id === detailId)) return board;
+    const card = archive?.cards?.find((item) => item.id === detailId);
+    return card ? { ...board, cards: [...board.cards, card] } : board;
+  }, [board, archive, cardModal, quickCardId]);
 
   const loadMoreDone = useCallback(async () => {
     if (queryRef.current.trim() || doneLoadingRef.current || !board?.doneHasMore || board.doneNextOffset === undefined) return;
     doneLoadingRef.current = true;
     try {
       const nextPage = await scopedRpc<WorkflowBoard>("getWorkflowBoard", { doneOffset: board.doneNextOffset });
-      if (queryRef.current.trim()) return;
       setBoard((current) => {
-        if (!current) return nextPage;
+        if (!current || current.doneNextOffset !== board.doneNextOffset) return current;
         const existingIds = new Set(current.cards.map((card) => card.id));
         return {
           ...current,
@@ -441,6 +475,10 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
   function saveCardOptimistically(cardId: string, changes: CardChanges) {
     const edit: PendingCardEdit = { ...changes, updatedAt: new Date().toISOString() };
     pendingCardEditsRef.current.set(cardId, edit);
+    setDoneArchive((current) => current?.cards ? {
+      ...current,
+      cards: current.cards.map((card) => card.id === cardId ? { ...card, ...edit } : card)
+    } : current);
     setBoard((current) => current ? {
       ...current,
       cards: current.cards.map((card) => card.id === cardId ? { ...card, ...edit } : card)
@@ -457,6 +495,22 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
     });
   }
 
+  function onCardDeleted(cardId: string) {
+    deletedCardIdsRef.current.add(cardId);
+    setDoneArchive((current) => current?.cards
+      ? { ...current, cards: current.cards.filter((card) => card.id !== cardId) }
+      : current);
+    setBoard((current) => current ? {
+      ...current,
+      cards: current.cards.filter((card) => card.id !== cardId),
+      links: current.links.filter((link) => link.cardId !== cardId),
+      cardLabels: current.cardLabels.filter((assignment) => assignment.cardId !== cardId),
+      activities: current.activities.filter((activity) => activity.cardId !== cardId)
+    } : current);
+    setCardModal(null);
+    void load(true);
+  }
+
   if (auth === "no") {
     if (typeof window !== "undefined") window.location.replace("/");
     return <div className="page-loader">Đang chuyển đến trang đăng nhập…</div>;
@@ -470,7 +524,8 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
     </header>
     <QuickLinks links={quickLinks} />
     {toast && <div className="toast" role="status">{toast}</div>}
-    {searchLoading && <p className="workflow-search-note" role="status">Đang tìm trên toàn bộ thẻ…</p>}
+    {archiveSearch && !archive && <p className="workflow-search-note" role="status">Đang bổ sung thẻ DONE cũ…</p>}
+    {archiveSearch && archive && !archive.cards && <p className="workflow-search-note" role="status">Đang hiển thị kết quả từ các thẻ đã tải. <button type="button" className="secondary" onClick={() => { setDoneArchive(null); setArchiveRevision((revision) => revision + 1); }}>Tải lại thẻ DONE</button></p>}
     {query && !hasDateFilter && <p className="workflow-search-note" role="status">Xóa tìm kiếm để sắp xếp thẻ.</p>}
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragCancel={() => { if (dragOriginRef.current) setBoard(dragOriginRef.current.board); dragOriginRef.current = null; setActiveDragId(null); }} onDragEnd={(event) => { void onDragEnd(event).finally(() => { dragOriginRef.current = null; setActiveDragId(null); }); }}>
       <SortableContext items={board.lists.map((list) => `list-${list.id}`)} strategy={horizontalListSortingStrategy}>
@@ -481,8 +536,8 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
       </SortableContext>
       <DragOverlay>{activeDragId?.startsWith("card-") && <WorkflowCardPreview card={board.cards.find((card) => `card-${card.id}` === activeDragId)} />}{activeDragId?.startsWith("list-") && <WorkflowListPreview list={board.lists.find((list) => `list-${list.id}` === activeDragId)} />}</DragOverlay>
     </DndContext>
-    {cardModal && <CardModal board={board} cardId={cardModal.cardId} onClose={() => setCardModal(null)} onSave={saveCardOptimistically} onChanged={load} onLabelsChanged={setCardLabelsOptimistically} onDeleted={(cardId) => { setBoard((current) => current ? { ...current, cards: current.cards.filter((item) => item.id !== cardId), links: current.links.filter((item) => item.cardId !== cardId), cardLabels: current.cardLabels.filter((item) => item.cardId !== cardId), activities: current.activities.filter((item) => item.cardId !== cardId) } : current); setCardModal(null); void load(true); }} onError={(error) => notify(error.message)} onNotice={notify} />}
-    {quickCardId && <QuickCardModal board={board} cardId={quickCardId} onClose={() => setQuickCardId(null)} onSave={saveCardOptimistically} onChanged={load} onLabelsChanged={setCardLabelsOptimistically} onError={(error) => notify(error.message)} />}
+    {cardModal && detailBoard && <CardModal board={detailBoard} cardId={cardModal.cardId} onClose={() => setCardModal(null)} onSave={saveCardOptimistically} onChanged={load} onLabelsChanged={setCardLabelsOptimistically} onDeleted={onCardDeleted} onError={(error) => notify(error.message)} onNotice={notify} />}
+    {quickCardId && detailBoard && <QuickCardModal board={detailBoard} cardId={quickCardId} onClose={() => setQuickCardId(null)} onSave={saveCardOptimistically} onChanged={load} onLabelsChanged={setCardLabelsOptimistically} onError={(error) => notify(error.message)} />}
     {labelsOpen && <LabelsModal board={board} onClose={() => setLabelsOpen(false)} onChanged={load} />}
     {createModal && <CreateWorkflowModal state={createModal} labels={board.labels} onClose={() => setCreateModal(null)} onCreate={(value, labelIds) => createModal.type === "list" ? addList(value) : addCard(createModal.list, value, labelIds)} />}
     {deleteList && <DeleteListModal list={deleteList} lists={board.lists} cardCount={board.cards.filter((card) => card.listId === deleteList.id).length} onClose={() => setDeleteList(null)} onDeleted={async (targetListId) => { try { await scopedRpc("deleteWorkflowList", { listId: deleteList.id, targetListId }); setDeleteList(null); await load(); } catch (error) { notify((error as Error).message); } }} />}

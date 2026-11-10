@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "crypto";
 import { albumSpreadsheetUrl, archiveAlbum, getGoogleApi, getWorkflowWorkspaceId, listAlbums, quoteSheet } from "@/lib/google";
 import type { Album, Selection, WorkflowActivity, WorkflowBoard, WorkflowCard, WorkflowCardLabel, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
 import { readAppRecords, removeAppRecord, saveAppRecord } from "@/lib/supabase";
-import { workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
+import { compareWorkflowDoneCards, workflowAge, workflowCardMatches } from "@/lib/workflow-utils";
 import { sendWorkflowAgeTelegram, sendWorkflowMoveTelegram, sendWorkflowReturnDateTelegram } from "@/lib/telegram";
 
 const TABS = {
@@ -153,7 +153,7 @@ async function readBoard(workspaceId: string, doneOffset = 0, includeAllDone = t
     if (doneList && a.listId === doneList.id && b.listId === doneList.id) {
       // Newest completed card first. Legacy DONE cards without completedAt
       // fall back to createdAt, never updatedAt (which is edit-sensitive).
-      return (b.completedAt || b.createdAt).localeCompare(a.completedAt || a.createdAt) || b.createdAt.localeCompare(a.createdAt);
+      return compareWorkflowDoneCards(a, b);
     }
     return a.listId.localeCompare(b.listId) || a.orderKey.localeCompare(b.orderKey) || a.createdAt.localeCompare(b.createdAt);
   });
@@ -410,6 +410,14 @@ export async function getWorkflowBoard(payload: Record<string, unknown> = {}) {
     const ids = new Set(cards.map((card) => card.id));
     return { ...board, cards, links: board.links.filter((link) => ids.has(link.cardId)), activities: board.activities.filter((activity) => ids.has(activity.cardId)), cardLabels: board.cardLabels.filter((label) => ids.has(label.cardId)), doneHasMore: false };
   });
+}
+
+export async function getWorkflowDoneCards(payload: Record<string, unknown>) {
+  const workspaceId = getWorkflowWorkspaceId(workflowScope(payload));
+  const listId = requiredText(payload.listId, "Danh sách", 100);
+  // The board already includes links, labels and activity for every card.
+  const cardRows = await rows(TABS.cards, workspaceId, { payloadIndex: 2, payloadEquals: listId });
+  return cardRows.map((row) => cardFrom(row.values)).sort(compareWorkflowDoneCards);
 }
 
 export async function getClassifierSheet(payload: Record<string, unknown>) {
