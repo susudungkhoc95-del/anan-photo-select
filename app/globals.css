@@ -417,7 +417,9 @@ body:has(.client-page) select:focus {
 body:has(.client-page) .review-photo-button:focus-visible {
   outline-color: rgba(52,124,255,.4);
 }
-body:has(.client-page) .print-toggle.active {
+body:has(.client-page) .print-toggle.active,
+body:has(.client-page) button.review-filter:hover,
+body:has(.client-page) button.review-filter[aria-pressed="true"] {
   background: rgba(52,124,255,.13);
   border-color: rgba(52,124,255,.42);
   color: var(--accent-dark);
@@ -553,6 +555,10 @@ body:has(.client-page) .send-flight-overlay {
 }
 .review-panel > header h2 { margin: 0 0 7px; }
 .review-panel > header p { margin: 3px 0; }
+.review-panel > header .theme-toggle { flex-shrink: 0; }
+.review-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.review-filter { min-height: 36px; padding: 5px 10px; border-radius: 10px; font-size: 13px; }
+.review-filter:focus-visible { outline: 2px solid var(--accent-dark); outline-offset: 2px; }
 .review-list {
   flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
   display: grid; align-content: start; gap: 10px; margin: 0; padding: 2px 8px 12px 2px;

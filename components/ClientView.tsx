@@ -13,6 +13,7 @@ type AlbumPublic = {
 };
 type Photo = { id: string; name: string; folder: string; width?: number; height?: number; thumbUrl: string; thumbSrcSet?: string; zoomUrl: string; downloadUrl: string; viewUrl: string };
 type Page = { items: Photo[]; total: number; hasMore: boolean; nextOffset: number };
+type ReviewFilter = "large" | "table" | null;
 
 type ImagePriority = "high" | "low";
 type ImageCacheEntry = { promise: Promise<boolean>; priority: ImagePriority };
@@ -84,6 +85,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
   const [error, setError] = useState("");
   const [review, setReview] = useState(false);
   const [reviewPhotos, setReviewPhotos] = useState<Photo[]>([]);
+  const [reviewFilter, setReviewFilter] = useState<ReviewFilter>(null);
   const [reviewZoom, setReviewZoom] = useState<number | null>(null);
   const [zoom, setZoom] = useState<number | null>(null);
   const zoomIndexRef = useRef<number | null>(null);
@@ -329,6 +331,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
       setReviewPhotos(items.sort((a, b) => (order.get(a.id) || 0) - (order.get(b.id) || 0)));
       zoomIndexRef.current = null;
       setZoom(null);
+      setReviewFilter(null);
       setReviewZoom(null);
       setReview(true);
     } catch (e) { notify((e as Error).message); }
@@ -355,7 +358,8 @@ export default function ClientView({ albumId }: { albumId: string }) {
   if (error) return <main className="client-page client-error"><ImageOff size={36} /><h1>Không mở được album</h1><p>{error}</p></main>;
   if (!album) return <div className="page-loader client-page-loader"><span className="spinner" /> Đang tải album…</div>;
   const zoomPhoto = zoom === null ? null : photos[zoom];
-  const selectedReviewPhotos = reviewPhotos.filter((photo) => selected.has(photo.id));
+  const reviewFilterIds = reviewFilter === "large" ? large : reviewFilter === "table" ? table : selected;
+  const selectedReviewPhotos = reviewPhotos.filter((photo) => selected.has(photo.id) && reviewFilterIds.has(photo.id));
   const reviewZoomPhoto = reviewZoom === null ? null : selectedReviewPhotos[reviewZoom];
   function removeReviewPhotoAndAdvance() {
     if (!reviewZoomPhoto || reviewZoom === null) return;
@@ -406,8 +410,9 @@ export default function ClientView({ albumId }: { albumId: string }) {
         {!loading && !photos.length && <div className="empty">Chưa có ảnh để hiển thị.</div>}
         <div ref={loadMoreSentinel} className="load-more-sentinel" aria-hidden="true" />
       </section>
-      {review && <Review album={album} photos={selectedReviewPhotos} selected={selected} large={large} table={table} notes={notes} albumNote={albumNote} submitting={submitting} locked={Boolean(album.selectionLocked)}
+      {review && <Review album={album} photos={selectedReviewPhotos} selected={selected} large={large} table={table} filter={reviewFilter} notes={notes} albumNote={albumNote} submitting={submitting} locked={Boolean(album.selectionLocked)}
         onClose={() => { setReview(false); setReviewZoom(null); }} onRemove={toggle}
+        onFilterChange={(filter) => { setReviewFilter(filter); setReviewZoom(null); }}
         onOpenPhoto={(id) => setReviewZoom(selectedReviewPhotos.findIndex((photo) => photo.id === id))}
         onPrint={setPrint} onNote={(id, value) => { if (submitted) setHasPendingChanges(true); setNotes((n) => ({ ...n, [id]: value })); }}
         onAlbumNote={(value) => { if (submitted) setHasPendingChanges(true); setAlbumNote(value); }} onSubmit={submit} />}
@@ -517,9 +522,10 @@ function JustifiedGallery({ albumId, photos, selected, locked, onOpen, onToggle 
   </div>;
 }
 
-function Review({ album, photos, selected, large, table, notes, albumNote, submitting, locked, onClose, onRemove, onOpenPhoto, onPrint, onNote, onAlbumNote, onSubmit }: {
-  album: AlbumPublic; photos: Photo[]; selected: Set<string>; large: Set<string>; table: Set<string>; notes: Record<string, string>; albumNote: string; submitting: boolean; locked: boolean;
+function Review({ album, photos, selected, large, table, filter, notes, albumNote, submitting, locked, onClose, onRemove, onFilterChange, onOpenPhoto, onPrint, onNote, onAlbumNote, onSubmit }: {
+  album: AlbumPublic; photos: Photo[]; selected: Set<string>; large: Set<string>; table: Set<string>; filter: ReviewFilter; notes: Record<string, string>; albumNote: string; submitting: boolean; locked: boolean;
   onClose: () => void; onRemove: (id: string) => void; onOpenPhoto: (id: string) => void;
+  onFilterChange: (filter: ReviewFilter) => void;
   onPrint: (id: string, kind: "large" | "table", checked: boolean) => void;
   onNote: (id: string, value: string) => void; onAlbumNote: (v: string) => void; onSubmit: () => void;
 }) {
@@ -529,8 +535,24 @@ function Review({ album, photos, selected, large, table, notes, albumNote, submi
     return () => { document.body.style.overflow = previousOverflow; };
   }, []);
   return <div className="modal-backdrop review-backdrop"><div className="review-panel panel wide-panel">
-    <header><div><h2>Xem lại ảnh đã chọn</h2><p className="hint">{album.title}</p><p className="hint">Đã chọn {selected.size} ảnh · 60×90: {large.size}/{album.largePrintLimit || "∞"} · Để bàn: {table.size}/{album.tablePrintLimit || "∞"}</p></div><button className="secondary theme-toggle" onClick={onClose}><X /></button></header>
+    <header>
+      <div>
+        <h2>Ảnh đã chọn</h2>
+        <p className="hint">{album.title}</p>
+        <div className="review-filters">
+          <span className="hint">Đã chọn {selected.size} ảnh</span>
+          <button type="button" className="secondary review-filter" aria-pressed={filter === "large"} onClick={() => onFilterChange(filter === "large" ? null : "large")}>
+            60×90: {large.size}/{album.largePrintLimit || "∞"}
+          </button>
+          <button type="button" className="secondary review-filter" aria-pressed={filter === "table"} onClick={() => onFilterChange(filter === "table" ? null : "table")}>
+            Để bàn: {table.size}/{album.tablePrintLimit || "∞"}
+          </button>
+        </div>
+      </div>
+      <button type="button" className="secondary theme-toggle" aria-label="Đóng" onClick={onClose}><X aria-hidden="true" /></button>
+    </header>
     <div className="review-grid review-list">
+      {filter && photos.length === 0 && <p className="empty">Chưa có ảnh {filter === "large" ? "60×90" : "để bàn"}.</p>}
       {photos.map((p) => <article className="review-item" key={p.id}>
         <button className="review-photo-button" onClick={() => onOpenPhoto(p.id)} aria-label={`Xem lớn ${stripExt(p.name)}`}>
           <DrivePhoto albumId={album.id} photo={p} />
@@ -542,7 +564,7 @@ function Review({ album, photos, selected, large, table, notes, albumNote, submi
       </article>)}
       <div className="album-note"><label>Lưu ý chung cho toàn bộ album<textarea rows={3} disabled={locked} value={albumNote} onChange={(e) => onAlbumNote(e.target.value)} placeholder="Nhập lưu ý chung nếu có" /></label></div>
     </div>
-    <footer><button onClick={onSubmit} disabled={locked || submitting}>{submitting ? <span className="spinner small" /> : <Send size={17} />} Gửi {selected.size} ảnh</button><button className="secondary" onClick={onClose}>Đóng</button></footer>
+    <footer><button onClick={onSubmit} disabled={locked || submitting}>{submitting ? <span className="spinner small" /> : <Send size={17} />} Gửi {selected.size} ảnh</button></footer>
   </div></div>;
 }
 
