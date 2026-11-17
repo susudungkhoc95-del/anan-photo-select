@@ -5,9 +5,19 @@ type RestoredSelection =
   | { source: "selection"; saved: Selection }
   | { source: null; saved: null };
 
+export function newestDraft(server: Draft | null, local: Draft | null) {
+  if (!server) return local;
+  if (!local) return server;
+  // Legacy autosaves could write an empty draft when a visitor only viewed the album.
+  if (!server.cleared && !server.selectedIds.length && local.selectedIds.length) return local;
+  const serverTime = Date.parse(server.savedAt);
+  const localTime = Date.parse(local.savedAt);
+  return localTime > (Number.isFinite(serverTime) ? serverTime : 0) ? local : server;
+}
+
 /**
  * A submitted selection is the durable baseline. Restore a draft over it only
- * when the draft contains a usable selection and was saved after submission.
+ * when the draft records an edit and was saved after submission.
  * This prevents an empty autosave from making a completed submission appear
  * to contain zero photos.
  */
@@ -18,9 +28,9 @@ export function resolveRestoredSelection(draft: Draft | null, selection: Selecti
   const draftTime = Date.parse(draft.savedAt);
   const selectionTime = Date.parse(selection.submittedAt);
   const isNewer = Number.isFinite(draftTime) && Number.isFinite(selectionTime) && draftTime > selectionTime;
-  const hasSelectedPhotos = Array.isArray(draft.selectedIds) && draft.selectedIds.length > 0;
+  const hasEdits = draft.cleared || (Array.isArray(draft.selectedIds) && draft.selectedIds.length > 0);
 
-  return isNewer && hasSelectedPhotos
+  return isNewer && hasEdits
     ? { source: "draft", saved: draft }
     : { source: "selection", saved: selection };
 }

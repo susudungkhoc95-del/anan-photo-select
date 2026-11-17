@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "crypto";
 import type { Album, Draft, GuideTemplate, Photo, QuickLink, Selection, StudioSettings } from "@/lib/types";
 import { DEFAULT_GUIDE, DEFAULT_STUDIO_NAME } from "@/lib/types";
 import { sendSelectionTelegram } from "@/lib/telegram";
-import { readAppRecords, removeAppRecord, saveAppRecord } from "@/lib/supabase";
+import { readAppRecord, readAppRecords, removeAppRecord, saveAppRecord, saveLatestAppRecord } from "@/lib/supabase";
 import { selectionChangeSummary, selectionContentHash } from "@/lib/selection-history";
 
 const ALBUMS = "_albums";
@@ -109,10 +109,7 @@ async function upsertJson(name: string, id: string, value: unknown) {
   await saveAppRecord(name, id, value);
 }
 
-async function readJson<T>(name: string, id: string): Promise<T | null> {
-  const records = await readAppRecords(name);
-  return (records.find((record) => record.record_id === id)?.payload as T | undefined) || null;
-}
+const readJson = readAppRecord;
 
 async function deleteJson(name: string, id: string) {
   await removeAppRecord(name, id);
@@ -588,9 +585,21 @@ async function normalizeSelection(album: Album, payload: Record<string, unknown>
 }
 
 export async function saveDraft(payload: Record<string, unknown>) {
+  if (!Array.isArray(payload.selectedIds)) throw new Error("Danh sách ảnh chọn không hợp lệ.");
+  const editTime = typeof payload.savedAt === "string" ? Date.parse(payload.savedAt) : Date.now();
+  if (!Number.isFinite(editTime) || editTime > Date.now() + 5 * 60_000) {
+    throw new Error("Thời gian lưu bản nháp không hợp lệ. Hãy kiểm tra giờ trên thiết bị.");
+  }
   const album = await loadAlbum(clean(payload.albumId, 80));
   await assertAlbumSelectionOpen(album.id);
+  if (!payload.selectedIds.length && payload.cleared !== true) {
+    // An older browser tab may still send an empty autosave on page load.
+    return { ok: true, saved: false };
+  }
   const normalized = await normalizeSelection(album, payload);
+  if (payload.selectedIds.length && !normalized.selectedIds.length) {
+    throw new Error("Ảnh đã chọn không còn trong album.");
+  }
   const draft: Draft = {
     albumId: album.id,
     sessionId: clean(payload.sessionId, 80),
@@ -599,10 +608,11 @@ export async function saveDraft(payload: Record<string, unknown>) {
     tablePrintIds: normalized.tablePrintIds,
     photoNotes: normalized.photoNotes,
     albumNote: normalized.albumNote,
-    savedAt: new Date().toISOString()
+    savedAt: new Date(editTime).toISOString(),
+    ...(payload.cleared === true && normalized.selectedIds.length === 0 ? { cleared: true } : {})
   };
-  await upsertJson(DRAFTS, album.id, draft);
-  return { ok: true, savedAt: draft.savedAt };
+  const saved = await saveLatestAppRecord(DRAFTS, album.id, draft);
+  return { ok: true, savedAt: draft.savedAt, saved };
 }
 
 export async function getDraft(albumId: string) {
@@ -610,10 +620,10 @@ export async function getDraft(albumId: string) {
   return readJson<Draft>(DRAFTS, albumId);
 }
 
-export async function getSelection(albumId: string) {
+export async function getSelection(albumId: string, includeFiles = true) {
   const album = await loadAlbum(albumId);
   const selection = await readJson<Selection>(SELECTIONS, albumId);
-  if (!selection) return null;
+  if (!selection || !includeFiles) return selection;
   const byId = new Map((await allPhotos(album)).map((p) => [p.id, p]));
   return { ...selection, selectedFiles: selection.selectedIds.map((id) => byId.get(id)).filter(Boolean).map((p) => hydratePhoto(p!)) };
 }
@@ -846,8 +856,9 @@ export async function saveSelection(payload: Record<string, unknown>) {
     contentHash,
     submittedAt: new Date().toISOString()
   };
+  // A newer edit from another tab can arrive as this submission is saved.
+  // Restoration already prefers the submission over any older draft.
   await upsertJson(SELECTIONS, album.id, selection);
-  await deleteJson(DRAFTS, album.id);
   album.submittedAt = selection.submittedAt;
   album.submittedCount = selection.selectedIds.length;
   album.updatedAt = selection.submittedAt;

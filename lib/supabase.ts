@@ -30,6 +30,18 @@ export type AppRecord = {
   updated_at?: string;
 };
 
+export async function readAppRecord<T>(collection: string, recordId: string): Promise<T | null> {
+  const { data, error } = await getSupabaseServer()
+    .from(APP_RECORDS_TABLE)
+    .select("payload")
+    .eq("scope", "studio")
+    .eq("collection", collection)
+    .eq("record_id", recordId)
+    .maybeSingle();
+  if (error) throw new Error(`Không đọc được dữ liệu Supabase: ${error.message}`);
+  return (data?.payload as T | undefined) ?? null;
+}
+
 export async function readAppRecords(collection: string, workspaceId?: string, options: { limit?: number; offset?: number; orderBy?: "created_at" | "updated_at"; orderByPayload?: number; secondaryOrderByPayload?: number; emptyPayloadIndex?: number; nonEmptyPayloadIndex?: number; ascending?: boolean; payloadIndex?: number; payloadEquals?: string; payloadNotEquals?: string } = {}) {
   // Unbounded reads must page explicitly: Supabase otherwise silently returns
   // only the first 1,000 records, hiding newer workflow activities.
@@ -70,6 +82,26 @@ export async function saveAppRecord(collection: string, recordId: string, payloa
     payload
   }, { onConflict: "scope,collection,record_id" });
   if (error) throw new Error(`Không lưu được dữ liệu Supabase: ${error.message}`);
+}
+
+export async function saveLatestAppRecord(collection: string, recordId: string, payload: { savedAt: string }) {
+  const records = getSupabaseServer().from(APP_RECORDS_TABLE);
+  const { data, error } = await records.upsert({
+    scope: "studio", collection, record_id: recordId, payload
+  }, { onConflict: "scope,collection,record_id", ignoreDuplicates: true }).select("record_id");
+  if (error) throw new Error(`Không lưu được dữ liệu Supabase: ${error.message}`);
+  if (data?.length) return true;
+
+  // Compare the edit timestamp inside the update so a slow request from
+  // another tab or server instance cannot overwrite a newer draft.
+  const result = await records.update({ payload })
+    .eq("scope", "studio")
+    .eq("collection", collection)
+    .eq("record_id", recordId)
+    .or(`payload->>savedAt.is.null,payload->>savedAt.eq.,payload->>savedAt.lt.${payload.savedAt}`)
+    .select("record_id");
+  if (result.error) throw new Error(`Không lưu được dữ liệu Supabase: ${result.error.message}`);
+  return Boolean(result.data?.length);
 }
 
 export async function removeAppRecord(collection: string, recordId: string, workspaceId?: string) {

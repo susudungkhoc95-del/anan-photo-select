@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveRestoredSelection, selectionMatchesDraft } from "@/lib/selection-state";
+import { newestDraft, resolveRestoredSelection, selectionMatchesDraft } from "@/lib/selection-state";
 import type { Draft, Selection } from "@/lib/types";
 
 const selection: Selection = {
@@ -41,6 +41,11 @@ describe("resolveRestoredSelection", () => {
     expect(resolveRestoredSelection(draft(["photo-3"], "2026-08-14T06:35:55.792Z"), selection).source).toBe("draft");
   });
 
+  it("restores an explicit clear saved after the submission", () => {
+    const cleared = { ...draft([], "2026-08-14T06:35:55.792Z"), cleared: true as const };
+    expect(resolveRestoredSelection(cleared, selection)).toEqual({ source: "draft", saved: cleared });
+  });
+
   it("restores a draft when there is no submitted selection", () => {
     expect(resolveRestoredSelection(draft(["photo-3"], "2026-08-14T06:35:55.792Z"), null).source).toBe("draft");
   });
@@ -52,5 +57,24 @@ describe("resolveRestoredSelection", () => {
 
   it("detects a changed selection in a draft", () => {
     expect(selectionMatchesDraft(selection, draft(["photo-3"], "2026-08-14T06:35:55.792Z"))).toBe(false);
+  });
+});
+
+describe("newestDraft", () => {
+  const local = draft(Array.from({ length: 38 }, (_, i) => `photo-${i}`), "2026-08-14T02:00:00.000Z");
+  const newerEmpty = draft([], "2026-08-14T06:35:55.792Z");
+
+  it("recovers 38 local choices over a legacy empty server autosave", () => {
+    expect(newestDraft(newerEmpty, local)).toBe(local);
+  });
+
+  it("honors a more recent intentional clear", () => {
+    const cleared = { ...newerEmpty, cleared: true as const };
+    expect(newestDraft(cleared, local)).toBe(cleared);
+  });
+
+  it("prefers an equally recent server copy to avoid resending an already synced draft", () => {
+    const server = { ...local };
+    expect(newestDraft(server, local)).toBe(server);
   });
 });

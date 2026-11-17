@@ -6,7 +6,7 @@ vi.mock("@supabase/supabase-js", () => ({
     const calls: Array<[string, ...unknown[]]> = [];
     mock.calls.push(calls);
     const query: Record<string, unknown> = {};
-    for (const method of ["select", "eq", "neq", "not", "or", "order", "range", "limit"]) {
+    for (const method of ["select", "eq", "neq", "not", "or", "order", "range", "limit", "upsert", "update"]) {
       query[method] = (...args: unknown[]) => { calls.push([method, ...args]); return query; };
     }
     query.then = (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => Promise.resolve(mock.pages.shift()).then(resolve, reject);
@@ -14,7 +14,7 @@ vi.mock("@supabase/supabase-js", () => ({
   } })
 }));
 
-import { readAppRecords } from "@/lib/supabase";
+import { readAppRecords, saveLatestAppRecord } from "@/lib/supabase";
 
 beforeEach(() => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
@@ -64,5 +64,25 @@ describe("Supabase collection pagination", () => {
   it("propagates a later page failure instead of returning incomplete history", async () => {
     mock.pages = [{ data: Array(500).fill({}), error: null }, { data: null, error: { message: "unavailable" } }];
     await expect(readAppRecords("WorkflowActivities", "studio")).rejects.toThrow("unavailable");
+  });
+});
+
+describe("ordered draft writes", () => {
+  const payload = { savedAt: "2026-11-17T13:45:02.323Z", selectedIds: ["photo-1"] };
+
+  it("inserts a missing draft without overwriting an existing row", async () => {
+    mock.pages = [{ data: [{ record_id: "album" }], error: null }];
+    await expect(saveLatestAppRecord("_drafts", "album", payload)).resolves.toBe(true);
+    expect(mock.calls[0]).toContainEqual(["upsert", { scope: "studio", collection: "_drafts", record_id: "album", payload },
+      { onConflict: "scope,collection,record_id", ignoreDuplicates: true }]);
+    expect(mock.calls[0].map(([method]) => method)).not.toContain("update");
+  });
+
+  it("only updates an older draft and treats a stale write as a no-op", async () => {
+    mock.pages = [{ data: [], error: null }, { data: [], error: null }];
+    await expect(saveLatestAppRecord("_drafts", "album", payload)).resolves.toBe(false);
+    expect(mock.calls[0]).toContainEqual(["update", { payload }]);
+    expect(mock.calls[0]).toContainEqual(["eq", "record_id", "album"]);
+    expect(mock.calls[0]).toContainEqual(["or", `payload->>savedAt.is.null,payload->>savedAt.eq.,payload->>savedAt.lt.${payload.savedAt}`]);
   });
 });

@@ -56,7 +56,7 @@ export type Selection = {
   contentHash?: string;
 };
 
-export type Draft = Omit<Selection, "submittedAt"> & { savedAt: string };
+export type Draft = Omit<Selection, "submittedAt"> & { savedAt: string; cleared?: true };
 
 export type GuideTemplate = {
   id: string;

@@ -100,7 +100,7 @@ export async function POST(request: Request) {
       case "saveDraft": data = await saveDraft(payload); break;
       case "getDraft": data = await getDraft(String(payload.albumId || "")); break;
       case "saveSelection": data = await saveSelection(payload); break;
-      case "getSelection": data = await getSelection(String(payload.albumId || "")); break;
+      case "getSelection": data = await getSelection(String(payload.albumId || ""), payload.includeFiles !== false); break;
       case "deleteAlbum": data = await deleteAlbum(String(payload.albumId || "")); break;
       case "archiveAlbum": data = await archiveAlbum(String(payload.albumId || "")); break;
       case "restoreAlbum": data = await archiveAlbum(String(payload.albumId || ""), true); break;

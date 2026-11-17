@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Copy, Download, Heart, Image as ImageIcon, ImageOff, Send, Trash2, X } from "lucide-react";
 import { rpc } from "@/components/App";
-import { resolveRestoredSelection, selectionMatchesDraft } from "@/lib/selection-state";
+import { newestDraft, resolveRestoredSelection, selectionMatchesDraft } from "@/lib/selection-state";
 import type { Draft, FolderStat, Selection } from "@/lib/types";
 
 type AlbumPublic = {
@@ -14,6 +14,8 @@ type AlbumPublic = {
 type Photo = { id: string; name: string; folder: string; width?: number; height?: number; thumbUrl: string; thumbSrcSet?: string; zoomUrl: string; downloadUrl: string; viewUrl: string };
 type Page = { items: Photo[]; total: number; hasMore: boolean; nextOffset: number };
 type ReviewFilter = "large" | "table" | null;
+type Choices = Pick<Draft, "selectedIds" | "largePrintIds" | "tablePrintIds" | "photoNotes" | "albumNote">;
+const emptyChoices: Choices = { selectedIds: [], largePrintIds: [], tablePrintIds: [], photoNotes: {}, albumNote: "" };
 
 type ImagePriority = "high" | "low";
 type ImageCacheEntry = { promise: Promise<boolean>; priority: ImagePriority };
@@ -22,8 +24,10 @@ const maxCachedImages = 48;
 
 function readLocalDraft(albumId: string): Draft | null {
   try {
-    const value = JSON.parse(localStorage.getItem(`anan-draft-${albumId}`) || "null") as Partial<Draft> | null;
-    if (!value || !Array.isArray(value.selectedIds)) return null;
+    const pending = localStorage.getItem(`anan-pending-draft-${albumId}`);
+    const value = JSON.parse(pending ?? localStorage.getItem(`anan-draft-${albumId}`) ?? "null") as Partial<Draft> | null;
+    // Older clients could leave an empty local draft after simply opening an album.
+    if (!value || !Array.isArray(value.selectedIds) || (!pending && !value.selectedIds.length)) return null;
     return {
       albumId,
       sessionId: typeof value.sessionId === "string" ? value.sessionId : "",
@@ -32,17 +36,10 @@ function readLocalDraft(albumId: string): Draft | null {
       tablePrintIds: Array.isArray(value.tablePrintIds) ? value.tablePrintIds.map(String) : [],
       photoNotes: value.photoNotes && typeof value.photoNotes === "object" ? value.photoNotes as Record<string, string> : {},
       albumNote: typeof value.albumNote === "string" ? value.albumNote : "",
-      savedAt: typeof value.savedAt === "string" ? value.savedAt : new Date(0).toISOString()
+      savedAt: typeof value.savedAt === "string" ? value.savedAt : new Date(0).toISOString(),
+      ...(value.cleared === true && value.selectedIds.length === 0 ? { cleared: true } : {})
     };
   } catch { return null; }
-}
-
-function newestDraft(first: Draft | null, second: Draft | null) {
-  if (!first) return second;
-  if (!second) return first;
-  const firstTime = Date.parse(first.savedAt);
-  const secondTime = Date.parse(second.savedAt);
-  return secondTime > firstTime ? second : first;
 }
 
 function sizedDriveUrl(id: string, width: number) {
@@ -73,11 +70,12 @@ function preloadImage(src: string, priority: ImagePriority): Promise<boolean> {
 export default function ClientView({ albumId }: { albumId: string }) {
   const [album, setAlbum] = useState<AlbumPublic | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [large, setLarge] = useState<Set<string>>(new Set());
-  const [table, setTable] = useState<Set<string>>(new Set());
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const [albumNote, setAlbumNote] = useState("");
+  const [choices, setChoices] = useState<Choices>(emptyChoices);
+  const choicesRef = useRef<Choices>(emptyChoices);
+  const selected = useMemo(() => new Set(choices.selectedIds), [choices.selectedIds]);
+  const large = useMemo(() => new Set(choices.largePrintIds), [choices.largePrintIds]);
+  const table = useMemo(() => new Set(choices.tablePrintIds), [choices.tablePrintIds]);
+  const { photoNotes: notes, albumNote } = choices;
   const [folder, setFolder] = useState("all");
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -96,8 +94,12 @@ export default function ClientView({ albumId }: { albumId: string }) {
   const submitInFlight = useRef(false);
   const [sendAnimation, setSendAnimation] = useState<"idle" | "sending" | "success">("idle");
   const [toast, setToast] = useState("");
-  const selectedRef = useRef(selected);
-  const draftReady = useRef(false);
+  const [restoreStatus, setRestoreStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
+  const [draftStatus, setDraftStatus] = useState<"idle" | "saving" | "error">("idle");
+  const pendingDraft = useRef<Draft | null>(null);
+  const draftTimer = useRef<number | null>(null);
+  const latestEditTime = useRef(0);
   const sessionId = useRef("");
   const nextOffsetRef = useRef(0);
   const loadingRef = useRef(false);
@@ -105,7 +107,33 @@ export default function ClientView({ albumId }: { albumId: string }) {
   const photoAbortRef = useRef<AbortController | null>(null);
   const flightTimerRef = useRef<number | null>(null);
   const loadMoreSentinel = useRef<HTMLDivElement>(null);
-  selectedRef.current = selected;
+
+  const flushDraft = useCallback(async (keepalive = false) => {
+    if (submitInFlight.current || !pendingDraft.current) return;
+    if (draftTimer.current !== null) window.clearTimeout(draftTimer.current);
+    draftTimer.current = null;
+    const draft = pendingDraft.current;
+    setDraftStatus("saving");
+    try {
+      await rpc("saveDraft", draft, undefined, keepalive);
+      if (pendingDraft.current === draft) {
+        pendingDraft.current = null;
+        setDraftStatus("idle");
+      }
+    } catch {
+      if (pendingDraft.current === draft) setDraftStatus("error");
+    }
+  }, []);
+
+  const queueDraft = useCallback((draft: Draft) => {
+    pendingDraft.current = draft;
+    setDraftStatus("saving");
+    try {
+      localStorage.setItem(`anan-pending-draft-${albumId}`, JSON.stringify(draft));
+    } catch { /* The server save can still succeed with browser storage disabled. */ }
+    if (draftTimer.current !== null) window.clearTimeout(draftTimer.current);
+    draftTimer.current = window.setTimeout(() => void flushDraft(), 600);
+  }, [albumId, flushDraft]);
 
   const loadPage = useCallback(async (append: boolean, selectedFolder = folder) => {
     if (loadingRef.current) return undefined;
@@ -137,8 +165,6 @@ export default function ClientView({ albumId }: { albumId: string }) {
   }, [albumId, folder]);
 
   useEffect(() => {
-    sessionId.current = localStorage.getItem(`anan-session-${albumId}`) || crypto.randomUUID();
-    localStorage.setItem(`anan-session-${albumId}`, sessionId.current);
     // Start the album and gallery immediately. Draft/selection restoration is
     // independent and must not block the first photos from appearing.
     const refreshAlbum = () => rpc<AlbumPublic>("getAlbum", { albumId })
@@ -154,26 +180,64 @@ export default function ClientView({ albumId }: { albumId: string }) {
     document.addEventListener("visibilitychange", refreshWhenVisible);
 
     void loadPage(false, "all");
+    return () => document.removeEventListener("visibilitychange", refreshWhenVisible);
+  }, [albumId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    sessionId.current ||= crypto.randomUUID();
+    try {
+      sessionId.current = localStorage.getItem(`anan-session-${albumId}`) || sessionId.current;
+      localStorage.setItem(`anan-session-${albumId}`, sessionId.current);
+    } catch { /* A session can still save to the server. */ }
+    const controller = new AbortController();
 
     const localDraft = readLocalDraft(albumId);
     void Promise.all([
-      rpc<Draft | null>("getDraft", { albumId }),
-      rpc<(Selection & { selectedFiles: Photo[] }) | null>("getSelection", { albumId })
+      rpc<Draft | null>("getDraft", { albumId }, controller.signal),
+      rpc<Selection | null>("getSelection", { albumId, includeFiles: false }, controller.signal)
     ]).then(([draft, selection]) => {
+      if (controller.signal.aborted) return;
       const restored = resolveRestoredSelection(newestDraft(draft, localDraft), selection);
-      const saved = restored.saved;
-      if (saved) {
-        setSelected(new Set(saved.selectedIds || [])); setLarge(new Set(saved.largePrintIds || []));
-        setTable(new Set(saved.tablePrintIds || [])); setNotes(saved.photoNotes || {}); setAlbumNote(saved.albumNote || "");
-      }
+      choicesRef.current = restored.saved ?? emptyChoices;
+      setChoices(choicesRef.current);
       setSubmitted(Boolean(selection));
       setSubmittedCount(selection?.selectedIds?.length || 0);
-      setHasPendingChanges(Boolean(selection && restored.source === "draft" && draft && !selectionMatchesDraft(selection, draft)));
-      // Do not let the autosave effect run before the server state is restored.
-      draftReady.current = true;
-    }).catch((e) => setError(e.message));
-    return () => document.removeEventListener("visibilitychange", refreshWhenVisible);
-  }, [albumId]); // eslint-disable-line react-hooks/exhaustive-deps
+      setHasPendingChanges(Boolean(selection && restored.source === "draft" && !selectionMatchesDraft(selection, restored.saved)));
+      latestEditTime.current = Math.max(
+        Date.parse(selection?.submittedAt ?? "") || 0,
+        Date.parse(draft?.savedAt ?? "") || 0,
+        Date.parse(localDraft?.savedAt ?? "") || 0
+      );
+      setRestoreStatus("ready");
+      if (localDraft && restored.saved === localDraft) {
+        // Recovery from a legacy empty draft only needs to supersede the
+        // version we just read. Subsequent edits from other tabs still win.
+        const recoveryTime = Math.max(Date.parse(localDraft.savedAt) || 0, (Date.parse(draft?.savedAt ?? "") || -1) + 1);
+        latestEditTime.current = Math.max(latestEditTime.current, recoveryTime);
+        queueDraft({ ...localDraft, sessionId: sessionId.current, savedAt: new Date(recoveryTime).toISOString() });
+      }
+    }).catch(() => {
+      if (!controller.signal.aborted) setRestoreStatus("error");
+    });
+    return () => controller.abort();
+  }, [albumId, queueDraft, restoreAttempt]);
+
+  useEffect(() => {
+    const flushWhenHidden = () => {
+      if (document.visibilityState === "hidden") void flushDraft(true);
+    };
+    const flushOnExit = () => void flushDraft(true);
+    const retryWhenOnline = () => void flushDraft();
+    document.addEventListener("visibilitychange", flushWhenHidden);
+    window.addEventListener("pagehide", flushOnExit);
+    window.addEventListener("online", retryWhenOnline);
+    return () => {
+      if (draftTimer.current !== null) window.clearTimeout(draftTimer.current);
+      document.removeEventListener("visibilitychange", flushWhenHidden);
+      window.removeEventListener("pagehide", flushOnExit);
+      window.removeEventListener("online", retryWhenOnline);
+    };
+  }, [flushDraft]);
 
   useEffect(() => {
     const sentinel = loadMoreSentinel.current;
@@ -239,25 +303,20 @@ export default function ClientView({ albumId }: { albumId: string }) {
     }
   }, [zoom, photos.length, hasMore, loadPage]);
 
-  useEffect(() => {
-    if (!draftReady.current || !album) return;
-    const localDraft = {
-      albumId, sessionId: sessionId.current, selectedIds: [...selected], largePrintIds: [...large],
-      tablePrintIds: [...table], photoNotes: notes, albumNote, savedAt: new Date().toISOString()
-    } satisfies Draft;
-    // Keep a synchronous local copy so a quick refresh does not lose a click
-    // while the debounced server draft is still being written.
-    localStorage.setItem(`anan-draft-${albumId}`, JSON.stringify(localDraft));
-    const timer = setTimeout(() => {
-      rpc("saveDraft", {
-        albumId, sessionId: sessionId.current, selectedIds: [...selected], largePrintIds: [...large],
-        tablePrintIds: [...table], photoNotes: notes, albumNote
-      }).catch(() => {});
-    }, 1200);
-    return () => clearTimeout(timer);
-  }, [album, albumId, selected, large, table, notes, albumNote]);
-
   function notify(text: string) { setToast(text); setTimeout(() => setToast(""), 2200); }
+
+  function editChoices(next: Choices) {
+    if (restoreStatus !== "ready" || submitInFlight.current || album?.selectionLocked) return;
+    choicesRef.current = next;
+    setChoices(next);
+    if (submitted) setHasPendingChanges(true);
+    latestEditTime.current = Math.max(Date.now(), latestEditTime.current + 1);
+    queueDraft({
+      ...next, albumId, sessionId: sessionId.current, savedAt: new Date(latestEditTime.current).toISOString(),
+      ...(next.selectedIds.length === 0 ? { cleared: true } : {})
+    });
+  }
+
   function lockedMessage(action: "change" | "resend") {
     return album?.selectionLockState === "completed"
       ? `Album đã hoàn tất hậu kỳ, bạn không thể ${action === "change" ? "thay đổi" : "gửi lại"} ảnh chọn.`
@@ -265,18 +324,19 @@ export default function ClientView({ albumId }: { albumId: string }) {
   }
   function toggle(id: string) {
     if (album?.selectionLocked) return notify(lockedMessage("change"));
-    if (submitted) setHasPendingChanges(true);
-    setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(id)) {
-        next.delete(id);
-        setLarge((v) => { const n = new Set(v); n.delete(id); return n; });
-        setTable((v) => { const n = new Set(v); n.delete(id); return n; });
-      } else if (album?.maxSelect && next.size >= album.maxSelect) {
-        notify(`Bạn chỉ được chọn tối đa ${album.maxSelect} ảnh.`);
-      } else next.add(id);
-      return next;
-    });
+    const current = choicesRef.current;
+    if (current.selectedIds.includes(id)) {
+      editChoices({
+        ...current,
+        selectedIds: current.selectedIds.filter((value) => value !== id),
+        largePrintIds: current.largePrintIds.filter((value) => value !== id),
+        tablePrintIds: current.tablePrintIds.filter((value) => value !== id)
+      });
+    } else if (album?.maxSelect && current.selectedIds.length >= album.maxSelect) {
+      notify(`Bạn chỉ được chọn tối đa ${album.maxSelect} ảnh.`);
+    } else {
+      editChoices({ ...current, selectedIds: [...current.selectedIds, id] });
+    }
   }
   function switchFolder(value: string) {
     photoAbortRef.current?.abort();
@@ -290,30 +350,31 @@ export default function ClientView({ albumId }: { albumId: string }) {
   }
 
   function setPrint(id: string, kind: "large" | "table", checked: boolean) {
-    if (album?.selectionLocked) return notify(lockedMessage("change"));
-    if (submitted) setHasPendingChanges(true);
-    const setter = kind === "large" ? setLarge : setTable;
+    const current = choicesRef.current;
+    const field = kind === "large" ? "largePrintIds" : "tablePrintIds";
+    const ids = current[field];
     const limit = kind === "large" ? album?.largePrintLimit || 0 : album?.tablePrintLimit || 0;
-    setter((current) => {
-      const next = new Set(current);
-      if (!checked) next.delete(id);
-      else if (limit && next.size >= limit) notify(`Chỉ được đánh dấu tối đa ${limit} ảnh.`);
-      else next.add(id);
-      return next;
-    });
+    if (checked === ids.includes(id)) return;
+    if (checked && limit && ids.length >= limit) return notify(`Chỉ được đánh dấu tối đa ${limit} ảnh.`);
+    editChoices({ ...current, [field]: checked ? [...ids, id] : ids.filter((value) => value !== id) });
   }
   async function submit() {
-    if (submitInFlight.current) return;
+    if (submitInFlight.current || restoreStatus !== "ready") return;
     if (album?.selectionLocked) return notify(lockedMessage("resend"));
-    if (!selected.size) return notify("Bạn chưa chọn ảnh nào.");
-    const selectedIds = [...selected];
-    const selectedCount = selectedIds.length;
+    const snapshot = choicesRef.current;
+    const selectedCount = snapshot.selectedIds.length;
+    if (!selectedCount) return notify("Bạn chưa chọn ảnh nào.");
     setSendAnimation("sending");
     submitInFlight.current = true;
     setSubmitting(true);
     try {
-      await rpc("saveSelection", { albumId, sessionId: sessionId.current, submissionId: crypto.randomUUID(), selectedIds, largePrintIds: [...large], tablePrintIds: [...table], photoNotes: notes, albumNote });
-      localStorage.removeItem(`anan-draft-${albumId}`);
+      await rpc("saveSelection", { ...snapshot, albumId, sessionId: sessionId.current, submissionId: crypto.randomUUID() });
+      pendingDraft.current = null;
+      setDraftStatus("idle");
+      try {
+        localStorage.removeItem(`anan-draft-${albumId}`);
+        localStorage.removeItem(`anan-pending-draft-${albumId}`);
+      } catch { /* The submission has already succeeded. */ }
       setSubmitted(true); setSubmittedCount(selectedCount); setHasPendingChanges(false); setReview(false); setReviewZoom(null);
       setSendAnimation("success");
       if (flightTimerRef.current !== null) window.clearTimeout(flightTimerRef.current);
@@ -321,7 +382,11 @@ export default function ClientView({ albumId }: { albumId: string }) {
     } catch (e) {
       setSendAnimation("idle");
       notify(`Không thể gửi ${selectedCount} ảnh. ${(e as Error).message}`);
-    } finally { submitInFlight.current = false; setSubmitting(false); }
+    } finally {
+      submitInFlight.current = false;
+      setSubmitting(false);
+      if (pendingDraft.current) void flushDraft();
+    }
   }
   async function openReview() {
     if (!selected.size) return notify("Bạn chưa chọn ảnh nào.");
@@ -357,6 +422,7 @@ export default function ClientView({ albumId }: { albumId: string }) {
 
   if (error) return <main className="client-page client-error"><ImageOff size={36} /><h1>Không mở được album</h1><p>{error}</p></main>;
   if (!album) return <div className="page-loader client-page-loader"><span className="spinner" /> Đang tải album…</div>;
+  const selectionDisabled = Boolean(album.selectionLocked || restoreStatus !== "ready" || submitting);
   const zoomPhoto = zoom === null ? null : photos[zoom];
   const reviewFilterIds = reviewFilter === "large" ? large : reviewFilter === "table" ? table : selected;
   const selectedReviewPhotos = reviewPhotos.filter((photo) => selected.has(photo.id) && reviewFilterIds.has(photo.id));
@@ -385,9 +451,9 @@ export default function ClientView({ albumId }: { albumId: string }) {
             {album.folders.map((f) => <option key={f.name} value={f.name}>{f.name.split(" / ").at(-1)} ({f.count} ảnh)</option>)}
           </select></label>
           <div className="client-toolbar-actions">
-            <div className="counter">Đã chọn <span>{selected.size}</span>{album.maxSelect ? ` / ${album.maxSelect}` : ""} ảnh</div>
+            {restoreStatus === "ready" && <div className="counter">Đã chọn <span>{selected.size}</span>{album.maxSelect ? ` / ${album.maxSelect}` : ""} ảnh</div>}
             <div className="row">
-              <button className="btn-icon review-send-entry" onClick={openReview}>Xem và gửi ảnh chọn</button>
+              <button className="btn-icon review-send-entry" disabled={restoreStatus !== "ready"} onClick={openReview}>Xem và gửi ảnh chọn</button>
             </div>
           </div>
         </div>
@@ -399,8 +465,19 @@ export default function ClientView({ albumId }: { albumId: string }) {
           <button className="secondary btn-icon" onClick={() => { navigator.clipboard.writeText(location.href); notify("Đã copy link."); }}><Copy size={16} /> Copy link ảnh</button>
         </div>
         <div className="hint page-status">Đang hiển thị {photos.length} / {total} ảnh</div>
+        {restoreStatus === "loading" && <p className="hint" role="status">Đang tải ảnh đã chọn…</p>}
+        {restoreStatus === "error" && <div className="selection-locked-banner" role="status">
+          Chưa tải được ảnh đã chọn. <button className="secondary" type="button" onClick={() => {
+            setRestoreStatus("loading");
+            setRestoreAttempt((attempt) => attempt + 1);
+          }}>Thử lại</button>
+        </div>}
+        {draftStatus === "saving" && <p className="hint" role="status">Đang lưu ảnh đã chọn…</p>}
+        {draftStatus === "error" && <div className="selection-locked-banner" role="status">
+          Chưa đồng bộ được ảnh đã chọn. <button className="secondary" type="button" onClick={() => void flushDraft()}>Thử lưu lại</button>
+        </div>}
         {album.selectionLocked && <div className="selection-locked-banner" role="status">{album.selectionLockState === "completed" ? "Đã hoàn tất hậu kỳ. Ảnh chọn đã được chốt và khóa." : "Album đang trong quá trình hậu kỳ. Ảnh chọn đã được khóa tạm thời."}</div>}
-        <JustifiedGallery albumId={albumId} photos={photos} selected={selected} locked={Boolean(album.selectionLocked)} onOpen={(index) => { zoomIndexRef.current = index; setZoom(index); }} onToggle={toggle} />
+        <JustifiedGallery albumId={albumId} photos={photos} selected={selected} locked={selectionDisabled} onOpen={(index) => { zoomIndexRef.current = index; setZoom(index); }} onToggle={toggle} />
         {loading && <div className="grid-loader show"><span className="spinner" /> Đang tải thêm ảnh...</div>}
         {!loading && hasMore && <div className="load-more-action">
           <button className="secondary btn-icon" type="button" onClick={() => void loadPage(true)}>
@@ -410,24 +487,24 @@ export default function ClientView({ albumId }: { albumId: string }) {
         {!loading && !photos.length && <div className="empty">Chưa có ảnh để hiển thị.</div>}
         <div ref={loadMoreSentinel} className="load-more-sentinel" aria-hidden="true" />
       </section>
-      {review && <Review album={album} photos={selectedReviewPhotos} selected={selected} large={large} table={table} filter={reviewFilter} notes={notes} albumNote={albumNote} submitting={submitting} locked={Boolean(album.selectionLocked)}
+      {review && <Review album={album} photos={selectedReviewPhotos} selected={selected} large={large} table={table} filter={reviewFilter} notes={notes} albumNote={albumNote} submitting={submitting} locked={selectionDisabled}
         onClose={() => { setReview(false); setReviewZoom(null); }} onRemove={toggle}
         onFilterChange={(filter) => { setReviewFilter(filter); setReviewZoom(null); }}
         onOpenPhoto={(id) => setReviewZoom(selectedReviewPhotos.findIndex((photo) => photo.id === id))}
-        onPrint={setPrint} onNote={(id, value) => { if (submitted) setHasPendingChanges(true); setNotes((n) => ({ ...n, [id]: value })); }}
-        onAlbumNote={(value) => { if (submitted) setHasPendingChanges(true); setAlbumNote(value); }} onSubmit={submit} />}
+        onPrint={setPrint} onNote={(id, value) => editChoices({ ...choicesRef.current, photoNotes: { ...choicesRef.current.photoNotes, [id]: value } })}
+        onAlbumNote={(value) => editChoices({ ...choicesRef.current, albumNote: value })} onSubmit={submit} />}
       {zoomPhoto && <Zoom albumId={albumId} photo={zoomPhoto} previousPhoto={zoom !== null ? photos[zoom - 1] : undefined}
         nextPhoto={zoom !== null ? photos[zoom + 1] : undefined}
         prefetchPhotos={zoom !== null ? [photos[zoom + 1], photos[zoom + 2], photos[zoom - 1]].filter(Boolean) : []}
         selected={selected.has(zoomPhoto.id)}
-        onToggle={() => toggle(zoomPhoto.id)} locked={Boolean(album.selectionLocked)} onClose={() => { zoomIndexRef.current = null; setZoom(null); }}
+        onToggle={() => toggle(zoomPhoto.id)} locked={Boolean(album.selectionLocked)} disabled={selectionDisabled} onClose={() => { zoomIndexRef.current = null; setZoom(null); }}
         onPrev={() => navigateZoom(-1)} onNext={() => navigateZoom(1)} />}
       {reviewZoomPhoto && <Zoom albumId={albumId} photo={reviewZoomPhoto}
         previousPhoto={reviewZoom !== null ? selectedReviewPhotos[reviewZoom - 1] : undefined}
         nextPhoto={reviewZoom !== null ? selectedReviewPhotos[reviewZoom + 1] : undefined}
         prefetchPhotos={reviewZoom !== null ? [selectedReviewPhotos[reviewZoom + 1], selectedReviewPhotos[reviewZoom + 2], selectedReviewPhotos[reviewZoom - 1]].filter(Boolean) : []}
         selected={selected.has(reviewZoomPhoto.id)}
-        onToggle={removeReviewPhotoAndAdvance} locked={Boolean(album.selectionLocked)}
+        onToggle={removeReviewPhotoAndAdvance} locked={Boolean(album.selectionLocked)} disabled={selectionDisabled}
         onClose={() => setReviewZoom(null)}
         onPrev={() => setReviewZoom((index) => index !== null && index > 0 ? index - 1 : (notify("Đây là ảnh đầu tiên."), index))}
         onNext={() => setReviewZoom((index) => index !== null && index < selectedReviewPhotos.length - 1 ? index + 1 : (notify("Đây là ảnh cuối cùng."), index))} />}
@@ -568,9 +645,10 @@ function Review({ album, photos, selected, large, table, filter, notes, albumNot
   </div></div>;
 }
 
-function Zoom({ albumId, photo, previousPhoto, nextPhoto, prefetchPhotos, selected, locked = false, onToggle, onClose, onPrev, onNext }: {
+function Zoom({ albumId, photo, previousPhoto, nextPhoto, prefetchPhotos, selected, locked = false, disabled = false, onToggle, onClose, onPrev, onNext }: {
   albumId: string; photo: Photo; previousPhoto?: Photo; nextPhoto?: Photo; selected: boolean;
   locked?: boolean;
+  disabled?: boolean;
   prefetchPhotos?: Photo[];
   onToggle: () => void; onClose: () => void; onPrev: () => void; onNext: () => void;
 }) {
@@ -757,7 +835,7 @@ function Zoom({ albumId, photo, previousPhoto, nextPhoto, prefetchPhotos, select
       <DrivePhoto key={photo.id} albumId={albumId} photo={photo} zoom />
       <button className="zoom-nav zoom-next next" onClick={onNext} aria-label="Ảnh tiếp theo"><ChevronRight size={27} /></button>
     </div>
-    <div className="zoom-bottom"><button disabled={locked} className={`zoom-select zoom-heart ${selected ? "active" : ""}`} onClick={onToggle}><Heart fill={selected ? "currentColor" : "none"} /> {locked ? "Đã khóa" : selected ? "Bỏ chọn" : "Chọn ảnh này"}</button></div>
+    <div className="zoom-bottom"><button disabled={locked || disabled} className={`zoom-select zoom-heart ${selected ? "active" : ""}`} onClick={onToggle}><Heart fill={selected ? "currentColor" : "none"} /> {locked ? "Đã khóa" : selected ? "Bỏ chọn" : "Chọn ảnh này"}</button></div>
   </div>;
 }
 
