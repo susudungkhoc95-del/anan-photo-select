@@ -633,7 +633,6 @@ function CardModal({ board, cardId, onClose, onSave, onChanged, onLabelsChanged,
     onSave(card.id, { title: normalizedTitle, note, weddingDate, photoReturnDate });
     onClose();
   }
-  async function editLink(link: WorkflowLink) { const nextLabel = window.prompt("Tên hiển thị:", link.label); if (nextLabel === null) return; const nextUrl = window.prompt("URL:", link.url); if (nextUrl === null) return; await scopedRpc("updateWorkflowLink", { linkId: link.id, label: nextLabel, url: nextUrl }); await onChanged(); }
   async function addLink() {
     const label = newLinkLabel.trim();
     const url = newLinkUrl.trim();
@@ -737,7 +736,6 @@ function CardModal({ board, cardId, onClose, onSave, onChanged, onLabelsChanged,
                   onNotice("Đang gửi yêu cầu tải đến DP Drive.");
                 }}>Tải</a>}
                 {(label.includes("sheet") || label.includes("raw")) && <button type="button" className="text-button" onClick={() => void copyLink(link)}><Copy size={13} />{copiedLinkId === link.id ? "Đã copy" : "Copy"}</button>}
-                <button type="button" className="text-button" disabled={isRaw && rawBusy} onClick={() => void editLink(link)}>Sửa</button>
               </div>
             </div>;
           })}
