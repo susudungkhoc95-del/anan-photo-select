@@ -10,7 +10,7 @@ import { rpc } from "@/components/App";
 import QuickLinks from "@/components/QuickLinks";
 import PhotoClassifier from "@/components/PhotoClassifier";
 import EnvironmentSwitcher from "@/components/EnvironmentSwitcher";
-import type { QuickLink, StudioSettings, WorkflowBoard, WorkflowCard, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
+import type { QuickLink, RawReport, StudioSettings, WorkflowBoard, WorkflowCard, WorkflowLabel, WorkflowLink, WorkflowList } from "@/lib/types";
 import { dpDriveDownloadUrl } from "@/lib/drive-handoff";
 import { compareWorkflowDoneCards, createWorkflowSearch, parseWorkflowQuery, sortWorkflowCardsByReturnDate, workflowAge } from "@/lib/workflow-utils";
 
@@ -621,6 +621,8 @@ function CardModal({ board, cardId, onClose, onSave, onChanged, onLabelsChanged,
   const [newLinkLabel, setNewLinkLabel] = useState("Link ảnh hoàn thiện");
   const [newLinkUrl, setNewLinkUrl] = useState("");
   const links = board.links.filter((item) => item.cardId === card.id);
+  const rawLink = links.find((link) => link.label === "Link RAW chọn");
+  const canSyncRaw = card.source === "dp_select" && Boolean(card.dpSelectAlbumId);
   // Keep the compact history panel, but let its scrollbar expose every activity.
   const activities = board.activities.filter((item) => item.cardId === card.id);
   const [selectedLabelIds, setSelectedLabelIds] = useState(() => board.cardLabels.filter((item) => item.cardId === card.id).map((item) => item.labelId));
@@ -652,22 +654,30 @@ function CardModal({ board, cardId, onClose, onSave, onChanged, onLabelsChanged,
     setCopiedLinkId(link.id);
     window.setTimeout(() => setCopiedLinkId((current) => current === link.id ? null : current), 1600);
   }
-  async function createRawSelectionFolder() {
-    if (!card.dpSelectAlbumId) return;
+  async function syncRawSelection(download: boolean) {
+    if (!card.dpSelectAlbumId || rawBusy) return;
     setRawBusy(true);
     try {
-      const result = await rpc<{ url: string; copied?: number }>("createRawSelectionFolder", { albumId: card.dpSelectAlbumId });
-      const current = links.find((link) => link.label === "Link RAW chọn");
-      if (current) {
-        await scopedRpc("updateWorkflowLink", { linkId: current.id, label: current.label, url: result.url });
-      } else {
+      const result = await rpc<RawReport & { url: string }>("createRawSelectionFolder", { albumId: card.dpSelectAlbumId });
+      if (!rawLink) {
         await scopedRpc("createWorkflowLink", { cardId: card.id, label: "Link RAW chọn", url: result.url });
+        await onChanged();
+      } else if (rawLink.url !== result.url) {
+        await scopedRpc("updateWorkflowLink", { linkId: rawLink.id, label: rawLink.label, url: result.url });
+        await onChanged();
       }
-      await onChanged();
-      onNotice(`Đã tạo thư mục RAW chọn${result.copied === undefined ? "" : ` · ${result.copied} file mới`}.`);
+      const copied = result.copied ? `Đã nhặt thêm ${result.copied} file RAW` : "Không có file RAW mới để nhặt";
+      const report = `${copied}${result.missing.length ? ` · Thiếu RAW cho ${result.missing.length} ảnh` : ""}.`;
+      if (!download || (!result.copied && !result.skipped)) {
+        onNotice(report);
+        return;
+      }
+      const downloadUrl = dpDriveDownloadUrl(result.url);
+      if (!downloadUrl) throw new Error("Link RAW chọn không phải link thư mục Google Drive hợp lệ.");
+      onNotice(`${report} Đang gửi yêu cầu tải đến DP Drive.`);
+      window.location.assign(downloadUrl);
     } catch (error) {
-      const nextError = error as Error;
-      onError(nextError);
+      onError(error as Error);
     } finally { setRawBusy(false); }
   }
   async function removeCard() {
@@ -694,7 +704,47 @@ function CardModal({ board, cardId, onClose, onSave, onChanged, onLabelsChanged,
         {card.dpAlbumNote && <section className="workflow-dp-note"><h3>Lưu ý chung từ khách</h3><p>{card.dpAlbumNote}</p></section>}
       </div>
       <div className="workflow-modal-column workflow-content-column">
-        <section className="workflow-links"><div className="workflow-links-heading"><h3>Đường link</h3><button type="button" className="text-button workflow-add-link" aria-label={addLinkOpen ? "Đóng form thêm link" : "Thêm link"} title={addLinkOpen ? "Đóng form thêm link" : "Thêm link"} onClick={() => setAddLinkOpen((open) => !open)}><Plus size={15} /></button></div>{addLinkOpen && <div className="workflow-add-link-form"><input aria-label="Tên link mới" value={newLinkLabel} onChange={(event) => setNewLinkLabel(event.target.value)} placeholder="Tên hiển thị" /><input aria-label="URL link mới" value={newLinkUrl} onChange={(event) => setNewLinkUrl(event.target.value)} placeholder="https://…" inputMode="url" /><div><button type="button" className="secondary compact" disabled={!newLinkLabel.trim() || !newLinkUrl.trim()} onClick={() => void addLink()}>Lưu link</button><button type="button" className="text-button" onClick={() => setAddLinkOpen(false)}>Hủy</button></div></div>}{links.map((link) => { const linkLabel = link.label.toLowerCase(); const isCopyableLink = linkLabel.includes("sheet") || linkLabel.includes("raw"); return <div key={link.id} className="workflow-link"><span className="workflow-link-main"><a href={link.url} target="_blank" rel="noopener noreferrer">{link.label}<ExternalLink size={13} /></a></span><div className="workflow-link-actions">{card.source === "dp_select" && link.label === "Sheet ảnh chọn" && <PhotoClassifier cardId={card.id} onNotice={onNotice} onError={onError} />}{link.label === "Link RAW chọn" && <a className="text-button workflow-download-action" href={dpDriveDownloadUrl(link.url) || "#"} onClick={(event) => { if (!dpDriveDownloadUrl(link.url)) { event.preventDefault(); onError(new Error("Link RAW chọn không phải link thư mục Google Drive hợp lệ.")); } else { onNotice("Đang gửi yêu cầu tải đến DP drive."); } }}>Tải</a>}{isCopyableLink && <button type="button" className="text-button" onClick={() => void copyLink(link)}><Copy size={13} />{copiedLinkId === link.id ? "Đã copy" : "Copy"}</button>}<button type="button" className="text-button" onClick={() => void editLink(link)}>Sửa</button></div></div>; })}{card.source === "dp_select" && !links.some((link) => link.label === "Link RAW chọn") && <button type="button" className="secondary compact workflow-raw-action" disabled={busy || rawBusy} onClick={() => void createRawSelectionFolder()}>{rawBusy ? <><span className="spinner small" /> Đang nhặt RAW…</> : <><FolderSync size={15} /> Tạo thư mục RAW chọn</>}</button>}</section>
+        <section className="workflow-links">
+          <div className="workflow-links-heading">
+            <h3>Đường link</h3>
+            <button type="button" className="text-button workflow-add-link" aria-label={addLinkOpen ? "Đóng form thêm link" : "Thêm link"} title={addLinkOpen ? "Đóng form thêm link" : "Thêm link"} onClick={() => setAddLinkOpen((open) => !open)}><Plus size={15} /></button>
+          </div>
+          {addLinkOpen && <div className="workflow-add-link-form">
+            <input aria-label="Tên link mới" value={newLinkLabel} onChange={(event) => setNewLinkLabel(event.target.value)} placeholder="Tên hiển thị" />
+            <input aria-label="URL link mới" value={newLinkUrl} onChange={(event) => setNewLinkUrl(event.target.value)} placeholder="https://…" inputMode="url" />
+            <div>
+              <button type="button" className="secondary compact" disabled={!newLinkLabel.trim() || !newLinkUrl.trim()} onClick={() => void addLink()}>Lưu link</button>
+              <button type="button" className="text-button" onClick={() => setAddLinkOpen(false)}>Hủy</button>
+            </div>
+          </div>}
+          {links.map((link) => {
+            const label = link.label.toLowerCase();
+            const isRaw = link === rawLink;
+            const downloadUrl = isRaw ? dpDriveDownloadUrl(link.url) : null;
+            return <div key={link.id} className="workflow-link">
+              <span className="workflow-link-main"><a href={link.url} target="_blank" rel="noopener noreferrer">{link.label}<ExternalLink size={13} /></a></span>
+              <div className="workflow-link-actions">
+                {card.source === "dp_select" && link.label === "Sheet ảnh chọn" && <PhotoClassifier cardId={card.id} onNotice={onNotice} onError={onError} />}
+                {isRaw && canSyncRaw && <button type="button" className="text-button workflow-download-action" disabled={busy || rawBusy} onClick={() => void syncRawSelection(true)}>
+                  {rawBusy ? "Đang kiểm tra RAW…" : "Tải"}
+                </button>}
+                {isRaw && !canSyncRaw && <a className="text-button workflow-download-action" href={downloadUrl || "#"} onClick={(event) => {
+                  if (!downloadUrl) {
+                    event.preventDefault();
+                    onError(new Error("Link RAW chọn không phải link thư mục Google Drive hợp lệ."));
+                    return;
+                  }
+                  onNotice("Đang gửi yêu cầu tải đến DP Drive.");
+                }}>Tải</a>}
+                {(label.includes("sheet") || label.includes("raw")) && <button type="button" className="text-button" onClick={() => void copyLink(link)}><Copy size={13} />{copiedLinkId === link.id ? "Đã copy" : "Copy"}</button>}
+                <button type="button" className="text-button" disabled={isRaw && rawBusy} onClick={() => void editLink(link)}>Sửa</button>
+              </div>
+            </div>;
+          })}
+          {canSyncRaw && !rawLink && <button type="button" className="secondary compact workflow-raw-action" disabled={busy || rawBusy} onClick={() => void syncRawSelection(false)}>
+            {rawBusy ? <><span className="spinner small" /> Đang nhặt RAW…</> : <><FolderSync size={15} /> Tạo thư mục RAW chọn</>}
+          </button>}
+        </section>
         <label className="workflow-note-field">Ghi chú<textarea rows={5} value={note} onChange={(event) => setNote(event.target.value)} /></label>
         <section className="workflow-card-labels"><h3>Nhãn</h3>{board.labels.length ? <div className="workflow-label-picker">{board.labels.map((label) => <label key={label.id} className={selectedLabelIds.includes(label.id) ? "selected" : ""} style={{ "--label-color": label.color } as React.CSSProperties}><input type="checkbox" checked={selectedLabelIds.includes(label.id)} disabled={busy} onChange={() => toggleLabel(label.id)} />{workflowLabelName(label)}</label>)}</div> : <p className="muted">Chưa có nhãn. Bấm nút Nhãn ở đầu trang để tạo nhãn.</p>}</section>
       </div>

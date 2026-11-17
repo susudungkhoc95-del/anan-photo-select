@@ -27,6 +27,7 @@ const albumCache = new Map<string, CacheEntry<Album>>();
 const albumLoads = new Map<string, Promise<Album | null>>();
 const photoCache = new Map<string, CacheEntry<Photo[]>>();
 const photoLoads = new Map<string, Promise<Photo[]>>();
+const rawSelectionUpdates = new Map<string, ReturnType<typeof syncRawSelectionFolder>>();
 
 export class AlbumNotFoundError extends Error {}
 
@@ -929,8 +930,17 @@ export async function updateCustomerChat(payload: Record<string, unknown>) {
   return { ok: true };
 }
 
-export async function createRawSelectionFolder(id: string) {
-  const album = await loadAlbum(id);
+export function createRawSelectionFolder(id: string) {
+  const albumId = clean(id, 80);
+  const pending = rawSelectionUpdates.get(albumId);
+  if (pending) return pending;
+  const update = syncRawSelectionFolder(albumId).finally(() => rawSelectionUpdates.delete(albumId));
+  rawSelectionUpdates.set(albumId, update);
+  return update;
+}
+
+async function syncRawSelectionFolder(id: string) {
+  const album = { ...await loadAlbum(id) };
   if (!album.rawFolderId) throw new Error("Album chưa có thư mục RAW.");
   const selection = await readJson<Selection>(SELECTIONS, id);
   if (!selection?.selectedIds.length) throw new Error("Khách chưa gửi danh sách ảnh.");
@@ -938,13 +948,28 @@ export async function createRawSelectionFolder(id: string) {
   const byId = new Map(photos.map((p) => [p.id, p]));
   const { drive } = getGoogleApi();
   const safeName = album.title.replace(/[\/\\:*?"<>|]/g, "-").trim().slice(0, 120) || "Album";
-  const found = await drive.files.list({
-    q: `'${album.rawFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and name = '${safeName.replace(/'/g, "\\'")}' and trashed = false`,
-    fields: "files(id,name)",
-    supportsAllDrives: true,
-    includeItemsFromAllDrives: true
-  });
-  let targetId = found.data.files?.[0]?.id;
+  let targetId: string | undefined;
+  if (album.rawSelectionFolderId) {
+    try {
+      const { data } = await drive.files.get({
+        fileId: album.rawSelectionFolderId,
+        fields: "id,mimeType,trashed",
+        supportsAllDrives: true
+      });
+      if (!data.trashed && data.mimeType === "application/vnd.google-apps.folder") targetId = data.id || undefined;
+    } catch (error) {
+      if ((error as { code?: number }).code !== 404) throw error;
+    }
+  }
+  if (!targetId) {
+    const found = await drive.files.list({
+      q: `'${album.rawFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and name = '${safeName.replace(/'/g, "\\'")}' and trashed = false`,
+      fields: "files(id,name)",
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true
+    });
+    targetId = found.data.files?.[0]?.id || undefined;
+  }
   if (!targetId) {
     const created = await drive.files.create({
       requestBody: { name: safeName, mimeType: "application/vnd.google-apps.folder", parents: [album.rawFolderId] },
@@ -969,16 +994,18 @@ export async function createRawSelectionFolder(id: string) {
     const raw = rawByKey.get(fileKey(photo.name));
     if (!raw) { missing.push(baseName(photo.name)); continue; }
     if (existingNames.has(raw.name)) { skipped++; skippedNames.push(baseName(photo.name)); continue; }
+    existingNames.add(raw.name);
     copies.push(raw);
   }
   for (let index = 0; index < copies.length; index += RAW_COPY_CONCURRENCY) {
     const batch = copies.slice(index, index + RAW_COPY_CONCURRENCY);
-    await Promise.all(batch.map((raw) => drive.files.copy({
+    const results = await Promise.allSettled(batch.map((raw) => drive.files.copy({
       fileId: raw.id,
       requestBody: { name: raw.name, parents: [targetId] },
       supportsAllDrives: true
     })));
-    batch.forEach((raw) => existingNames.add(raw.name));
+    const failure = results.find((result) => result.status === "rejected");
+    if (failure) throw failure.reason;
     copied += batch.length;
   }
   album.rawSelectionFolderId = targetId;
