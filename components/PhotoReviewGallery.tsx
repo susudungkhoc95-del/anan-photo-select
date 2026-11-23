@@ -65,6 +65,7 @@ function ReviewGalleryPage({ albumId, round, folder, feedbackOnly, feedback, adm
   }, []);
 
   const active = activeIndex === null ? null : photos[activeIndex];
+  const closePhoto = () => setActiveIndex(null);
   const previous = activeIndex !== null && activeIndex > 0 ? () => setActiveIndex(activeIndex - 1) : undefined;
   const next = activeIndex === null ? undefined
     : activeIndex + 1 < photos.length ? () => setActiveIndex(activeIndex + 1)
@@ -93,12 +94,11 @@ function ReviewGalleryPage({ albumId, round, folder, feedbackOnly, feedback, adm
     {active && activeIndex !== null && <ReviewPhotoDialog
       photoId={active.id}
       title={active.name}
-      editable={Boolean(onEdit)}
       previous={previous}
       next={next}
-      onClose={() => setActiveIndex(null)}>
+      onClose={closePhoto}>
       <RegionEditor key={active.id} albumId={albumId} round={round} photo={active} admin={admin}
-        previous={previous} next={next} feedback={feedback[active.id]} onEdit={onEdit && ((item) => onEdit(active.id, item))} />
+        previous={previous} next={next} onClose={closePhoto} feedback={feedback[active.id]} onEdit={onEdit && ((item) => onEdit(active.id, item))} />
       {error && <p className="review-error" role="alert">{error}</p>}
     </ReviewPhotoDialog>}
   </>;
@@ -124,8 +124,8 @@ function ReviewImage({ albumId, round, photo, large, admin, onLoad, onError }: {
     }} />;
 }
 
-function ReviewPhotoDialog({ photoId, title, editable, onClose, previous, next, children }: {
-  photoId: string; title: string; editable: boolean; onClose: () => void; previous?: () => void; next?: () => void; children: ReactNode;
+function ReviewPhotoDialog({ photoId, title, onClose, previous, next, children }: {
+  photoId: string; title: string; onClose: () => void; previous?: () => void; next?: () => void; children: ReactNode;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -147,14 +147,6 @@ function ReviewPhotoDialog({ photoId, title, editable, onClose, previous, next, 
       if (event.key === "ArrowLeft" && previous) { event.preventDefault(); previous(); }
       if (event.key === "ArrowRight" && next) { event.preventDefault(); next(); }
     }}>
-    <div className="review-dialog-header">
-      <h2 title={title}>{title}</h2>
-      <div className="review-actions">
-        <button type="button" className="secondary icon-button" aria-label="Ảnh trước" disabled={!previous} onClick={previous}><ChevronLeft size={20} /></button>
-        <button type="button" className="secondary icon-button" aria-label="Ảnh tiếp theo" disabled={!next} onClick={next}><ChevronRight size={20} /></button>
-        <button type="button" className="secondary" onClick={onClose}>{editable ? "Xong" : "Đóng"}</button>
-      </div>
-    </div>
     {children}
   </dialog>;
 }
@@ -177,9 +169,9 @@ function pointerPoint(event: PointerEvent<HTMLElement>, bounds: DOMRect): Point 
     y: clamp((event.clientY - bounds.top) / bounds.height) };
 }
 
-function RegionEditor({ albumId, round, photo, admin, feedback = emptyFeedback, onEdit, previous, next }: {
+function RegionEditor({ albumId, round, photo, admin, feedback = emptyFeedback, onEdit, previous, next, onClose }: {
   albumId: string; round: number; photo: Photo; admin?: boolean; feedback?: ReviewPhotoFeedback;
-  previous?: () => void; next?: () => void;
+  previous?: () => void; next?: () => void; onClose: () => void;
   onEdit?: (feedback: ReviewPhotoFeedback) => void;
 }) {
   const [loaded, setLoaded] = useState(false);
@@ -228,78 +220,96 @@ function RegionEditor({ albumId, round, photo, admin, feedback = emptyFeedback, 
     });
   }
 
-  return <div className="review-editor">
-    <div className="review-editor-stage">
-      <div className="review-draw-toolbar">
-        {onEdit && <button type="button" className={drawing ? "" : "secondary"}
-          aria-pressed={drawing} disabled={!loaded || feedback.regions.length >= REVIEW_REGION_LIMIT}
-          onClick={() => setDrawing(!drawing)}><Focus size={17} aria-hidden="true" /> {drawing ? "Hủy vẽ" : "Khoanh vùng"}</button>}
-        <div className="review-zoom-controls" role="group" aria-label="Thu phóng ảnh">
-          <button type="button" className="secondary icon-button" aria-label="Thu nhỏ"
-            disabled={!loaded || view.scale === 1} onClick={() => zoomBy(-.5)}><Minus size={18} aria-hidden="true" /></button>
-          <button type="button" className="secondary review-zoom-reset" aria-label="Về kích thước ban đầu"
-            disabled={view.scale === 1} onClick={reset}>{Math.round(view.scale * 100)}%</button>
-          <button type="button" className="secondary icon-button" aria-label="Phóng to"
-            disabled={!loaded || view.scale === maxScale} onClick={() => zoomBy(.5)}><Plus size={18} aria-hidden="true" /></button>
-        </div>
-      </div>
-      {drawing ? <p className="review-gesture-hint">Kéo trên ảnh để vẽ khung.</p> : loaded &&
-        <p className="review-gesture-hint review-touch-hint">
-          {view.scale > 1 ? "Kéo để xem · Chạm hai lần để thu về" : "Chụm để zoom · Vuốt ngang để đổi ảnh"}
-        </p>}
-      <div ref={viewport} className={`review-image-window${drawing ? " drawing" : view.scale > 1 ? " zoomed" : ""}`}
-        style={{ "--review-aspect": aspect, "--review-zoom": view.scale } as React.CSSProperties}>
-        <div className="review-image-plane" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>
-          <ReviewImage albumId={albumId} round={round} photo={photo} large admin={admin}
-            onLoad={(image) => {
-              if (!image.naturalWidth || !image.naturalHeight) return;
-              setAspect(image.naturalWidth / image.naturalHeight);
-              setLoaded(true);
-            }} onError={() => { setLoaded(false); setDrawing(false); }} />
-          {loaded && <div className={drawing ? "review-region-layer drawing" : "review-region-layer"}
-            onPointerDown={start} onPointerMove={move} onPointerUp={finish} onPointerCancel={cancel} onLostPointerCapture={cancel}>
-            {feedback.regions.map((region) => <div key={region.number} style={boxStyle(region)}
-              className={selected === region.number ? "review-region active" : "review-region"}>
-              <button type="button" className="review-region-number" disabled={drawing}
-                aria-label={`Xem ghi chú vùng ${region.number}`}
-                onClick={() => {
-                  setSelected(region.number);
-                  const note = noteElements.current.get(region.number);
-                  note?.scrollIntoView({ block: "nearest" });
-                }}>{region.number}</button>
-            </div>)}
-            {preview && <div className="review-region active" style={boxStyle(preview)} />}
-          </div>}
-        </div>
+  const drawButton = <button type="button" className={drawing ? "" : "secondary"}
+    aria-label={drawing ? "Hủy vẽ" : "Khoanh vùng"} aria-pressed={drawing}
+    disabled={!loaded || feedback.regions.length >= REVIEW_REGION_LIMIT}
+    onClick={() => setDrawing(!drawing)}>
+    <Focus size={17} aria-hidden="true" />
+    <span className="review-draw-label">{drawing ? "Hủy vẽ" : "Khoanh vùng"}</span>
+    <span className="review-draw-short-label" aria-hidden="true">{drawing ? "Hủy" : "Khoanh"}</span>
+  </button>;
+
+  return <>
+    <div className="review-dialog-header">
+      <h2 title={photo.name}>{photo.name}</h2>
+      <div className="review-actions">
+        {onEdit && <div className="review-mobile-draw">{drawButton}</div>}
+        <button type="button" className="secondary icon-button" aria-label="Ảnh trước" disabled={!previous} onClick={previous}><ChevronLeft size={20} /></button>
+        <button type="button" className="secondary icon-button" aria-label="Ảnh tiếp theo" disabled={!next} onClick={next}><ChevronRight size={20} /></button>
+        <button type="button" className="secondary" onClick={onClose}>{onEdit ? "Xong" : "Đóng"}</button>
       </div>
     </div>
-    <aside className="review-editor-notes">
-      <p className="hint">{folderLabel(photo.folder)}</p>
-      {onEdit ? <label>Ghi chú cả ảnh
-        <textarea rows={3} maxLength={REVIEW_NOTE_LIMIT} value={feedback.note}
-          onChange={(event) => onEdit({ ...feedback, note: event.target.value })} />
-      </label> : feedback.note && <div className="review-region-note"><strong>Ghi chú cả ảnh</strong><p>{feedback.note}</p></div>}
-      {feedback.regions.map((region) => <div key={region.number} className={selected === region.number ? "review-region-note active" : "review-region-note"}>
-        <div className="review-note-heading">
-          <button type="button" className="secondary" aria-pressed={selected === region.number}
-            onClick={() => setSelected(region.number)}>Vùng {region.number}</button>
-          {onEdit && <button type="button" className="secondary icon-button" aria-label={`Xóa vùng ${region.number}`}
-            onClick={() => {
-              onEdit({ ...feedback, regions: feedback.regions.filter((item) => item.number !== region.number) });
-              if (selected === region.number) setSelected(null);
-            }}><Trash2 size={16} /></button>}
+    <div className="review-editor">
+      <div className="review-editor-stage">
+        <div className="review-draw-toolbar">
+          {onEdit && drawButton}
+          <div className="review-zoom-controls" role="group" aria-label="Thu phóng ảnh">
+            <button type="button" className="secondary icon-button" aria-label="Thu nhỏ"
+              disabled={!loaded || view.scale === 1} onClick={() => zoomBy(-.5)}><Minus size={18} aria-hidden="true" /></button>
+            <button type="button" className="secondary review-zoom-reset" aria-label="Về kích thước ban đầu"
+              disabled={view.scale === 1} onClick={reset}>{Math.round(view.scale * 100)}%</button>
+            <button type="button" className="secondary icon-button" aria-label="Phóng to"
+              disabled={!loaded || view.scale === maxScale} onClick={() => zoomBy(.5)}><Plus size={18} aria-hidden="true" /></button>
+          </div>
         </div>
-        {onEdit ? <textarea rows={2} maxLength={REVIEW_NOTE_LIMIT} aria-label={`Ghi chú vùng ${region.number}`}
-          ref={(element) => { if (element) noteElements.current.set(region.number, element); else noteElements.current.delete(region.number); }}
-          value={region.note}
-          onFocus={() => setSelected(region.number)}
-          onChange={(event) => onEdit({
-            ...feedback, regions: feedback.regions.map((item) =>
-              item.number === region.number ? { ...item, note: event.target.value } : item)
-          })} />
-          : <p ref={(element) => { if (element) noteElements.current.set(region.number, element); else noteElements.current.delete(region.number); }}>{region.note}</p>}
-      </div>)}
-      {!onEdit && !hasReviewFeedback(feedback) && <p className="hint">Ảnh này chưa có ghi chú.</p>}
-    </aside>
-  </div>;
+        <div ref={viewport} className={`review-image-window${drawing ? " drawing" : view.scale > 1 ? " zoomed" : ""}`}
+          style={{ "--review-aspect": aspect, "--review-zoom": view.scale } as React.CSSProperties}>
+          <div className="review-image-plane" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>
+            <ReviewImage albumId={albumId} round={round} photo={photo} large admin={admin}
+              onLoad={(image) => {
+                if (!image.naturalWidth || !image.naturalHeight) return;
+                setAspect(image.naturalWidth / image.naturalHeight);
+                setLoaded(true);
+              }} onError={() => { setLoaded(false); setDrawing(false); }} />
+            {loaded && <div className={drawing ? "review-region-layer drawing" : "review-region-layer"}
+              onPointerDown={start} onPointerMove={move} onPointerUp={finish} onPointerCancel={cancel} onLostPointerCapture={cancel}>
+              {feedback.regions.map((region) => <div key={region.number} style={boxStyle(region)}
+                className={selected === region.number ? "review-region active" : "review-region"}>
+                <button type="button" className="review-region-number" disabled={drawing}
+                  aria-label={`Xem ghi chú vùng ${region.number}`}
+                  onClick={() => {
+                    setSelected(region.number);
+                    const note = noteElements.current.get(region.number);
+                    note?.scrollIntoView({ block: "nearest" });
+                  }}>{region.number}</button>
+              </div>)}
+              {preview && <div className="review-region active" style={boxStyle(preview)} />}
+            </div>}
+          </div>
+        </div>
+        {drawing ? <p className="review-gesture-hint">Kéo trên ảnh để vẽ khung.</p> : loaded &&
+          <p className="review-gesture-hint review-touch-hint">
+            {view.scale > 1 ? "Kéo để xem · Chạm hai lần để thu về" : "Chụm hoặc chạm hai lần để zoom · Vuốt ngang để đổi ảnh"}
+          </p>}
+      </div>
+      <aside className="review-editor-notes">
+        <p className="hint">{folderLabel(photo.folder)}</p>
+        {onEdit ? <label>Ghi chú cả ảnh
+          <textarea rows={3} maxLength={REVIEW_NOTE_LIMIT} value={feedback.note}
+            onChange={(event) => onEdit({ ...feedback, note: event.target.value })} />
+        </label> : feedback.note && <div className="review-region-note"><strong>Ghi chú cả ảnh</strong><p>{feedback.note}</p></div>}
+        {feedback.regions.map((region) => <div key={region.number} className={selected === region.number ? "review-region-note active" : "review-region-note"}>
+          <div className="review-note-heading">
+            <button type="button" className="secondary" aria-pressed={selected === region.number}
+              onClick={() => setSelected(region.number)}>Vùng {region.number}</button>
+            {onEdit && <button type="button" className="secondary icon-button" aria-label={`Xóa vùng ${region.number}`}
+              onClick={() => {
+                onEdit({ ...feedback, regions: feedback.regions.filter((item) => item.number !== region.number) });
+                if (selected === region.number) setSelected(null);
+              }}><Trash2 size={16} /></button>}
+          </div>
+          {onEdit ? <textarea rows={2} maxLength={REVIEW_NOTE_LIMIT} aria-label={`Ghi chú vùng ${region.number}`}
+            ref={(element) => { if (element) noteElements.current.set(region.number, element); else noteElements.current.delete(region.number); }}
+            value={region.note}
+            onFocus={() => setSelected(region.number)}
+            onChange={(event) => onEdit({
+              ...feedback, regions: feedback.regions.map((item) =>
+                item.number === region.number ? { ...item, note: event.target.value } : item)
+            })} />
+            : <p ref={(element) => { if (element) noteElements.current.set(region.number, element); else noteElements.current.delete(region.number); }}>{region.note}</p>}
+        </div>)}
+        {!onEdit && !hasReviewFeedback(feedback) && <p className="hint">Ảnh này chưa có ghi chú.</p>}
+      </aside>
+    </div>
+  </>;
 }
