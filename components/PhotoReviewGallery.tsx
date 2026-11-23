@@ -229,6 +229,11 @@ function RegionEditor({ albumId, round, photo, admin, feedback = emptyFeedback, 
     <span className="review-draw-short-label" aria-hidden="true">{drawing ? "Hủy" : "Khoanh"}</span>
   </button>;
 
+  const gestureHint = drawing ? <p className="review-gesture-hint">Kéo trên ảnh để vẽ khung.</p>
+    : loaded && <p className="review-gesture-hint review-touch-hint">
+      {view.scale > 1 ? "Kéo để xem · Chạm hai lần để thu về" : "Chụm hoặc chạm hai lần để zoom · Vuốt ngang để đổi ảnh"}
+    </p>;
+
   return <>
     <div className="review-dialog-header">
       <h2 title={photo.name}>{photo.name}</h2>
@@ -239,7 +244,7 @@ function RegionEditor({ albumId, round, photo, admin, feedback = emptyFeedback, 
         <button type="button" className="secondary" onClick={onClose}>{onEdit ? "Xong" : "Đóng"}</button>
       </div>
     </div>
-    <div className="review-editor">
+    <div className={onEdit ? "review-editor editable" : "review-editor"}>
       <div className="review-editor-stage">
         <div className="review-draw-toolbar">
           {onEdit && drawButton}
@@ -277,17 +282,15 @@ function RegionEditor({ albumId, round, photo, admin, feedback = emptyFeedback, 
             </div>}
           </div>
         </div>
-        {drawing ? <p className="review-gesture-hint">Kéo trên ảnh để vẽ khung.</p> : loaded &&
-          <p className="review-gesture-hint review-touch-hint">
-            {view.scale > 1 ? "Kéo để xem · Chạm hai lần để thu về" : "Chụm hoặc chạm hai lần để zoom · Vuốt ngang để đổi ảnh"}
-          </p>}
+        {gestureHint && <div className="review-stage-hint">{gestureHint}</div>}
       </div>
       <aside className="review-editor-notes">
-        <p className="hint">{folderLabel(photo.folder)}</p>
-        {onEdit ? <label>Ghi chú cả ảnh
+        <p className="hint review-note-folder">{folderLabel(photo.folder)}</p>
+        {onEdit ? <label className="review-overall-note">Ghi chú cả ảnh
           <textarea rows={3} maxLength={REVIEW_NOTE_LIMIT} value={feedback.note}
             onChange={(event) => onEdit({ ...feedback, note: event.target.value })} />
         </label> : feedback.note && <div className="review-region-note"><strong>Ghi chú cả ảnh</strong><p>{feedback.note}</p></div>}
+        {gestureHint && <div className="review-notes-hint">{gestureHint}</div>}
         {feedback.regions.map((region) => <div key={region.number} className={selected === region.number ? "review-region-note active" : "review-region-note"}>
           <div className="review-note-heading">
             <button type="button" className="secondary" aria-pressed={selected === region.number}
