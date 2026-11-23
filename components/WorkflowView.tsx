@@ -1,7 +1,8 @@
 "use client";
 
+import AdminTabs from "@/components/AdminTabs";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -519,7 +520,7 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
 
   return <main className="workflow-page">
     <header className="workflow-header">
-      <div className="workflow-header-left"><div className="workflow-brand"><img src="/dp-logo.png" alt="DP Select" /></div><nav className="app-tabs header-tabs" aria-label="Khu vực quản trị"><Link href="/" prefetch>DP Select</Link><Link className={scope === "dp" ? "active" : ""} href="/workflow">DP Workflow</Link><Link className={scope === "show" ? "active" : ""} href="/show">SHOW</Link></nav></div>
+      <div className="workflow-header-left"><div className="workflow-brand"><img src="/dp-logo.png" alt="DP Select" /></div><AdminTabs active={scope} /></div>
       <div className="workflow-header-actions"><EnvironmentSwitcher path={scope === "show" ? "/show" : "/workflow"} /><div className="workflow-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm thẻ... /t trả ảnh, /n ngày cưới" aria-label="Tìm kiếm thẻ; gõ /t để lọc ngày trả ảnh, /n để lọc ngày cưới trong Cần làm và Đang làm" />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div></div>
     </header>
     <QuickLinks links={quickLinks} />

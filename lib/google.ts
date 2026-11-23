@@ -194,12 +194,13 @@ async function createSheet(title: string, hidden = true) {
   return sheetId;
 }
 
-async function scanFolder(
+export async function scanFolder(
   folderId: string,
   path: string,
   output: Photo[],
   imageOnly = true,
-  excludeFolderId = ""
+  excludeFolderId = "",
+  folderPaths?: Set<string>
 ) {
   const { drive } = getGoogleApi();
   let pageToken: string | undefined;
@@ -216,7 +217,9 @@ async function scanFolder(
     for (const file of result.data.files || []) {
       if (!file.id || file.id === excludeFolderId) continue;
       if (file.mimeType === "application/vnd.google-apps.folder") {
-        subfolders.push({ id: file.id, path: `${path} / ${file.name || "Thư mục"}` });
+        const childPath = path ? `${path} / ${file.name || "Thư mục"}` : file.name || "Thư mục";
+        folderPaths?.add(childPath);
+        subfolders.push({ id: file.id, path: childPath });
       } else if (!imageOnly || String(file.mimeType || "").startsWith("image/")) {
         const sourceWidth = Number(file.imageMediaMetadata?.width || 0);
         const sourceHeight = Number(file.imageMediaMetadata?.height || 0);
@@ -235,7 +238,7 @@ async function scanFolder(
     // serially. The limit avoids flooding the Drive API on large albums.
     for (let index = 0; index < subfolders.length; index += DRIVE_SCAN_CONCURRENCY) {
       await Promise.all(subfolders.slice(index, index + DRIVE_SCAN_CONCURRENCY).map((folder) =>
-        scanFolder(folder.id, folder.path, output, imageOnly, excludeFolderId)
+        scanFolder(folder.id, folder.path, output, imageOnly, excludeFolderId, folderPaths)
       ));
     }
     pageToken = result.data.nextPageToken || undefined;
@@ -500,13 +503,17 @@ export async function getPhotoThumbnail(albumId: string, photoId: string) {
   if (!id || !(await allPhotos(album)).some((photo) => photo.id === id)) {
     throw new Error("Không tìm thấy ảnh trong album.");
   }
+  return getDrivePhotoContent(id);
+}
+
+export async function getDrivePhotoContent(id: string, width = 900) {
   const { drive } = getGoogleApi();
   const meta = await drive.files.get({
     fileId: id,
     fields: "thumbnailLink,mimeType",
     supportsAllDrives: true
   });
-  const thumbnailUrl = String(meta.data.thumbnailLink || "").replace(/=s\d+$/, "=w900");
+  const thumbnailUrl = String(meta.data.thumbnailLink || "").replace(/=s\d+$/, `=w${width}`);
   if (thumbnailUrl) {
     const token = await authClient().getAccessToken();
     const response = await fetch(thumbnailUrl, {
