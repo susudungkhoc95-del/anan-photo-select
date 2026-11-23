@@ -52,7 +52,7 @@ function roundQuery(albumId: string) {
     .select("payload").eq("scope", "studio").eq("collection", ROUNDS).eq("workspace_id", albumId);
 }
 
-async function getAlbum(id: unknown) {
+export async function getReviewAlbum(id: unknown) {
   const albumId = inputText(id, 80);
   const album = /^[\w-]{36}$/.test(albumId) && await readAppRecord<ReviewAlbum>(ALBUMS, albumId);
   if (!album) throw new ReviewError("Không tìm thấy album duyệt ảnh.", 404);
@@ -165,7 +165,7 @@ export async function listReviewAlbums() {
 }
 
 export async function getReviewAdmin(payload: Payload) {
-  const album = await getAlbum(payload.albumId);
+  const album = await getReviewAlbum(payload.albumId);
   // Read only the fields used by the round selector, keeping photos and notes out of the list.
   const rounds: ReviewRoundSummary[] = [];
   const pageSize = 100;
@@ -184,7 +184,7 @@ export async function getReviewAdmin(payload: Payload) {
 }
 
 export async function openReviewRound(payload: Payload) {
-  const album = await getAlbum(payload.albumId);
+  const album = await getReviewAlbum(payload.albumId);
   const previous = await getRound(album.id);
   if (previous.number !== payload.round || !previous.submittedAt) {
     throw new ReviewError("Hãy tải lại album và chờ phản hồi của vòng hiện tại trước khi mở vòng mới.", 409);
@@ -195,12 +195,12 @@ export async function openReviewRound(payload: Payload) {
 }
 
 export async function getReviewClient(payload: Payload) {
-  const album = await getAlbum(payload.albumId);
+  const album = await getReviewAlbum(payload.albumId);
   return { album, round: publicRound(await getRound(album.id)) };
 }
 
 export async function reviewPhotoPage(payload: Payload, admin: boolean) {
-  const album = await getAlbum(payload.albumId);
+  const album = await getReviewAlbum(payload.albumId);
   const round = await getRound(album.id, admin ? payload.round : undefined);
   if (round.number !== payload.round) throw new ReviewError("Studio đã mở vòng mới. Hãy tải lại trang.", 409);
   const folder = typeof payload.folder === "string" ? payload.folder : null;
@@ -249,7 +249,7 @@ function normalizeFeedback(value: unknown, photos: Photo[], submitting: boolean)
 }
 
 export async function saveReviewFeedback(payload: Payload, submitting: boolean) {
-  const album = await getAlbum(payload.albumId);
+  const album = await getReviewAlbum(payload.albumId);
   const round = await getRound(album.id);
   const submissionId = submitting ? inputText(payload.submissionId, 80) : "";
   if (round.number !== payload.round) throw new ReviewError("Studio đã mở vòng mới. Hãy tải lại trang.", 409);
@@ -277,7 +277,7 @@ export async function saveReviewFeedback(payload: Payload, submitting: boolean) 
 }
 
 export async function exportReviewSheet(payload: Payload) {
-  const album = await getAlbum(payload.albumId);
+  const album = await getReviewAlbum(payload.albumId);
   const round = await getRound(album.id, payload.round);
   if (!round.submittedAt) throw new ReviewError("Khách chưa gửi phản hồi vòng này.");
   const existing = summarize(round).sheetUrl;
