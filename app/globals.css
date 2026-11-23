@@ -1219,18 +1219,28 @@ body:has(.client-page) .review-folder-buttons button[aria-pressed="true"] {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px;
   font-size: 13px; color: var(--muted);
 }
-.review-image-plane {
+.review-zoom-controls { display: flex; align-items: center; gap: 4px; }
+.review-zoom-reset { min-width: 62px; min-height: 42px; padding-inline: 6px; font-variant-numeric: tabular-nums; }
+.review-gesture-hint { margin: 0; padding-inline: 8px; font-size: 12px; color: var(--muted); text-align: center; }
+.review-touch-hint { display: none; }
+@media (any-pointer: coarse) { .review-touch-hint { display: block; } }
+.review-image-window {
   --review-image-height: 67dvh;
-  position: relative; width: min(100%, calc(var(--review-aspect) * var(--review-image-height)));
-  aspect-ratio: var(--review-aspect); user-select: none;
+  width: min(100%, calc(var(--review-aspect) * var(--review-image-height)));
+  aspect-ratio: var(--review-aspect); overflow: hidden; touch-action: pan-y; overscroll-behavior-x: contain;
 }
+.review-image-window:is(.drawing, .zoomed) { touch-action: none; }
+.review-image-window.zoomed { cursor: grab; }
+.review-image-window.zoomed:active { cursor: grabbing; }
+.review-image-plane { position: relative; width: 100%; height: 100%; user-select: none; }
 .review-image-plane img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .review-photo-unavailable { display: grid; place-items: center; width: 100%; height: 100%; color: var(--muted); }
 .review-region-layer, .review-region { position: absolute; }
 .review-region-layer { inset: 0; }
 .review-region-layer.drawing { touch-action: none; cursor: crosshair; }
 .review-region {
-  outline: 1px solid rgba(0, 0, 0, .7); border: 2px solid #7bc9ff;
+  outline: calc(1px / var(--review-zoom, 1)) solid rgba(0, 0, 0, .7);
+  border: calc(2px / var(--review-zoom, 1)) solid #7bc9ff;
   background: rgba(43, 154, 255, .12); pointer-events: none;
 }
 .review-region.active { z-index: 2; border-color: #ffcf55; background: rgba(255, 207, 85, .18); }
@@ -1238,6 +1248,7 @@ body:has(.client-page) .review-folder-buttons button[aria-pressed="true"] {
   pointer-events: auto; display: grid; place-items: center; position: absolute; top: 0; left: 0;
   padding: 0; min-width: 30px; height: 30px; border-radius: 8px; border: 1px solid #e5f5ff;
   color: #fff; background: #215ea7; box-shadow: 0 2px 5px rgba(0, 0, 0, .45);
+  transform: scale(calc(1 / var(--review-zoom, 1))); transform-origin: top left;
 }
 .review-region-layer.drawing .review-region-number { pointer-events: none; }
 .review-region.active .review-region-number { border-color: #ffcf55; }
@@ -1271,7 +1282,7 @@ body:has(.client-page) .review-folder-buttons button[aria-pressed="true"] {
 @media (max-width: 780px) {
   .review-admin-layout, .review-editor { grid-template-columns: minmax(0, 1fr); }
   .review-editor-notes { max-height: none; overflow: visible; }
-  .review-image-plane { --review-image-height: 53dvh; }
+  .review-image-window { --review-image-height: 53dvh; }
   .review-photo-dialog { width: calc(100% - 12px); max-height: calc(100dvh - 12px); padding: 10px; }
   .review-photo-grid.photos { grid-template-columns: repeat(auto-fill, minmax(min(42%, 155px), 1fr)); }
 }
@@ -1299,11 +1310,12 @@ body:has(.client-page) .review-folder-buttons button[aria-pressed="true"] {
   .photo-review-client .review-dialog-header .icon-button { width: 44px; padding: 0; }
   .photo-review-client .review-editor { gap: 12px; }
   .photo-review-client .review-editor-stage { border-radius: 0; padding: 8px 0; }
-  .photo-review-client .review-image-plane { --review-image-height: 56dvh; }
+  .photo-review-client .review-image-window { --review-image-height: 56dvh; }
   .photo-review-client .review-draw-toolbar {
-    display: grid; width: 100%; padding-inline: 10px; gap: 4px; text-align: center;
+    width: 100%; padding-inline: 8px; gap: 6px;
   }
-  .photo-review-client .review-draw-toolbar button { min-height: 46px; }
+  .photo-review-client .review-draw-toolbar button { min-height: 44px; }
+  .photo-review-client .review-zoom-controls .icon-button { width: 44px; }
   .photo-review-client .review-editor-notes { padding: 0 12px 12px; }
   .photo-review-client .review-editor-notes textarea { font-size: 16px; }
   .photo-review-client .review-note-heading button { min-height: 44px; }

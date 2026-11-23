@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Focus, MessageSquare, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Focus, MessageSquare, Minus, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import {
   REVIEW_NOTE_LIMIT, REVIEW_REGION_LIMIT, hasReviewFeedback,
@@ -8,6 +8,7 @@ import {
 } from "@/lib/photo-review-types";
 import type { Photo } from "@/lib/types";
 import { reviewRequest } from "@/components/photo-review-api";
+import { useReviewPhotoGestures } from "@/components/useReviewPhotoGestures";
 
 type GalleryProps = {
   albumId: string;
@@ -36,7 +37,7 @@ function ReviewGalleryPage({ albumId, round, folder, feedbackOnly, feedback, adm
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const controller = useRef<AbortController | null>(null);
 
-  async function load(offset: number, openNext = false) {
+  async function load(offset: number, openFrom?: number) {
     controller.current?.abort();
     const request = new AbortController();
     controller.current = request;
@@ -48,7 +49,9 @@ function ReviewGalleryPage({ albumId, round, folder, feedbackOnly, feedback, adm
       if (request.signal.aborted) return;
       setPhotos((current) => offset ? [...current, ...page.photos] : page.photos);
       setTotal(page.total);
-      if (openNext && page.photos.length) setActiveIndex(offset);
+      if (openFrom !== undefined && page.photos.length) {
+        setActiveIndex((current) => current === openFrom ? offset : current);
+      }
     } catch (error) {
       if (!request.signal.aborted) setError((error as Error).message);
     } finally {
@@ -62,6 +65,10 @@ function ReviewGalleryPage({ albumId, round, folder, feedbackOnly, feedback, adm
   }, []);
 
   const active = activeIndex === null ? null : photos[activeIndex];
+  const previous = activeIndex !== null && activeIndex > 0 ? () => setActiveIndex(activeIndex - 1) : undefined;
+  const next = activeIndex === null ? undefined
+    : activeIndex + 1 < photos.length ? () => setActiveIndex(activeIndex + 1)
+    : photos.length < total && !loading ? () => void load(photos.length, activeIndex) : undefined;
   return <>
     <p className="hint">Đang hiển thị {photos.length} / {total} ảnh</p>
     <div className="photos review-photo-grid">
@@ -87,12 +94,11 @@ function ReviewGalleryPage({ albumId, round, folder, feedbackOnly, feedback, adm
       photoId={active.id}
       title={active.name}
       editable={Boolean(onEdit)}
-      previous={activeIndex > 0 ? () => setActiveIndex(activeIndex - 1) : undefined}
-      next={activeIndex + 1 < photos.length ? () => setActiveIndex(activeIndex + 1)
-        : photos.length < total && !loading ? () => void load(photos.length, true) : undefined}
+      previous={previous}
+      next={next}
       onClose={() => setActiveIndex(null)}>
       <RegionEditor key={active.id} albumId={albumId} round={round} photo={active} admin={admin}
-        feedback={feedback[active.id]} onEdit={onEdit && ((item) => onEdit(active.id, item))} />
+        previous={previous} next={next} feedback={feedback[active.id]} onEdit={onEdit && ((item) => onEdit(active.id, item))} />
       {error && <p className="review-error" role="alert">{error}</p>}
     </ReviewPhotoDialog>}
   </>;
@@ -171,13 +177,15 @@ function pointerPoint(event: PointerEvent<HTMLElement>, bounds: DOMRect): Point 
     y: clamp((event.clientY - bounds.top) / bounds.height) };
 }
 
-function RegionEditor({ albumId, round, photo, admin, feedback = emptyFeedback, onEdit }: {
+function RegionEditor({ albumId, round, photo, admin, feedback = emptyFeedback, onEdit, previous, next }: {
   albumId: string; round: number; photo: Photo; admin?: boolean; feedback?: ReviewPhotoFeedback;
+  previous?: () => void; next?: () => void;
   onEdit?: (feedback: ReviewPhotoFeedback) => void;
 }) {
   const [loaded, setLoaded] = useState(false);
   const [aspect, setAspect] = useState(photo.width && photo.height ? photo.width / photo.height : 1);
   const [drawing, setDrawing] = useState(false);
+  const { viewport, view, zoomBy, reset, maxScale } = useReviewPhotoGestures({ active: loaded && !drawing, previous, next });
   const [preview, setPreview] = useState<ReviewBox | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const drag = useRef<{ id: number; start: Point; bounds: DOMRect } | null>(null);
@@ -222,33 +230,47 @@ function RegionEditor({ albumId, round, photo, admin, feedback = emptyFeedback, 
 
   return <div className="review-editor">
     <div className="review-editor-stage">
-      {onEdit && <div className="review-draw-toolbar">
-        <button type="button" className={drawing ? "" : "secondary"}
+      <div className="review-draw-toolbar">
+        {onEdit && <button type="button" className={drawing ? "" : "secondary"}
           aria-pressed={drawing} disabled={!loaded || feedback.regions.length >= REVIEW_REGION_LIMIT}
-          onClick={() => setDrawing(!drawing)}><Focus size={17} aria-hidden="true" /> {drawing ? "Hủy khoanh vùng" : "Khoanh vùng"}</button>
-        {drawing && <span>Kéo trên ảnh để vẽ khung.</span>}
-      </div>}
-      <div className="review-image-plane" style={{ "--review-aspect": aspect } as React.CSSProperties}>
-        <ReviewImage albumId={albumId} round={round} photo={photo} large admin={admin}
-          onLoad={(image) => {
-            if (!image.naturalWidth || !image.naturalHeight) return;
-            setAspect(image.naturalWidth / image.naturalHeight);
-            setLoaded(true);
-          }} onError={() => { setLoaded(false); setDrawing(false); }} />
-        {loaded && <div className={drawing ? "review-region-layer drawing" : "review-region-layer"}
-          onPointerDown={start} onPointerMove={move} onPointerUp={finish} onPointerCancel={cancel} onLostPointerCapture={cancel}>
-          {feedback.regions.map((region) => <div key={region.number} style={boxStyle(region)}
-            className={selected === region.number ? "review-region active" : "review-region"}>
-            <button type="button" className="review-region-number" disabled={drawing}
-              aria-label={`Xem ghi chú vùng ${region.number}`}
-              onClick={() => {
-                setSelected(region.number);
-                const note = noteElements.current.get(region.number);
-                note?.scrollIntoView({ block: "nearest" });
-              }}>{region.number}</button>
-          </div>)}
-          {preview && <div className="review-region active" style={boxStyle(preview)} />}
-        </div>}
+          onClick={() => setDrawing(!drawing)}><Focus size={17} aria-hidden="true" /> {drawing ? "Hủy vẽ" : "Khoanh vùng"}</button>}
+        <div className="review-zoom-controls" role="group" aria-label="Thu phóng ảnh">
+          <button type="button" className="secondary icon-button" aria-label="Thu nhỏ"
+            disabled={!loaded || view.scale === 1} onClick={() => zoomBy(-.5)}><Minus size={18} aria-hidden="true" /></button>
+          <button type="button" className="secondary review-zoom-reset" aria-label="Về kích thước ban đầu"
+            disabled={view.scale === 1} onClick={reset}>{Math.round(view.scale * 100)}%</button>
+          <button type="button" className="secondary icon-button" aria-label="Phóng to"
+            disabled={!loaded || view.scale === maxScale} onClick={() => zoomBy(.5)}><Plus size={18} aria-hidden="true" /></button>
+        </div>
+      </div>
+      {drawing ? <p className="review-gesture-hint">Kéo trên ảnh để vẽ khung.</p> : loaded &&
+        <p className="review-gesture-hint review-touch-hint">
+          {view.scale > 1 ? "Kéo để xem · Chạm hai lần để thu về" : "Chụm để zoom · Vuốt ngang để đổi ảnh"}
+        </p>}
+      <div ref={viewport} className={`review-image-window${drawing ? " drawing" : view.scale > 1 ? " zoomed" : ""}`}
+        style={{ "--review-aspect": aspect, "--review-zoom": view.scale } as React.CSSProperties}>
+        <div className="review-image-plane" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>
+          <ReviewImage albumId={albumId} round={round} photo={photo} large admin={admin}
+            onLoad={(image) => {
+              if (!image.naturalWidth || !image.naturalHeight) return;
+              setAspect(image.naturalWidth / image.naturalHeight);
+              setLoaded(true);
+            }} onError={() => { setLoaded(false); setDrawing(false); }} />
+          {loaded && <div className={drawing ? "review-region-layer drawing" : "review-region-layer"}
+            onPointerDown={start} onPointerMove={move} onPointerUp={finish} onPointerCancel={cancel} onLostPointerCapture={cancel}>
+            {feedback.regions.map((region) => <div key={region.number} style={boxStyle(region)}
+              className={selected === region.number ? "review-region active" : "review-region"}>
+              <button type="button" className="review-region-number" disabled={drawing}
+                aria-label={`Xem ghi chú vùng ${region.number}`}
+                onClick={() => {
+                  setSelected(region.number);
+                  const note = noteElements.current.get(region.number);
+                  note?.scrollIntoView({ block: "nearest" });
+                }}>{region.number}</button>
+            </div>)}
+            {preview && <div className="review-region active" style={boxStyle(preview)} />}
+          </div>}
+        </div>
       </div>
     </div>
     <aside className="review-editor-notes">
