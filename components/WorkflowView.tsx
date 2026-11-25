@@ -260,7 +260,7 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
     if (!board || !searchCards || !query.trim()) return board?.cards || [];
     const matches = searchCards(board.cards, searchQuery);
     if (hasDateFilter) return sortWorkflowCardsByReturnDate(matches, searchQuery.hasReturnDate ? "photoReturnDate" : "weddingDate");
-    if (!archive?.cards) return matches;
+    if (searchQuery.hasUrgentLabel || !archive?.cards) return matches;
     const loadedIds = new Set(board.cards.map((card) => card.id));
     const archivedMatches = searchCards(archive.cards, searchQuery).filter((card) => !loadedIds.has(card.id));
     const doneMatches = matches.filter((card) => card.listId === archiveListId);
@@ -269,7 +269,7 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
       ...[...doneMatches, ...archivedMatches].sort(compareWorkflowDoneCards)
     ];
   }, [board, query, searchQuery, hasDateFilter, searchCards, archive, archiveListId]);
-  const archiveSearch = Boolean(searchQuery.text && !hasDateFilter && archiveListId);
+  const archiveSearch = Boolean(searchQuery.text && !hasDateFilter && !searchQuery.hasUrgentLabel && archiveListId);
   const detailBoard = useMemo(() => {
     const detailId = cardModal?.cardId || quickCardId;
     if (!detailId || !board || board.cards.some((card) => card.id === detailId)) return board;
@@ -521,7 +521,7 @@ export default function WorkflowView({ scope = "dp" }: { scope?: WorkflowScope }
   return <main className="workflow-page">
     <header className="workflow-header">
       <div className="workflow-header-left"><div className="workflow-brand"><img src="/dp-logo.png" alt="DP Select" /></div><AdminTabs active={scope} /></div>
-      <div className="workflow-header-actions"><EnvironmentSwitcher path={scope === "show" ? "/show" : "/workflow"} /><div className="workflow-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm thẻ... /t trả ảnh, /n ngày cưới" aria-label="Tìm kiếm thẻ; gõ /t để lọc ngày trả ảnh, /n để lọc ngày cưới trong Cần làm và Đang làm" />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div></div>
+      <div className="workflow-header-actions"><EnvironmentSwitcher path={scope === "show" ? "/show" : "/workflow"} /><div className="workflow-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setQuery(""); }} placeholder="Tìm thẻ... /g Gấp, /t trả ảnh, /n ngày cưới" aria-label="Tìm kiếm thẻ trong Cần làm và Đang làm với /g cho tag Gấp, /t cho ngày trả ảnh, /n cho ngày cưới" />{query && <button className="icon-button" onClick={() => setQuery("")} aria-label="Xóa tìm kiếm"><X size={16} /></button>}</div></div>
     </header>
     <QuickLinks links={quickLinks} />
     {toast && <div className="toast" role="status">{toast}</div>}

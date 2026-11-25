@@ -9,16 +9,18 @@ export function parseWorkflowQuery(query: string) {
   return {
     hasReturnDate: tokens.some((token) => token.toLowerCase() === "/t"),
     hasWeddingDate: tokens.some((token) => token.toLowerCase() === "/n"),
-    text: tokens.filter((token) => !["/t", "/n"].includes(token.toLowerCase())).join(" ")
+    hasUrgentLabel: tokens.some((token) => token.toLowerCase() === "/g"),
+    text: tokens.filter((token) => !["/t", "/n", "/g"].includes(token.toLowerCase())).join(" ")
   };
 }
 
-function matchesDateFilter(card: WorkflowCard, parsed: ReturnType<typeof parseWorkflowQuery>, list?: WorkflowList) {
-  if (!parsed.hasReturnDate && !parsed.hasWeddingDate) return true;
+function matchesCommandFilters(card: WorkflowCard, parsed: ReturnType<typeof parseWorkflowQuery>, normalizedLabelNames: string[] | undefined, list?: WorkflowList) {
+  if (!parsed.hasReturnDate && !parsed.hasWeddingDate && !parsed.hasUrgentLabel) return true;
   return list?.id === card.listId
     && (list.systemKey === "TODO_INBOX" || list.systemKey === "IN_PROGRESS")
     && (!parsed.hasReturnDate || Boolean(card.photoReturnDate.trim()))
-    && (!parsed.hasWeddingDate || Boolean(card.weddingDate.trim()));
+    && (!parsed.hasWeddingDate || Boolean(card.weddingDate.trim()))
+    && (!parsed.hasUrgentLabel || Boolean(normalizedLabelNames?.some((name) => name.trim() === "gap")));
 }
 
 function searchableCardText(card: WorkflowCard, links: WorkflowLink[]) {
@@ -27,10 +29,11 @@ function searchableCardText(card: WorkflowCard, links: WorkflowLink[]) {
 
 export function workflowCardMatches(card: WorkflowCard, links: WorkflowLink[], query: string, labelNames: string[] = [], list?: WorkflowList) {
   const parsed = parseWorkflowQuery(query);
-  if (!matchesDateFilter(card, parsed, list)) return false;
+  const normalizedLabelNames = labelNames.map(normalizeWorkflowText);
+  if (!matchesCommandFilters(card, parsed, normalizedLabelNames, list)) return false;
   const needle = normalizeWorkflowText(parsed.text);
   return !needle || searchableCardText(card, links).includes(needle)
-    || labelNames.some((name) => normalizeWorkflowText(name).includes(needle));
+    || normalizedLabelNames.some((name) => name.includes(needle));
 }
 
 export function createWorkflowSearch(board: Pick<WorkflowBoard, "lists" | "links" | "labels" | "cardLabels">) {
@@ -54,14 +57,15 @@ export function createWorkflowSearch(board: Pick<WorkflowBoard, "lists" | "links
   return (cards: WorkflowCard[], parsed: ReturnType<typeof parseWorkflowQuery>) => {
     const needle = normalizeWorkflowText(parsed.text);
     return cards.filter((card) => {
-      if (!matchesDateFilter(card, parsed, lists.get(card.listId))) return false;
+      const labelNames = labelsByCard.get(card.id);
+      if (!matchesCommandFilters(card, parsed, labelNames, lists.get(card.listId))) return false;
       if (!needle) return true;
       let text = textByCard.get(card);
       if (text === undefined) {
         text = searchableCardText(card, linksByCard.get(card.id) || []);
         textByCard.set(card, text);
       }
-      return text.includes(needle) || labelsByCard.get(card.id)?.some((name) => name.includes(needle));
+      return text.includes(needle) || labelNames?.some((name) => name.includes(needle));
     });
   };
 }

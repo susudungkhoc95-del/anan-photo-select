@@ -33,13 +33,13 @@ describe("workflow search", () => {
 
   it("filters wedding dates across active lists and combines text searches", () => {
     const dated = { ...card, weddingDate: "2020-01-01" };
-    expect(parseWorkflowQuery(" /N hong ngoc ")).toEqual({ hasReturnDate: false, hasWeddingDate: true, text: "hong ngoc" });
+    expect(parseWorkflowQuery(" /N hong ngoc ")).toEqual({ hasReturnDate: false, hasWeddingDate: true, hasUrgentLabel: false, text: "hong ngoc" });
     expect(workflowCardMatches(card, links, "/n", [], list)).toBe(false);
     expect(workflowCardMatches(dated, links, "/n hong ngoc", [], list)).toBe(true);
     expect(workflowCardMatches(dated, links, "/n", [], { ...list, systemKey: "DONE" })).toBe(false);
     expect(workflowCardMatches({ ...dated, weddingDate: " " }, links, "/n", [], list)).toBe(false);
     expect(workflowCardMatches(dated, links, "/n /t", [], list)).toBe(false);
-    expect(parseWorkflowQuery("/tra")).toEqual({ hasReturnDate: false, hasWeddingDate: false, text: "/tra" });
+    expect(parseWorkflowQuery("/tra")).toEqual({ hasReturnDate: false, hasWeddingDate: false, hasUrgentLabel: false, text: "/tra" });
     const cards = [{ ...dated, id: "late", weddingDate: "2026-12-01" }, { ...dated, id: "early" }];
     expect(sortWorkflowCardsByReturnDate(cards, "weddingDate").map((c) => c.id)).toEqual(["early", "late"]);
     expect(cards[0].id).toBe("late");
@@ -64,8 +64,8 @@ describe("workflow search", () => {
   });
 
   it("recognizes only a complete command token, regardless of case or whitespace", () => {
-    expect(parseWorkflowQuery("  /T\tHồng Ngọc  /t ")).toEqual({ hasReturnDate: true, hasWeddingDate: false, text: "Hồng Ngọc" });
-    expect(parseWorkflowQuery("/tlai")).toEqual({ hasReturnDate: false, hasWeddingDate: false, text: "/tlai" });
+    expect(parseWorkflowQuery("  /T\tHồng Ngọc  /t ")).toEqual({ hasReturnDate: true, hasWeddingDate: false, hasUrgentLabel: false, text: "Hồng Ngọc" });
+    expect(parseWorkflowQuery("/tlai")).toEqual({ hasReturnDate: false, hasWeddingDate: false, hasUrgentLabel: false, text: "/tlai" });
     expect(parseWorkflowQuery("https://example.com/t").hasReturnDate).toBe(false);
   });
 
@@ -79,6 +79,34 @@ describe("workflow search", () => {
     }
     expect(workflowCardMatches(dated, links, "/t")).toBe(false);
     expect(workflowCardMatches(dated, links, "/t", [], { ...list, id: "other" })).toBe(false);
+  });
+
+  it("filters /g by assigned label in the two active lists", () => {
+    const inProgress = { ...list, id: "in-progress", systemKey: "IN_PROGRESS" as const };
+    const done = { ...list, id: "done", systemKey: "DONE" as const };
+    const waiting = { ...list, id: "waiting", systemKey: "WAITING_SELECTION" as const };
+    const custom = { ...list, id: "custom", systemKey: "" as const };
+    const label = { id: "urgent", workspaceId: card.workspaceId, name: "GẤP", color: "#ef4444", position: 0, createdAt: card.createdAt, updatedAt: card.updatedAt };
+    const urgentLists = [list, inProgress, done, waiting, custom];
+    const urgentCards = urgentLists.map(({ id }) => ({ ...card, id, listId: id }));
+    const titleOnly = { ...card, id: "title-only", title: "Gấp" };
+    const similarLabel = { ...card, id: "similar-label" };
+    const search = createWorkflowSearch({
+      lists: urgentLists,
+      links,
+      labels: [label, { ...label, id: "similar", name: "Không gấp" }],
+      cardLabels: [...urgentCards, similarLabel].map(({ id }) => ({
+        id, cardId: id, labelId: id === similarLabel.id ? "similar" : label.id, workspaceId: card.workspaceId, createdAt: card.createdAt
+      }))
+    });
+    const cards = [...urgentCards, titleOnly, similarLabel];
+
+    expect(search(cards, parseWorkflowQuery(" /G "))).toEqual(urgentCards.slice(0, 2));
+    expect(search(cards, parseWorkflowQuery("/g hong ngoc"))).toEqual(urgentCards.slice(0, 2));
+    expect(search(cards, parseWorkflowQuery("/g /t"))).toEqual([]);
+    expect(parseWorkflowQuery("/gap").hasUrgentLabel).toBe(false);
+    expect(workflowCardMatches(card, links, "/g", ["Gấp"], list)).toBe(true);
+    expect(workflowCardMatches(card, links, "/g", ["Không gấp"], list)).toBe(false);
   });
 });
 
