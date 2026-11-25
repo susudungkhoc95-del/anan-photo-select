@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   readRecord: vi.fn(),
   requests: [] as Array<{ data?: unknown; error?: unknown }>,
   writes: [] as unknown[],
+  rpc: vi.fn(),
   createSheet: vi.fn(),
   sheetValues: vi.fn(),
   sheetLayout: vi.fn()
@@ -26,7 +27,7 @@ vi.mock("@/lib/google", () => ({
 vi.mock("@/lib/supabase", () => ({
   APP_RECORDS_TABLE: "app_records",
   readAppRecord: mocks.readRecord,
-  getSupabaseServer: () => ({ from: () => {
+  getSupabaseServer: () => ({ rpc: mocks.rpc, from: () => {
     const query: Record<string, unknown> = {};
     for (const method of ["select", "eq", "order", "limit", "maybeSingle"]) query[method] = () => query;
     for (const method of ["insert", "update"]) query[method] = (value: unknown) => {
@@ -39,7 +40,7 @@ vi.mock("@/lib/supabase", () => ({
   } })
 }));
 
-import { exportReviewSheet, getReviewClient, openReviewRound, saveReviewFeedback } from "@/lib/photo-review";
+import { deleteReviewAlbum, exportReviewSheet, getReviewClient, openReviewRound, saveReviewFeedback } from "@/lib/photo-review";
 
 const albumId = "00000000-0000-0000-0000-000000000001";
 const album = { id: albumId, title: "Album khách", createdAt: "2026-01-01" };
@@ -63,21 +64,34 @@ beforeEach(() => {
 
 describe("photo review rounds", () => {
   it("opens a new round with the actual Drive folder names and leaves old feedback in its own row", async () => {
-    mocks.requests.push({ data: { payload: submitted } }, {});
+    mocks.requests.push({ data: { payload: submitted } });
+    mocks.rpc.mockResolvedValueOnce({ data: true });
     await expect(openReviewRound({ albumId, round: 1 })).resolves.toEqual({ number: 2 });
-    expect(mocks.writes).toEqual([expect.objectContaining({
-      record_id: `${albumId}:0000000002`,
-      payload: expect.objectContaining({
+    expect(mocks.rpc).toHaveBeenCalledWith("insert_next_review_round", {
+      p_album_id: albumId,
+      p_previous_round_id: `${albumId}:0000000001`,
+      p_round_id: `${albumId}:0000000002`,
+      p_round: expect.objectContaining({
         feedback: {}, photoCount: 1, submittedAt: null, folders: [
           { name: "ANH DE BAN", count: 0 }, { name: "ANH PHONG", count: 0 }, { name: "ANH SUA", count: 1 }
         ]
       })
-    })]);
-    const inserted = mocks.writes[0] as { payload: unknown };
-    mocks.requests.push({ data: { payload: inserted.payload } });
+    });
+    mocks.requests.push({ data: { payload: mocks.rpc.mock.calls[0][1].p_round } });
     const data = await getReviewClient({ albumId });
     expect(data.round.number).toBe(2);
     expect(data.round).not.toHaveProperty("folderUrl");
+  });
+
+  it("deletes against the confirmed round and reports when that round is no longer eligible", async () => {
+    await expect(deleteReviewAlbum({ albumId })).rejects.toMatchObject({ status: 400 });
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    mocks.rpc.mockResolvedValueOnce({ data: false }).mockResolvedValueOnce({ data: true });
+    await expect(deleteReviewAlbum({ albumId, round: 1 })).rejects.toMatchObject({ status: 409 });
+    await expect(deleteReviewAlbum({ albumId, round: 2 })).resolves.toEqual({ ok: true });
+    expect(mocks.rpc).toHaveBeenLastCalledWith("delete_submitted_review_album", {
+      p_album_id: albumId, p_round_id: `${albumId}:0000000002`
+    });
   });
 
   it("rejects stale edits and requires text for every region before accepting a submission", async () => {

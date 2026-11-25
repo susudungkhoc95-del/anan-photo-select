@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, ExternalLink, FileSpreadsheet, KeyRound, LogOut, RefreshCw } from "lucide-react";
+import { Copy, ExternalLink, FileSpreadsheet, KeyRound, LogOut, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import AdminTabs from "@/components/AdminTabs";
 import EnvironmentSwitcher from "@/components/EnvironmentSwitcher";
@@ -83,6 +83,7 @@ function AdminReviews({ onExpired }: { onExpired: () => void }) {
   const [folderUrl, setFolderUrl] = useState("");
   const [nextFolderUrl, setNextFolderUrl] = useState("");
   const [opening, setOpening] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [folder, setFolder] = useState<string | null>(null);
   const [feedbackOnly, setFeedbackOnly] = useState(true);
   const [busy, setBusy] = useState("");
@@ -159,6 +160,18 @@ function AdminReviews({ onExpired }: { onExpired: () => void }) {
     });
   }
 
+  async function deleteAlbum() {
+    if (!selected || busy) return;
+    const albumId = selected.album.id;
+    setConfirmDelete(false);
+    await run("Đang xóa album duyệt…", async () => {
+      await reviewRequest("delete", { albumId, round: selected.rounds[0].number });
+      setAlbums((current) => current.filter((album) => album.id !== albumId));
+      setSelected(null);
+      setNotice("Đã xóa album duyệt.");
+    });
+  }
+
   const activeRound = selected?.round;
   const clientPath = selected ? `/review/${selected.album.id}` : "";
   return <div className="review-admin-layout">
@@ -198,6 +211,8 @@ function AdminReviews({ onExpired }: { onExpired: () => void }) {
               onClick={() => void run("Đang tải phản hồi…", () => select(selected.album.id, activeRound.number))}>
               <RefreshCw size={16} /> Làm mới
             </button>
+            {selected.rounds[0].submittedAt && <button type="button" className="danger" disabled={Boolean(busy)}
+              onClick={() => setConfirmDelete(true)}><Trash2 size={16} /> Xóa album</button>}
           </div>
         </header>
         <div className="review-admin-controls">
@@ -236,6 +251,17 @@ function AdminReviews({ onExpired }: { onExpired: () => void }) {
         </form>}
         <PhotoReviewGallery key={`${activeRound.number}:${activeRound.submittedAt}`} albumId={selected.album.id}
           round={activeRound.number} folder={folder} feedbackOnly={feedbackOnly} feedback={activeRound.feedback} admin />
+        {confirmDelete && <dialog className="album-confirm-modal review-delete-dialog"
+          ref={(dialog) => { if (dialog && !dialog.open) dialog.showModal(); }}
+          role="alertdialog" aria-labelledby="review-delete-title" aria-describedby="review-delete-description"
+          onCancel={() => setConfirmDelete(false)}>
+          <h2 id="review-delete-title">Xóa album {selected.album.title}?</h2>
+          <p id="review-delete-description">Các vòng duyệt và phản hồi sẽ bị xóa vĩnh viễn. Link của khách sẽ ngừng hoạt động. Ảnh và Google Sheet trên Drive vẫn được giữ.</p>
+          <footer>
+            <button type="button" className="secondary" autoFocus onClick={() => setConfirmDelete(false)}>Hủy</button>
+            <button type="button" className="danger" onClick={() => void deleteAlbum()}>Xóa album</button>
+          </footer>
+        </dialog>}
       </>}
     </section>
   </div>;

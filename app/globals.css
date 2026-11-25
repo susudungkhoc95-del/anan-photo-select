@@ -1276,6 +1276,8 @@ body:has(.client-page) .review-folder-buttons button[aria-pressed="true"] {
 .review-album-list button[aria-pressed="true"] { border-color: var(--accent); }
 .review-admin-detail-header { display: grid; gap: 6px; margin-bottom: 16px; }
 .review-admin-detail-header h2 { margin: 0; }
+.review-delete-dialog { margin: auto; }
+.review-delete-dialog::backdrop { background: rgba(0, 0, 0, .65); }
 .review-admin-controls {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(167px, 1fr)); gap: 10px;
 }

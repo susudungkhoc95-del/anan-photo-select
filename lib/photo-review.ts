@@ -132,12 +132,6 @@ function roundRow(albumId: string, round: StoredRound) {
     workspace_id: albumId, payload: round };
 }
 
-async function insertRound(albumId: string, round: StoredRound) {
-  const { error } = await getSupabaseServer().from(APP_RECORDS_TABLE).insert(roundRow(albumId, round));
-  if (error?.code === "23505") throw new ReviewError("Vòng này đã được mở. Hãy tải lại album.", 409);
-  if (error) throw new Error(error.message);
-}
-
 async function updateRound(albumId: string, round: StoredRound, next: StoredRound) {
   const { data, error } = await getSupabaseServer().from(APP_RECORDS_TABLE).update({ payload: next })
     .eq("scope", "studio").eq("collection", ROUNDS).eq("record_id", roundKey(albumId, round.number))
@@ -162,6 +156,20 @@ export async function createReviewAlbum(payload: Payload) {
 export async function listReviewAlbums() {
   const records = await readAppRecords(ALBUMS, undefined, { ascending: false });
   return records.map(({ payload }) => payload as ReviewAlbum);
+}
+
+export async function deleteReviewAlbum(payload: Payload) {
+  const albumId = inputText(payload.albumId, 80);
+  const round = payload.round;
+  if (!/^[\w-]{36}$/.test(albumId) || typeof round !== "number" || !Number.isSafeInteger(round) || round < 1) {
+    throw new ReviewError("Album hoặc vòng duyệt không hợp lệ.");
+  }
+  const { data, error } = await getSupabaseServer().rpc("delete_submitted_review_album", {
+    p_album_id: albumId, p_round_id: roundKey(albumId, round)
+  });
+  if (error) throw new Error(error.message);
+  if (!data) throw new ReviewError("Album đã thay đổi hoặc vòng mới nhất chưa có phản hồi. Hãy làm mới album.", 409);
+  return { ok: true };
 }
 
 export async function getReviewAdmin(payload: Payload) {
@@ -190,7 +198,12 @@ export async function openReviewRound(payload: Payload) {
     throw new ReviewError("Hãy tải lại album và chờ phản hồi của vòng hiện tại trước khi mở vòng mới.", 409);
   }
   const { round } = await scanRound(previous.number + 1, inputText(payload.folderUrl, 2000) || previous.folderUrl);
-  await insertRound(album.id, round);
+  const { data, error } = await getSupabaseServer().rpc("insert_next_review_round", {
+    p_album_id: album.id, p_previous_round_id: roundKey(album.id, previous.number),
+    p_round_id: roundKey(album.id, round.number), p_round: round
+  });
+  if (error) throw new Error(error.message);
+  if (!data) throw new ReviewError("Album đã thay đổi. Hãy tải lại album trước khi mở vòng mới.", 409);
   return { number: round.number };
 }
 

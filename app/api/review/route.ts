@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
 import {
-  createReviewAlbum, exportReviewSheet, getReviewAdmin, getReviewClient, listReviewAlbums,
+  createReviewAlbum, deleteReviewAlbum, exportReviewSheet, getReviewAdmin, getReviewClient, listReviewAlbums,
   openReviewRound, ReviewError, reviewPhotoPage, saveReviewFeedback
 } from "@/lib/photo-review";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const adminActions = new Set(["create", "list", "admin", "adminPhotos", "openRound", "export"]);
+const adminActions = new Set(["create", "delete", "list", "admin", "adminPhotos", "openRound", "export"]);
 
 export async function POST(request: Request) {
   try {
@@ -20,6 +20,7 @@ export async function POST(request: Request) {
     let data: unknown;
     switch (action) {
       case "create": data = await createReviewAlbum(payload); break;
+      case "delete": data = await deleteReviewAlbum(payload); break;
       case "list": data = await listReviewAlbums(); break;
       case "admin": data = await getReviewAdmin(payload); break;
       case "client": data = await getReviewClient(payload); break;
