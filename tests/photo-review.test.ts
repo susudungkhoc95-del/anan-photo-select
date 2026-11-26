@@ -83,15 +83,12 @@ describe("photo review rounds", () => {
     expect(data.round).not.toHaveProperty("folderUrl");
   });
 
-  it("deletes against the confirmed round and reports when that round is no longer eligible", async () => {
-    await expect(deleteReviewAlbum({ albumId })).rejects.toMatchObject({ status: 400 });
+  it("deletes from the album list using only the album ID", async () => {
+    await expect(deleteReviewAlbum({ albumId: "invalid" })).rejects.toMatchObject({ status: 400 });
     expect(mocks.rpc).not.toHaveBeenCalled();
-    mocks.rpc.mockResolvedValueOnce({ data: false }).mockResolvedValueOnce({ data: true });
-    await expect(deleteReviewAlbum({ albumId, round: 1 })).rejects.toMatchObject({ status: 409 });
-    await expect(deleteReviewAlbum({ albumId, round: 2 })).resolves.toEqual({ ok: true });
-    expect(mocks.rpc).toHaveBeenLastCalledWith("delete_submitted_review_album", {
-      p_album_id: albumId, p_round_id: `${albumId}:0000000002`
-    });
+    mocks.rpc.mockResolvedValueOnce({ data: null });
+    await expect(deleteReviewAlbum({ albumId })).resolves.toEqual({ ok: true });
+    expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith("delete_review_album", { p_album_id: albumId });
   });
 
   it("rejects stale edits and requires text for every region before accepting a submission", async () => {

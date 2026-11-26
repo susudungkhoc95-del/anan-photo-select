@@ -160,15 +160,13 @@ export async function listReviewAlbums() {
 
 export async function deleteReviewAlbum(payload: Payload) {
   const albumId = inputText(payload.albumId, 80);
-  const round = payload.round;
-  if (!/^[\w-]{36}$/.test(albumId) || typeof round !== "number" || !Number.isSafeInteger(round) || round < 1) {
-    throw new ReviewError("Album hoặc vòng duyệt không hợp lệ.");
+  if (!/^[\w-]{36}$/.test(albumId)) throw new ReviewError("Album không hợp lệ.");
+  const { error } = await getSupabaseServer().rpc("delete_review_album", { p_album_id: albumId });
+  if (error) {
+    console.error("Xóa album duyệt", error);
+    if (error.code === "PGRST202") throw new ReviewError("Cơ sở dữ liệu chưa được cập nhật để xóa album duyệt.", 503);
+    throw new ReviewError("Không thể xóa album duyệt. Hãy thử lại.", 500);
   }
-  const { data, error } = await getSupabaseServer().rpc("delete_submitted_review_album", {
-    p_album_id: albumId, p_round_id: roundKey(albumId, round)
-  });
-  if (error) throw new Error(error.message);
-  if (!data) throw new ReviewError("Album đã thay đổi hoặc vòng mới nhất chưa có phản hồi. Hãy làm mới album.", 409);
   return { ok: true };
 }
 

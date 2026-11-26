@@ -1272,8 +1272,10 @@ body:has(.client-page) .review-folder-buttons button[aria-pressed="true"] {
 .review-admin-sidebar h1 { font-size: 24px; margin-bottom: 14px; }
 .review-admin-sidebar h2 { font-size: 18px; margin-bottom: 10px; }
 .review-album-list { display: grid; gap: 6px; max-height: 52dvh; overflow: auto; }
-.review-album-list button { min-width: 0; text-align: left; white-space: normal; overflow-wrap: anywhere; }
-.review-album-list button[aria-pressed="true"] { border-color: var(--accent); }
+.review-album-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; }
+.review-album-row .secondary { text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.review-album-row .secondary[aria-pressed="true"] { border-color: var(--accent); }
+.review-album-row .review-album-delete { border-radius: 12px; }
 .review-admin-detail-header { display: grid; gap: 6px; margin-bottom: 16px; }
 .review-admin-detail-header h2 { margin: 0; }
 .review-delete-dialog { margin: auto; }
