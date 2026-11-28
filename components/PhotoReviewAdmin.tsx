@@ -131,7 +131,7 @@ function AdminReviews({ onExpired, initialAlbumId, initialRound }: ReviewDestina
     setSelected(data);
     if (!sameRound) setFolder(null);
     if (!sameRound || selected.round.submittedAt !== data.round.submittedAt) {
-      setFeedbackOnly(Boolean(data.round.submittedAt));
+      setFeedbackOnly(Object.keys(data.round.feedback).length > 0);
     }
     setOpening(false);
     setNextFolderUrl(current.folderUrl);
@@ -282,10 +282,10 @@ function AdminReviews({ onExpired, initialAlbumId, initialRound }: ReviewDestina
         <div className="review-actions review-admin-photo-filters" role="group" aria-label="Lọc ảnh theo ghi chú">
           <button type="button" className="secondary" aria-pressed={!feedbackOnly}
             onClick={() => setFeedbackOnly(false)}>Tất cả ảnh</button>
-          <button type="button" className="secondary" aria-pressed={feedbackOnly} disabled={!activeRound.submittedAt}
+          <button type="button" className="secondary" aria-pressed={feedbackOnly}
             onClick={() => setFeedbackOnly(true)}>
             <MessageSquare size={16} aria-hidden="true" /> Ảnh có ghi chú
-            {activeRound.submittedAt && folder === null ? ` (${activeRound.feedbackCount})` : ""}
+            {folder === null ? ` (${activeRound.feedbackCount})` : ""}
           </button>
         </div>
         <PhotoReviewGallery key={`${activeRound.number}:${activeRound.submittedAt}`} albumId={selected.album.id}
