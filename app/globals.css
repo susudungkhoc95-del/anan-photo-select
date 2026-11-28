@@ -1378,6 +1378,8 @@ body:has(.client-page) .review-folder-buttons button[aria-pressed="true"] {
 }
 
 @media (max-width: 600px), (max-height: 500px) and (any-pointer: coarse) {
+  .review-photo-dialog .review-image-stage .review-image-nav { opacity: .3; }
+  .review-photo-dialog .review-image-stage .review-image-nav:disabled { opacity: .15; }
   .photo-review-client .review-photo-dialog[open] { display: block; }
   .photo-review-client .review-photo-dialog {
     --review-header-height: calc(55px + env(safe-area-inset-top));
