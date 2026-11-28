@@ -82,8 +82,10 @@ function ClientRound({ album, initialRound }: { album: ReviewAlbum; initialRound
     pending.current = next;
     writeLocalDraft(key, { revision: revision.current, feedback: next });
     setFeedback(next);
-    setStatus("Đang lưu nháp…");
-    setError("");
+    if (!conflict) {
+      setStatus("Đang lưu nháp…");
+      setError("");
+    }
   }
 
   function edit(id: string, item: ReviewPhotoFeedback) {
@@ -93,22 +95,22 @@ function ClientRound({ album, initialRound }: { album: ReviewAlbum; initialRound
     queue(next);
   }
 
-  async function flush(): Promise<boolean> {
-    if (inFlight.current) {
-      if (!await inFlight.current) return false;
-    }
-    const draft = pending.current;
-    if (!draft) return true;
+  function flush(): Promise<boolean> {
+    if (inFlight.current) return inFlight.current;
+    if (!pending.current) return Promise.resolve(true);
     const request = (async () => {
       setStatus("Đang lưu nháp…");
       try {
-        const saved = await reviewRequest<ReviewRound>("draft", {
-          albumId: album.id, round: number, revision: revision.current, feedback: draft
-        });
-        revision.current = saved.revision;
-        if (pending.current === draft) pending.current = null;
-        writeLocalDraft(key, pending.current && { revision: revision.current, feedback: pending.current });
-        setStatus(pending.current ? "Đang lưu nháp…" : "Đã lưu nháp");
+        while (pending.current) {
+          const draft = pending.current;
+          const saved = await reviewRequest<ReviewRound>("draft", {
+            albumId: album.id, round: number, revision: revision.current, feedback: draft
+          });
+          revision.current = saved.revision;
+          if (pending.current === draft) pending.current = null;
+          writeLocalDraft(key, pending.current && { revision: revision.current, feedback: pending.current });
+        }
+        setStatus("Đã lưu nháp");
         return true;
       } catch (error) {
         setStatus("");
@@ -120,8 +122,7 @@ function ClientRound({ album, initialRound }: { album: ReviewAlbum; initialRound
       }
     })();
     inFlight.current = request;
-    if (!await request) return false;
-    return pending.current ? flush() : true;
+    return request;
   }
 
   useEffect(() => {
@@ -137,10 +138,15 @@ function ClientRound({ album, initialRound }: { album: ReviewAlbum; initialRound
   const count = Object.values(feedback).filter(hasReviewFeedback).length;
   const incomplete = Object.values(feedback).some((item) => item.regions.some((region) => !region.note.trim()));
   const locked = Boolean(round.submittedAt);
-  const editable = !locked && !reviewing && !busy && !conflict && !recovery;
+  const editable = !locked && !reviewing && !busy && !recovery;
+  const saveError = error && <div className="review-error" role="alert">
+    <p>{error}</p>
+    {conflict ? <button className="secondary" type="button" onClick={() => location.reload()}>Tải lại trang</button>
+      : pending.current && <button className="secondary" type="button" onClick={() => { setError(""); void flush(); }}>Thử lưu lại</button>}
+  </div>;
 
   async function prepare() {
-    if (!count) return;
+    if (!count || conflict) return;
     if (incomplete) {
       setError("Hãy điền ghi chú cho tất cả vùng đã khoanh trước khi gửi.");
       window.scrollTo(0, 0);
@@ -210,18 +216,15 @@ function ClientRound({ album, initialRound }: { album: ReviewAlbum; initialRound
           <button type="button" onClick={() => { queue(recovery); setRecovery(null); }}>Bản trên thiết bị</button>
         </div>
       </div>}
-      {error && <div className="review-error" role="alert">
-        <p>{error}</p>
-        {conflict ? <button className="secondary" type="button" onClick={() => location.reload()}>Tải lại trang</button>
-          : pending.current && <button className="secondary" type="button" onClick={() => { setError(""); void flush(); }}>Thử lưu lại</button>}
-      </div>}
+      {saveError}
       {status && <p className="hint" role="status">{status}</p>}
       {reviewing && <div className="review-confirm panel">
         <h2 ref={reviewHeading} tabIndex={-1}>Xem lại chỉnh sửa</h2>
         <p>Studio sẽ nhận góp ý cho {count} ảnh ở vòng này.</p>
       </div>}
       {(!reviewing || count > 0) && <PhotoReviewGallery albumId={album.id} round={number}
-        folder={reviewing ? null : folder} feedbackOnly={reviewing} feedback={feedback} onEdit={editable ? edit : undefined} />}
+        folder={reviewing ? null : folder} feedbackOnly={reviewing} feedback={feedback}
+        onEdit={editable ? edit : undefined} notice={saveError} />}
     </section>
     {!locked && <div className="review-submit-bar">
       <div className="review-submit-inner">
@@ -233,7 +236,7 @@ function ClientRound({ album, initialRound }: { album: ReviewAlbum; initialRound
           ? <button type="button" disabled={busy || conflict} onClick={() => void submit()}>
               <Send size={16} aria-hidden="true" /> {busy ? "Đang gửi…" : "Xác nhận gửi"}
             </button>
-          : <button type="button" disabled={!editable || !count} aria-describedby="review-submit-summary"
+          : <button type="button" disabled={!editable || conflict || !count} aria-describedby="review-submit-summary"
               onClick={() => void prepare()}><Send size={16} aria-hidden="true" /> Gửi chỉnh sửa</button>}
       </div>
     </div>}

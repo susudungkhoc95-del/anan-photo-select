@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 
 type Point = { x: number; y: number };
 type View = Point & { scale: number };
+type PhotoSize = Pick<DOMRect, "width" | "height">;
+export type ReviewPhotoLayout = { viewport: PhotoSize; image: PhotoSize };
 type TouchGesture =
   | { kind: "single"; start: Point; time: number; moved: boolean }
   | { kind: "pan"; start: Point; view: View; time: number | null; moved: boolean }
@@ -25,13 +27,13 @@ function pinch(touches: TouchList) {
   };
 }
 
-function bounded(view: View, bounds: DOMRect): View {
-  const x = bounds.width * (view.scale - 1) / 2;
-  const y = bounds.height * (view.scale - 1) / 2;
+function bounded(view: View, bounds: DOMRect, image: DOMRect): View {
+  const x = Math.max(0, (image.width * view.scale - bounds.width) / 2);
+  const y = Math.max(0, (image.height * view.scale - bounds.height) / 2);
   return { scale: view.scale, x: Math.max(-x, Math.min(x, view.x)), y: Math.max(-y, Math.min(y, view.y)) };
 }
 
-function zoomAt(view: View, scale: number, start: Point, end: Point, bounds: DOMRect): View {
+function zoomAt(view: View, scale: number, start: Point, end: Point, bounds: DOMRect, image: DOMRect): View {
   scale = Math.max(1, Math.min(maxScale, scale));
   if (scale <= 1.01) return fitted;
   const originX = bounds.left + bounds.width / 2;
@@ -41,16 +43,18 @@ function zoomAt(view: View, scale: number, start: Point, end: Point, bounds: DOM
     scale,
     x: end.x - originX - (start.x - originX - view.x) * ratio,
     y: end.y - originY - (start.y - originY - view.y) * ratio
-  }, bounds);
+  }, bounds, image);
 }
 
 export function useReviewPhotoGestures({ active, previous, next }: {
   active: boolean; previous?: () => void; next?: () => void;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
+  const frame = useRef<HTMLDivElement>(null);
   const current = useRef(fitted);
   const navigation = useRef({ previous, next });
   const [view, setView] = useState(fitted);
+  const [layout, setLayout] = useState<ReviewPhotoLayout | null>(null);
   navigation.current = { previous, next };
 
   function update(view: View) {
@@ -60,20 +64,34 @@ export function useReviewPhotoGestures({ active, previous, next }: {
 
   function zoomBy(change: number) {
     const box = viewport.current?.getBoundingClientRect();
-    if (!box) return;
+    const image = frame.current?.getBoundingClientRect();
+    if (!box || !image) return;
     const center = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-    update(zoomAt(current.current, current.current.scale + change, center, center, box));
+    update(zoomAt(current.current, current.current.scale + change, center, center, box, image));
   }
 
   useEffect(() => {
     const element = viewport.current;
-    if (!element || !active) return;
+    const image = frame.current;
+    if (!element || !image || !active) return;
     let gesture: TouchGesture | null = null;
     let mouse: { id: number; start: Point; view: View } | null = null;
     let lastTap: { point: Point; time: number } | null = null;
 
     function pan(view: View, dx: number, dy: number) {
-      if (element) update(bounded({ scale: view.scale, x: view.x + dx, y: view.y + dy }, element.getBoundingClientRect()));
+      if (!element || !image) return;
+      update(bounded({ scale: view.scale, x: view.x + dx, y: view.y + dy },
+        element.getBoundingClientRect(), image.getBoundingClientRect()));
+    }
+
+    function wheel(event: WheelEvent) {
+      if (!element || !image || !event.deltaY || event.ctrlKey || event.metaKey) return;
+      event.preventDefault();
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? element.clientHeight : 1;
+      const delta = Math.max(-120, Math.min(120, event.deltaY * unit));
+      const cursor = { x: event.clientX, y: event.clientY };
+      update(zoomAt(current.current, current.current.scale * Math.exp(-delta / 500),
+        cursor, cursor, element.getBoundingClientRect(), image.getBoundingClientRect()));
     }
 
     function start(event: TouchEvent) {
@@ -93,13 +111,13 @@ export function useReviewPhotoGestures({ active, previous, next }: {
     }
 
     function move(event: TouchEvent) {
-      if (!element || !gesture) return;
+      if (!element || !image || !gesture) return;
       const touch = point(event.touches[0]);
       if (gesture.kind === "pinch" && event.touches.length >= 2) {
         event.preventDefault();
         const { center, distance } = pinch(event.touches);
         update(zoomAt(gesture.view, gesture.view.scale * distance / gesture.distance,
-          gesture.center, center, element.getBoundingClientRect()));
+          gesture.center, center, element.getBoundingClientRect(), image.getBoundingClientRect()));
       } else if (gesture.kind === "pan") {
         event.preventDefault();
         const dx = touch.x - gesture.start.x;
@@ -115,7 +133,7 @@ export function useReviewPhotoGestures({ active, previous, next }: {
     }
 
     function end(event: TouchEvent) {
-      if (!element || !gesture) return;
+      if (!element || !image || !gesture) return;
       const previousGesture = gesture;
       gesture = null;
       if (event.touches.length >= 2) {
@@ -147,7 +165,7 @@ export function useReviewPhotoGestures({ active, previous, next }: {
 
       if (lastTap && event.timeStamp - lastTap.time < 300 && Math.hypot(end.x - lastTap.point.x, end.y - lastTap.point.y) < 32) {
         const scale = current.current.scale > 1 ? 1 : 2.5;
-        update(zoomAt(current.current, scale, end, end, element.getBoundingClientRect()));
+        update(zoomAt(current.current, scale, end, end, element.getBoundingClientRect(), image.getBoundingClientRect()));
         lastTap = null;
       } else {
         lastTap = { point: end, time: event.timeStamp };
@@ -176,9 +194,14 @@ export function useReviewPhotoGestures({ active, previous, next }: {
     }
 
     const resize = new ResizeObserver(() => {
-      if (current.current.scale > 1) update(bounded(current.current, element.getBoundingClientRect()));
+      const bounds = element.getBoundingClientRect();
+      const photo = image.getBoundingClientRect();
+      setLayout({ viewport: bounds, image: photo });
+      if (current.current.scale > 1) update(bounded(current.current, bounds, photo));
     });
     resize.observe(element);
+    resize.observe(image);
+    element.addEventListener("wheel", wheel, { passive: false });
     element.addEventListener("touchstart", start, { passive: true });
     element.addEventListener("touchmove", move, { passive: false });
     element.addEventListener("touchend", end, { passive: true });
@@ -188,6 +211,7 @@ export function useReviewPhotoGestures({ active, previous, next }: {
     element.addEventListener("lostpointercapture", mouseEnd);
     return () => {
       resize.disconnect();
+      element.removeEventListener("wheel", wheel);
       element.removeEventListener("touchstart", start);
       element.removeEventListener("touchmove", move);
       element.removeEventListener("touchend", end);
@@ -198,5 +222,5 @@ export function useReviewPhotoGestures({ active, previous, next }: {
     };
   }, [active]);
 
-  return { viewport, view, zoomBy, reset: () => update(fitted), maxScale };
+  return { viewport, frame, view, layout, zoomBy, reset: () => update(fitted), maxScale };
 }
