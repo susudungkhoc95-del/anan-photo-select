@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
 import {
-  createReviewAlbum, deleteReviewAlbum, exportReviewSheet, getReviewAdmin, getReviewClient, listReviewAlbums,
-  openReviewRound, ReviewError, reviewPhotoPage, saveReviewFeedback
+  createReviewAlbum, deleteReviewAlbum, exportReviewSheet, getReviewAdmin, getReviewAlbum, getReviewClient, listReviewAlbums,
+  openReviewRound, ReviewError, reviewPhotoPage, saveReviewFeedback, setReviewDownload
 } from "@/lib/photo-review";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const adminActions = new Set(["create", "delete", "list", "admin", "adminPhotos", "openRound", "export"]);
+const adminActions = new Set(["create", "delete", "list", "admin", "adminPhotos", "openRound", "export", "setDownload"]);
 
 export async function POST(request: Request) {
   try {
@@ -24,6 +24,8 @@ export async function POST(request: Request) {
       case "list": data = await listReviewAlbums(); break;
       case "admin": data = await getReviewAdmin(payload); break;
       case "client": data = await getReviewClient(payload); break;
+      case "downloadStatus": data = { enabled: (await getReviewAlbum(payload.albumId)).downloadEnabled === true }; break;
+      case "setDownload": data = await setReviewDownload(payload); break;
       case "adminPhotos":
       case "photos": data = await reviewPhotoPage(payload, action === "adminPhotos"); break;
       case "draft":

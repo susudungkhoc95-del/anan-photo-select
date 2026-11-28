@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, ExternalLink, FileSpreadsheet, KeyRound, LogOut, RefreshCw, Trash2 } from "lucide-react";
+import { Copy, Download, ExternalLink, FileSpreadsheet, KeyRound, LogOut, MessageSquare, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import AdminTabs from "@/components/AdminTabs";
 import EnvironmentSwitcher from "@/components/EnvironmentSwitcher";
@@ -85,7 +85,7 @@ function AdminReviews({ onExpired }: { onExpired: () => void }) {
   const [opening, setOpening] = useState(false);
   const [albumToDelete, setAlbumToDelete] = useState<ReviewAlbum | null>(null);
   const [folder, setFolder] = useState<string | null>(null);
-  const [feedbackOnly, setFeedbackOnly] = useState(true);
+  const [feedbackOnly, setFeedbackOnly] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -118,9 +118,12 @@ function AdminReviews({ onExpired }: { onExpired: () => void }) {
   async function select(albumId: string, round?: number) {
     const data = await reviewRequest<AdminReview>("admin", { albumId, round });
     const current = data.rounds[0];
+    const sameRound = selected?.album.id === data.album.id && selected.round.number === data.round.number;
     setSelected(data);
-    setFolder(null);
-    setFeedbackOnly(Boolean(data.round.submittedAt));
+    if (!sameRound) setFolder(null);
+    if (!sameRound || selected.round.submittedAt !== data.round.submittedAt) {
+      setFeedbackOnly(Boolean(data.round.submittedAt));
+    }
     setOpening(false);
     setNextFolderUrl(current.folderUrl);
   }
@@ -160,6 +163,18 @@ function AdminReviews({ onExpired }: { onExpired: () => void }) {
     });
   }
 
+  async function toggleDownload() {
+    if (!selected || busy) return;
+    const { id, downloadEnabled } = selected.album;
+    await run("Đang cập nhật quyền tải ảnh…", async () => {
+      const { enabled } = await reviewRequest<{ enabled: boolean }>("setDownload", { albumId: id, enabled: !downloadEnabled });
+      setSelected((current) => current?.album.id === id
+        ? { ...current, album: { ...current.album, downloadEnabled: enabled } }
+        : current);
+      setNotice(enabled ? "Khách đã có thể tải từng ảnh trong album." : "Đã tắt tải ảnh cho khách.");
+    });
+  }
+
   async function deleteAlbum() {
     if (!albumToDelete || busy) return;
     const albumId = albumToDelete.id;
@@ -177,23 +192,24 @@ function AdminReviews({ onExpired }: { onExpired: () => void }) {
   return <div className="review-admin-layout">
     <aside className="review-admin-sidebar">
       <section className="panel">
-        <h1>Duyệt ảnh sửa</h1>
+        <h1>Tạo album duyệt</h1>
         <form className="form-stack" onSubmit={create}>
-          <label>Tên album<input value={title} maxLength={150} placeholder="Dùng tên thư mục nếu để trống"
+          <label className="album-create-field"><input aria-label="Tên album" placeholder="Tên album"
+            title="Dùng tên thư mục nếu để trống" value={title} maxLength={150}
             onChange={(event) => setTitle(event.target.value)} /></label>
-          <label>Link thư mục Google Drive<input value={folderUrl} maxLength={2000} required
-            placeholder="https://drive.google.com/drive/folders/…" onChange={(event) => setFolderUrl(event.target.value)} /></label>
-          <button type="submit" disabled={Boolean(busy)}>Tạo link duyệt</button>
+          <label className="album-create-field"><input aria-label="Link thư mục Google Drive" placeholder="Link thư mục Google Drive"
+            value={folderUrl} maxLength={2000} required onChange={(event) => setFolderUrl(event.target.value)} /></label>
+          <button type="submit" disabled={Boolean(busy)}>Tạo</button>
         </form>
       </section>
       <section className="panel">
         <h2>Album duyệt</h2>
         <div className="review-album-list">{albums.map((album) => <div className="review-album-row" key={album.id}>
-          <button type="button" className="secondary" aria-pressed={selected?.album.id === album.id}
+          <button type="button" className="secondary review-album-open" aria-pressed={selected?.album.id === album.id}
             disabled={Boolean(busy)} onClick={() => void run("Đang mở album…", () => select(album.id))}>{album.title}</button>
           <button type="button" className="icon-button danger review-album-delete" disabled={Boolean(busy)}
             aria-label={`Xóa album ${album.title}`} title="Xóa album" onClick={() => setAlbumToDelete(album)}>
-            <Trash2 size={16} aria-hidden="true" />
+            <Trash2 size="1em" aria-hidden="true" />
           </button>
         </div>)}</div>
         {!albums.length && <p className="hint">Chưa có album duyệt.</p>}
@@ -207,36 +223,36 @@ function AdminReviews({ onExpired }: { onExpired: () => void }) {
         <header className="review-admin-detail-header">
           <h2>{selected.album.title}</h2>
           <div className="review-actions">
-            <button type="button" className="secondary" onClick={() => {
+            <button type="button" className="secondary icon-button" aria-label="Sao chép link" title="Sao chép link" onClick={() => {
               void navigator.clipboard.writeText(new URL(clientPath, location.origin).href)
                 .then(() => setNotice("Đã sao chép link duyệt."), () => setError("Không sao chép được link. Hãy mở trang khách và sao chép địa chỉ."));
-            }}><Copy size={16} /> Sao chép link</button>
-            <a href={clientPath} className="button secondary" target="_blank" rel="noreferrer"><ExternalLink size={16} /> Mở trang khách</a>
-            <button type="button" className="secondary" disabled={Boolean(busy)}
-              onClick={() => void run("Đang tải phản hồi…", () => select(selected.album.id, activeRound.number))}>
-              <RefreshCw size={16} /> Làm mới
+            }}><Copy size={18} aria-hidden="true" /></button>
+            <a href={clientPath} className="icon-button" target="_blank" rel="noreferrer"
+              aria-label="Mở trang khách" title="Mở trang khách"><ExternalLink size={18} aria-hidden="true" /></a>
+            <button type="button" className="secondary icon-button" disabled={Boolean(busy)}
+              aria-label="Cho phép khách tải ảnh" aria-pressed={selected.album.downloadEnabled === true}
+              title={selected.album.downloadEnabled ? "Tắt tải ảnh" : "Bật tải ảnh"} onClick={() => void toggleDownload()}>
+              <Download size={18} aria-hidden="true" />
             </button>
-            <button type="button" className="danger" disabled={Boolean(busy)}
-              onClick={() => setAlbumToDelete(selected.album)}><Trash2 size={16} aria-hidden="true" /> Xóa album</button>
+            <button type="button" className="secondary icon-button" disabled={Boolean(busy)} aria-label="Làm mới" title="Làm mới"
+              onClick={() => void run("Đang tải phản hồi…", () => select(selected.album.id, activeRound.number))}>
+              <RefreshCw size={18} aria-hidden="true" />
+            </button>
+            <div className="review-admin-controls">
+              <select aria-label="Vòng duyệt" title="Vòng duyệt" value={activeRound.number} disabled={Boolean(busy)}
+                onChange={(event) => { const number = Number(event.target.value); void run("Đang mở vòng duyệt…", () => select(selected.album.id, number)); }}>
+                {selected.rounds.map((item) => <option key={item.number} value={item.number}>
+                  Vòng {item.number} · {item.outcome === "approved" ? "Đã duyệt" : item.submittedAt ? `${item.feedbackCount} ảnh cần sửa` : "Chờ phản hồi"}
+                </option>)}
+              </select>
+              <select aria-label="Thư mục" title={folder === null ? "Tất cả thư mục" : folderLabel(folder)}
+                value={JSON.stringify(folder)} onChange={(event) => setFolder(JSON.parse(event.target.value) as string | null)}>
+                <option value="null">Tất cả thư mục</option>
+                {activeRound.folders.map(({ name, count }) => <option key={name} value={JSON.stringify(name)}>{folderLabel(name)} ({count} ảnh)</option>)}
+              </select>
+            </div>
           </div>
         </header>
-        <div className="review-admin-controls">
-          <label>Vòng duyệt<select value={activeRound.number} disabled={Boolean(busy)}
-            onChange={(event) => { const number = Number(event.target.value); void run("Đang mở vòng duyệt…", () => select(selected.album.id, number)); }}>
-            {selected.rounds.map((item) => <option key={item.number} value={item.number}>
-              Vòng {item.number} · {item.outcome === "approved" ? "Đã duyệt" : item.submittedAt ? `${item.feedbackCount} ảnh cần sửa` : "Chờ phản hồi"}
-            </option>)}
-          </select></label>
-          <label>Thư mục<select value={JSON.stringify(folder)}
-            onChange={(event) => setFolder(JSON.parse(event.target.value) as string | null)}>
-            <option value="null">Tất cả thư mục</option>
-            {activeRound.folders.map(({ name, count }) => <option key={name} value={JSON.stringify(name)}>{folderLabel(name)} ({count} ảnh)</option>)}
-          </select></label>
-          {activeRound.submittedAt && <label>Hiển thị<select value={feedbackOnly ? "feedback" : "all"}
-            onChange={(event) => setFeedbackOnly(event.target.value === "feedback")}>
-            <option value="feedback">Ảnh cần sửa</option><option value="all">Tất cả ảnh</option>
-          </select></label>}
-        </div>
         <p className="hint">{activeRound.submittedAt ? `Khách gửi lúc ${new Intl.DateTimeFormat("vi-VN", {
           dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh"
         }).format(new Date(activeRound.submittedAt))}` : "Đang chờ khách gửi phản hồi."}</p>
@@ -254,6 +270,15 @@ function AdminReviews({ onExpired }: { onExpired: () => void }) {
           <p className="hint">Để xem lại đúng phiên bản ảnh cũ, hãy dùng thư mục mới cho vòng này và giữ các file Drive của vòng trước.</p>
           <button type="submit" disabled={Boolean(busy)}>Bắt đầu vòng {activeRound.number + 1}</button>
         </form>}
+        <div className="review-actions review-admin-photo-filters" role="group" aria-label="Lọc ảnh theo ghi chú">
+          <button type="button" className="secondary" aria-pressed={!feedbackOnly}
+            onClick={() => setFeedbackOnly(false)}>Tất cả ảnh</button>
+          <button type="button" className="secondary" aria-pressed={feedbackOnly} disabled={!activeRound.submittedAt}
+            onClick={() => setFeedbackOnly(true)}>
+            <MessageSquare size={16} aria-hidden="true" /> Ảnh có ghi chú
+            {activeRound.submittedAt && folder === null ? ` (${activeRound.feedbackCount})` : ""}
+          </button>
+        </div>
         <PhotoReviewGallery key={`${activeRound.number}:${activeRound.submittedAt}`} albumId={selected.album.id}
           round={activeRound.number} folder={folder} feedbackOnly={feedbackOnly} feedback={activeRound.feedback} admin />
       </>}

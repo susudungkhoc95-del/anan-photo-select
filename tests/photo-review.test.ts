@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Readable } from "node:stream";
 
 const mocks = vi.hoisted(() => ({
   readRecord: vi.fn(),
+  isAdmin: vi.fn(),
+  download: vi.fn(),
   requests: [] as Array<{ data?: unknown; error?: unknown }>,
   writes: [] as unknown[],
   rpc: vi.fn(),
@@ -10,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   sheetLayout: vi.fn()
 }));
 
+vi.mock("@/lib/auth", () => ({ isAdmin: mocks.isAdmin }));
 vi.mock("@/lib/google", () => ({
   extractFolderId: (url: string) => url.split("/").at(-1),
   scanFolder: async (_id: string, _path: string, photos: unknown[], _imageOnly: boolean,
@@ -18,7 +22,8 @@ vi.mock("@/lib/google", () => ({
     photos.push({ id: "photo1", name: "ANAN-01.jpg", folder: "ANH SUA" });
   },
   getGoogleApi: () => ({
-    drive: { files: { get: async () => ({ data: { name: "ANAN", mimeType: "application/vnd.google-apps.folder" } }) } },
+    drive: { files: { get: (...args: unknown[]) => args.length > 1
+      ? mocks.download(...args) : Promise.resolve({ data: { name: "ANAN", mimeType: "application/vnd.google-apps.folder" } }) } },
     sheets: { spreadsheets: {
       create: mocks.createSheet, values: { update: mocks.sheetValues }, batchUpdate: mocks.sheetLayout
     } }
@@ -41,6 +46,8 @@ vi.mock("@/lib/supabase", () => ({
 }));
 
 import { deleteReviewAlbum, exportReviewSheet, getReviewClient, openReviewRound, saveReviewFeedback } from "@/lib/photo-review";
+import { POST } from "@/app/api/review/route";
+import { GET as downloadPhoto } from "@/app/api/review/download/route";
 
 const albumId = "00000000-0000-0000-0000-000000000001";
 const album = { id: albumId, title: "Album khách", createdAt: "2026-01-01" };
@@ -59,7 +66,59 @@ beforeEach(() => {
   mocks.requests = [];
   mocks.writes = [];
   mocks.readRecord.mockImplementation((collection: string) => collection.endsWith("_albums") ? album : submitted);
+  mocks.isAdmin.mockResolvedValue(false);
   mocks.createSheet.mockResolvedValue({ data: { spreadsheetId: "sheet-1" } });
+});
+
+describe("photo review downloads", () => {
+  function request(action: string, payload: Record<string, unknown>) {
+    return POST(new Request("http://localhost/api/review", { method: "POST", body: JSON.stringify({ action, payload }) }));
+  }
+
+  function download(round = 1, photoId = photo.id) {
+    const query = new URLSearchParams({ albumId, round: String(round), photoId });
+    return downloadPhoto(new Request(`http://localhost/api/review/download?${query}`));
+  }
+
+  it("defaults older albums to off and only lets the admin change the setting", async () => {
+    const status = await request("downloadStatus", { albumId });
+    expect(await status.json()).toEqual({ data: { enabled: false } });
+    expect((await request("setDownload", { albumId, enabled: true })).status).toBe(401);
+    expect(mocks.writes).toHaveLength(0);
+
+    mocks.isAdmin.mockResolvedValue(true);
+    mocks.requests.push({ data: [{ record_id: albumId }] }, { data: [{ record_id: albumId }] });
+    expect(await (await request("setDownload", { albumId, enabled: true })).json()).toEqual({ data: { enabled: true } });
+    expect(await (await request("setDownload", { albumId, enabled: false })).json()).toEqual({ data: { enabled: false } });
+    expect(mocks.writes).toEqual([
+      { payload: { ...album, downloadEnabled: true } },
+      { payload: { ...album, downloadEnabled: false } }
+    ]);
+  });
+
+  it("checks the setting, current round and photo before fetching the original from Drive", async () => {
+    expect((await download()).status).toBe(403);
+    expect(mocks.download).not.toHaveBeenCalled();
+    mocks.readRecord.mockResolvedValue({ ...album, downloadEnabled: true });
+    mocks.requests.push({ data: { payload: submitted } }, { data: { payload: submitted } });
+    expect((await download(2)).status).toBe(404);
+    expect((await download(1, "not-in-this-album")).status).toBe(404);
+    expect(mocks.download).not.toHaveBeenCalled();
+
+    const name = 'Ảnh cưới "01".jpg';
+    mocks.requests.push({ data: { payload: { ...submitted, photos: [{ ...photo, name }] } } });
+    const original = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    mocks.download.mockResolvedValueOnce({ data: Readable.from([original]) });
+    const response = await download();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-disposition")).toContain(`filename*=UTF-8''${encodeURIComponent(name)}`);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(original);
+    expect(mocks.download).toHaveBeenCalledWith(
+      { fileId: photo.id, alt: "media", supportsAllDrives: true },
+      expect.objectContaining({ responseType: "stream" })
+    );
+  });
 });
 
 describe("photo review rounds", () => {

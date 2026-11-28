@@ -56,12 +56,37 @@ function ClientRound({ album, initialRound }: { album: ReviewAlbum; initialRound
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
   const [recovery, setRecovery] = useState<ReviewFeedback | null>(null);
+  const [downloadEnabled, setDownloadEnabled] = useState(album.downloadEnabled === true);
   const pending = useRef<ReviewFeedback | null>(null);
   const revision = useRef(initialRound.revision);
   const inFlight = useRef<Promise<boolean> | null>(null);
   const submissionId = useRef("");
   const reviewHeading = useRef<HTMLHeadingElement>(null);
   const key = `anan-review:${album.id}:${number}`;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let checking = false;
+    async function syncDownload() {
+      if (document.hidden || checking) return;
+      checking = true;
+      try {
+        const { enabled } = await reviewRequest<{ enabled: boolean }>("downloadStatus", { albumId: album.id }, controller.signal);
+        if (!controller.signal.aborted) setDownloadEnabled(enabled === true);
+      } catch (error) {
+        if (error instanceof ReviewRequestError && error.status === 404) setDownloadEnabled(false);
+      } finally {
+        checking = false;
+      }
+    }
+    const timer = window.setInterval(syncDownload, 15_000);
+    document.addEventListener("visibilitychange", syncDownload);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", syncDownload);
+    };
+  }, [album.id]);
 
   useEffect(() => {
     if (initialRound.submittedAt) {
@@ -224,7 +249,7 @@ function ClientRound({ album, initialRound }: { album: ReviewAlbum; initialRound
       </div>}
       {(!reviewing || count > 0) && <PhotoReviewGallery albumId={album.id} round={number}
         folder={reviewing ? null : folder} feedbackOnly={reviewing} feedback={feedback}
-        onEdit={editable ? edit : undefined} notice={saveError} />}
+        onEdit={editable ? edit : undefined} notice={saveError} downloadEnabled={downloadEnabled} />}
     </section>
     {!locked && <div className="review-submit-bar">
       <div className="review-submit-inner">

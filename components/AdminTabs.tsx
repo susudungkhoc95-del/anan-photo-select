@@ -3,7 +3,7 @@ import Link from "next/link";
 const tabs = [
   { id: "select", href: "/", label: "DP Select" },
   { id: "dp", href: "/workflow", label: "DP Workflow" },
-  { id: "review", href: "/review", label: "Duyệt ảnh sửa" },
+  { id: "review", href: "/review", label: "DP Review" },
   { id: "show", href: "/show", label: "SHOW" }
 ] as const;
 

@@ -158,6 +158,18 @@ export async function listReviewAlbums() {
   return records.map(({ payload }) => payload as ReviewAlbum);
 }
 
+export async function setReviewDownload(payload: Payload) {
+  if (typeof payload.enabled !== "boolean") throw new ReviewError("Trạng thái tải ảnh không hợp lệ.");
+  const album = await getReviewAlbum(payload.albumId);
+  const { data, error } = await getSupabaseServer().from(APP_RECORDS_TABLE)
+    .update({ payload: { ...album, downloadEnabled: payload.enabled } })
+    .eq("scope", "studio").eq("collection", ALBUMS).eq("record_id", album.id).eq("workspace_id", "")
+    .select("record_id");
+  if (error) throw new Error(error.message);
+  if (!data?.length) throw new ReviewError("Không tìm thấy album duyệt ảnh.", 404);
+  return { enabled: payload.enabled };
+}
+
 export async function deleteReviewAlbum(payload: Payload) {
   const albumId = inputText(payload.albumId, 80);
   if (!/^[\w-]{36}$/.test(albumId)) throw new ReviewError("Album không hợp lệ.");
@@ -225,9 +237,9 @@ export async function reviewPhotoPage(payload: Payload, admin: boolean) {
 export async function assertReviewPhoto(albumId: string, roundNumber: number, photoId: string, admin: boolean) {
   if (!/^[\w-]{36}$/.test(albumId)) throw new ReviewError("Không tìm thấy album.", 404);
   const round = await getRound(albumId, admin ? roundNumber : undefined);
-  if (round.number !== roundNumber || !round.photos.some((photo) => photo.id === photoId)) {
-    throw new ReviewError("Không tìm thấy ảnh trong vòng duyệt.", 404);
-  }
+  const photo = round.number === roundNumber && round.photos.find((item) => item.id === photoId);
+  if (!photo) throw new ReviewError("Không tìm thấy ảnh trong vòng duyệt.", 404);
+  return photo;
 }
 
 function normalizeFeedback(value: unknown, photos: Photo[], submitting: boolean): ReviewFeedback {

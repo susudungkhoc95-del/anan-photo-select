@@ -9,6 +9,7 @@ export type ReviewAlbum = {
   id: string;
   title: string;
   createdAt: string;
+  downloadEnabled?: boolean;
 };
 
 export type ReviewRoundSummary = {

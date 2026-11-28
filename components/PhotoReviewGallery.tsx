@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Focus, MessageSquare, Minus, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Focus, MessageSquare, Minus, Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import {
   REVIEW_NOTE_LIMIT, REVIEW_REGION_LIMIT, hasReviewFeedback,
@@ -17,6 +17,7 @@ type GalleryProps = {
   feedbackOnly: boolean;
   feedback: ReviewFeedback;
   admin?: boolean;
+  downloadEnabled?: boolean;
   onEdit?: (id: string, feedback: ReviewPhotoFeedback) => void;
   notice?: ReactNode;
 };
@@ -30,7 +31,7 @@ export default function PhotoReviewGallery(props: GalleryProps) {
   return <ReviewGalleryPage key={key} {...props} />;
 }
 
-function ReviewGalleryPage({ albumId, round, folder, feedbackOnly, feedback, admin, onEdit, notice }: GalleryProps) {
+function ReviewGalleryPage({ albumId, round, folder, feedbackOnly, feedback, admin, downloadEnabled, onEdit, notice }: GalleryProps) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -77,18 +78,24 @@ function ReviewGalleryPage({ albumId, round, folder, feedbackOnly, feedback, adm
       {photos.map((photo, index) => {
         const item = feedback[photo.id];
         const count = hasReviewFeedback(item) ? item.regions.length + Number(Boolean(item.note.trim())) : 0;
-        return <button type="button" className="secondary photo review-photo-tile" key={photo.id}
-          aria-label={`Mở ${photo.name}${count ? `, ${count} ghi chú` : ""}`} onClick={() => setActiveIndex(index)}>
-          <ReviewImage albumId={albumId} round={round} photo={photo} admin={admin} />
-          <span className="caption">{photo.name}</span>
-          {count > 0 && <span className="review-note-count"><MessageSquare size={14} aria-hidden="true" />{count}</span>}
-        </button>;
+        return <div className="review-photo-item" key={photo.id}>
+          <button type="button" className="secondary photo review-photo-tile"
+            aria-label={`Mở ${photo.name}${count ? `, ${count} ghi chú` : ""}`} onClick={() => setActiveIndex(index)}>
+            <ReviewImage albumId={albumId} round={round} photo={photo} admin={admin} />
+            <span className="caption">{photo.name}</span>
+            {count > 0 && <span className="review-note-count"><MessageSquare size={14} aria-hidden="true" />{count}</span>}
+          </button>
+          {downloadEnabled && <a className="icon-button review-photo-download" aria-label={`Tải ảnh ${photo.name}`} title="Tải ảnh"
+            target="_blank" rel="noreferrer" href={`/api/review/download?${new URLSearchParams({ albumId, round: String(round), photoId: photo.id })}`}>
+            <Download size={18} aria-hidden="true" />
+          </a>}
+        </div>;
       })}
     </div>
     {loading && <p className="hint" role="status">Đang tải ảnh…</p>}
     {error && <div className="review-error" role="alert">{error} <button type="button" className="secondary"
       onClick={() => void load(photos.length)}>Thử lại</button></div>}
-    {!loading && !error && !photos.length && <p className="empty">{feedbackOnly ? "Vòng này không có ảnh cần sửa." : "Thư mục này chưa có ảnh."}</p>}
+    {!loading && !error && !photos.length && <p className="empty">{feedbackOnly ? "Không có ảnh nào có ghi chú." : "Thư mục này chưa có ảnh."}</p>}
     {!loading && !error && photos.length < total && <div className="load-more-action">
       <button className="secondary" type="button" onClick={() => void load(photos.length)}>Tải thêm ảnh</button>
     </div>}
