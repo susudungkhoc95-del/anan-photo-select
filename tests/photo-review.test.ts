@@ -1,10 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Readable } from "node:stream";
 
 const mocks = vi.hoisted(() => ({
   readRecord: vi.fn(),
   isAdmin: vi.fn(),
   download: vi.fn(),
+  afterResponse: vi.fn<(task: () => Promise<void>) => void>(),
   requests: [] as Array<{ data?: unknown; error?: unknown }>,
   writes: [] as unknown[],
   rpc: vi.fn(),
@@ -14,6 +15,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/auth", () => ({ isAdmin: mocks.isAdmin }));
+vi.mock("next/server", async (importOriginal) => ({
+  ...await importOriginal<typeof import("next/server")>(), after: mocks.afterResponse
+}));
 vi.mock("@/lib/google", () => ({
   extractFolderId: (url: string) => url.split("/").at(-1),
   scanFolder: async (_id: string, _path: string, photos: unknown[], _imageOnly: boolean,
@@ -32,6 +36,7 @@ vi.mock("@/lib/google", () => ({
 vi.mock("@/lib/supabase", () => ({
   APP_RECORDS_TABLE: "app_records",
   readAppRecord: mocks.readRecord,
+  readAppRecords: async () => [],
   getSupabaseServer: () => ({ rpc: mocks.rpc, from: () => {
     const query: Record<string, unknown> = {};
     for (const method of ["select", "eq", "order", "limit", "maybeSingle"]) query[method] = () => query;
@@ -68,6 +73,60 @@ beforeEach(() => {
   mocks.readRecord.mockImplementation((collection: string) => collection.endsWith("_albums") ? album : submitted);
   mocks.isAdmin.mockResolvedValue(false);
   mocks.createSheet.mockResolvedValue({ data: { spreadsheetId: "sheet-1" } });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
+
+describe("photo review notifications", () => {
+  const payload = { albumId, round: 1, revision: "current", submissionId: "submit-1", outcome: "changes", feedback };
+
+  function request(action: "submit" | "draft", body: Record<string, unknown> = payload) {
+    return POST(new Request("http://localhost/api/review", { method: "POST", body: JSON.stringify({ action, payload: body }) }));
+  }
+
+  it("schedules a Telegram message once after a successful edit submission", async () => {
+    const titledAlbum = { ...album, title: "An & <Bình>" };
+    mocks.readRecord.mockResolvedValue(titledAlbum);
+    mocks.requests.push({ data: { payload: current } }, { data: [{ record_id: "round-1" }] });
+    const response = await request("submit");
+    expect(response.status).toBe(200);
+    expect(mocks.afterResponse).toHaveBeenCalledOnce();
+    const { payload: saved } = mocks.writes[0] as { payload: typeof submitted };
+    mocks.requests.push({ data: { payload: saved } });
+    expect((await request("submit")).status).toBe(200);
+    expect(mocks.afterResponse).toHaveBeenCalledOnce();
+
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-token");
+    vi.stubEnv("TELEGRAM_CHAT_ID", "123");
+    vi.stubEnv("TELEGRAM_CHAT_IDS", "");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://studio.example");
+    const fetchMessage = vi.fn<typeof fetch>().mockResolvedValue(new Response("{}"));
+    vi.stubGlobal("fetch", fetchMessage);
+    await mocks.afterResponse.mock.calls[0][0]();
+    expect(fetchMessage).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(fetchMessage.mock.calls[0][1]?.body))).toEqual(expect.objectContaining({
+      chat_id: "123", parse_mode: "HTML",
+      text: "📸 <b>DP Review · Khách đã gửi chỉnh sửa</b>\n\n<b>Album</b> An &amp; &lt;Bình&gt;\n<b>Vòng duyệt</b> 1\n<b>Ảnh cần sửa</b> 1 ảnh",
+      reply_markup: { inline_keyboard: [[{
+        text: "🔗 Mở album trong DP Review", url: `https://studio.example/review?album=${albumId}&round=1`
+      }]] }
+    }));
+  });
+
+  it("does not notify for drafts, approvals, or rejected submissions", async () => {
+    mocks.requests.push(
+      { data: { payload: current } }, { data: [{ record_id: "round-1" }] },
+      { data: { payload: current } }, { data: [{ record_id: "round-1" }] },
+      { data: { payload: current } }
+    );
+    expect((await request("draft")).status).toBe(200);
+    expect((await request("submit", { ...payload, outcome: "approved", feedback: {} })).status).toBe(200);
+    expect((await request("submit", { ...payload, revision: "stale" })).status).toBe(409);
+    expect(mocks.afterResponse).not.toHaveBeenCalled();
+  });
 });
 
 describe("photo review downloads", () => {

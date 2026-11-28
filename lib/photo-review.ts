@@ -271,7 +271,9 @@ function normalizeFeedback(value: unknown, photos: Photo[], submitting: boolean)
   return feedback;
 }
 
-export async function saveReviewFeedback(payload: Payload, submitting: boolean) {
+export async function saveReviewFeedback(payload: Payload, submitting: boolean, onChangesSubmitted?: (submission: {
+  album: ReviewAlbum; round: number; feedbackCount: number;
+}) => void) {
   const album = await getReviewAlbum(payload.albumId);
   const round = await getRound(album.id);
   const submissionId = submitting ? inputText(payload.submissionId, 80) : "";
@@ -296,6 +298,7 @@ export async function saveReviewFeedback(payload: Payload, submitting: boolean) 
     if (submissionId && latest.submissionId === submissionId) return publicRound(latest);
     throw new ReviewError("Phản hồi đã thay đổi ở nơi khác. Hãy tải lại trang để xem bản mới nhất.", 409);
   }
+  if (next.outcome === "changes") onChangesSubmitted?.({ album, round: next.number, feedbackCount });
   return publicRound(next);
 }
 

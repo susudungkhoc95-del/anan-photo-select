@@ -75,7 +75,7 @@ export async function registerTelegramChat(chatId: string, user?: { id?: number;
   }
 }
 
-export async function sendTelegramMessage(text: string, options: { chatId?: string; replyMarkup?: unknown } = {}) {
+export async function sendTelegramMessage(text: string, options: { chatId?: string; replyMarkup?: unknown; parseMode?: "HTML" } = {}) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatIds = options.chatId ? [options.chatId] : await getTelegramChatIds();
   if (!token || chatIds.length === 0) return { sent: false, reason: "not-configured" as const };
@@ -84,13 +84,35 @@ export async function sendTelegramMessage(text: string, options: { chatId?: stri
     const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": "ANAN-DP-Select/1.0" },
-      body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true, ...(options.replyMarkup ? { reply_markup: options.replyMarkup } : {}) })
+      body: JSON.stringify({
+        chat_id: chatId, text, disable_web_page_preview: true, parse_mode: options.parseMode,
+        reply_markup: options.replyMarkup
+      })
     });
     if (!response.ok) throw new Error(`Telegram trả về lỗi ${response.status} cho chat ${chatId}.`);
   }));
   const sentCount = results.filter((result) => result.status === "fulfilled").length;
   if (sentCount === 0) throw new Error("Telegram không gửi được đến bất kỳ chat nào.");
   return { sent: true as const, sentTo: sentCount, totalRecipients: chatIds.length };
+}
+
+export function sendReviewSubmissionTelegram({ album, round, feedbackCount }: {
+  album: { id: string; title: string }; round: number; feedbackCount: number;
+}) {
+  const title = clip(album.title, 150).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const url = new URL("/review", process.env.NEXT_PUBLIC_APP_URL || "https://ananstudio.vercel.app");
+  url.search = new URLSearchParams({ album: album.id, round: String(round) }).toString();
+  const text = [
+    "📸 <b>DP Review · Khách đã gửi chỉnh sửa</b>",
+    "",
+    `<b>Album</b> ${title}`,
+    `<b>Vòng duyệt</b> ${round}`,
+    `<b>Ảnh cần sửa</b> ${feedbackCount} ảnh`
+  ].join("\n");
+  return sendTelegramMessage(text, {
+    parseMode: "HTML",
+    replyMarkup: { inline_keyboard: [[{ text: "🔗 Mở album trong DP Review", url: url.href }]] }
+  });
 }
 
 export function sendWorkflowMoveTelegram({ title, fromList, toList, movedAt, scope }: { title: string; fromList: string; toList: string; movedAt: string; scope: "dp" | "show" }) {

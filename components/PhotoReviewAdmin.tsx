@@ -9,8 +9,9 @@ import { ReviewRequestError, reviewRequest } from "@/components/photo-review-api
 import type { ReviewAlbum, ReviewRound, ReviewRoundSummary } from "@/lib/photo-review-types";
 
 type AdminReview = { album: ReviewAlbum; round: ReviewRound; rounds: ReviewRoundSummary[] };
+type ReviewDestination = { initialAlbumId?: string; initialRound?: number };
 
-export default function PhotoReviewAdmin({ initialAuthenticated }: { initialAuthenticated: boolean }) {
+export default function PhotoReviewAdmin({ initialAuthenticated, initialAlbumId, initialRound }: ReviewDestination & { initialAuthenticated: boolean }) {
   const [authenticated, setAuthenticated] = useState(initialAuthenticated);
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -72,11 +73,12 @@ export default function PhotoReviewAdmin({ initialAuthenticated }: { initialAuth
       </div>
     </header>
     {loginError && <p className="review-error" role="alert">{loginError}</p>}
-    <AdminReviews onExpired={() => { setLoginError("Phiên quản trị đã hết hạn."); setAuthenticated(false); }} />
+    <AdminReviews initialAlbumId={initialAlbumId} initialRound={initialRound}
+      onExpired={() => { setLoginError("Phiên quản trị đã hết hạn."); setAuthenticated(false); }} />
   </main>;
 }
 
-function AdminReviews({ onExpired }: { onExpired: () => void }) {
+function AdminReviews({ onExpired, initialAlbumId, initialRound }: ReviewDestination & { onExpired: () => void }) {
   const [albums, setAlbums] = useState<ReviewAlbum[]>([]);
   const [selected, setSelected] = useState<AdminReview | null>(null);
   const [title, setTitle] = useState("");
@@ -103,8 +105,14 @@ function AdminReviews({ onExpired }: { onExpired: () => void }) {
       }
     })
       .catch((error) => { if (!controller.signal.aborted) report(error); });
+    if (initialAlbumId) {
+      setBusy("Đang mở album…");
+      void select(initialAlbumId, initialRound, controller.signal)
+        .catch((error) => { if (!controller.signal.aborted) report(error); })
+        .finally(() => { if (!controller.signal.aborted) setBusy(""); });
+    }
     return () => controller.abort();
-  }, []);
+  }, [initialAlbumId, initialRound]);
 
   async function run(label: string, action: () => Promise<void>) {
     setError("");
@@ -115,8 +123,9 @@ function AdminReviews({ onExpired }: { onExpired: () => void }) {
     finally { setBusy(""); }
   }
 
-  async function select(albumId: string, round?: number) {
-    const data = await reviewRequest<AdminReview>("admin", { albumId, round });
+  async function select(albumId: string, round?: number, signal?: AbortSignal) {
+    const data = await reviewRequest<AdminReview>("admin", { albumId, round }, signal);
+    if (signal?.aborted) return;
     const current = data.rounds[0];
     const sameRound = selected?.album.id === data.album.id && selected.round.number === data.round.number;
     setSelected(data);
